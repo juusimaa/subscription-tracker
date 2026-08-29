@@ -1,3 +1,8 @@
+// Single-page UI for the subscription tracker: a form for adding/editing,
+// a table of existing subscriptions, and the monthly-total summary. Kept as
+// one component since the app is small; a larger app would split this into
+// separate components (Form, Table, Summary) with the state lifted up.
+
 import { useEffect, useState } from "react";
 import {
   createSubscription,
@@ -8,6 +13,7 @@ import {
 } from "./api";
 import "./App.css";
 
+// Shared shape for a blank form and for resetting after submit/cancel.
 const emptyForm = {
   name: "",
   cost: "",
@@ -20,9 +26,12 @@ function App() {
   const [subscriptions, setSubscriptions] = useState([]);
   const [monthlyTotal, setMonthlyTotal] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  // null when adding a new subscription; set to a subscription's id while editing.
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState(null);
 
+  // Re-fetches both the list and the summary together, so the UI never
+  // shows a total that's out of sync with the visible rows.
   async function refresh() {
     try {
       const [subs, total] = await Promise.all([getSubscriptions(), getMonthlyTotal()]);
@@ -34,6 +43,7 @@ function App() {
     }
   }
 
+  // Empty dependency array: load data once when the component first mounts.
   useEffect(() => {
     refresh();
   }, []);
@@ -56,8 +66,11 @@ function App() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    // Form inputs are always strings; the API expects cost as a number.
     const payload = { ...form, cost: Number(form.cost) };
     try {
+      // Same form/submit handler for both add and edit -- editingId decides
+      // which API call to make.
       if (editingId) {
         await updateSubscription(editingId, payload);
       } else {

@@ -1,34 +1,73 @@
+# Orchestrates the three containers that make up this app for local
+# development. Run `docker compose up --build` from the repo root.
+#
+# Values like ${POSTGRES_PASSWORD} are read from a ".env" file in this same
+# directory (see .env.example) -- Compose loads it automatically, so
+# credentials aren't hardcoded here or committed to git.
+
 services:
   db:
+    # Official Postgres image, pinned to major version 16 (not just
+    # "latest") so rebuilds don't silently pick up a breaking major upgrade.
     image: postgres:16
+    # Restarts the container automatically if it crashes or Docker restarts,
+    # but not after a manual `docker compose stop`.
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
+      # Named volume: Postgres's data directory lives outside the
+      # container's writable layer, in storage Docker manages. Without this,
+      # every `docker compose down` would wipe the database, since container
+      # filesystems are ephemeral by default.
       - db_data:/var/lib/postgresql/data
     ports:
+      # host_port:container_port. Only needed so tools on your Mac (e.g. a
+      # GUI DB client) can reach Postgres directly -- the backend container
+      # talks to `db:5432` over Docker's internal network and doesn't need
+      # this mapping at all.
       - "5432:5432"
     healthcheck:
+      # pg_isready is a Postgres CLI tool that checks if the server is
+      # accepting connections. Compose polls this so other services can wait
+      # for a real "ready" signal instead of just "container started".
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   backend:
+    # Builds from the Dockerfile in ./backend instead of pulling a
+    # pre-made image, since this is our own app code.
     build: ./backend
     restart: unless-stopped
+    # Overrides the Dockerfile's CMD to add --reload: uvicorn watches
+    # mounted source files and restarts on change, which is only wanted in
+    # local dev (see backend/Dockerfile for the production command).
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     environment:
+      # Note the hostname is "db", not "localhost" -- Compose gives every
+      # service a DNS name matching its key in this file, resolvable only
+      # from other containers on the same Compose network.
       DATABASE_URL: ${DATABASE_URL}
     volumes:
+      # Bind mount: maps the host's ./backend/app directly into the
+      # container, so edits on your Mac are picked up immediately without
+      # rebuilding the image. Only app code is mounted -- dependencies
+      # installed by the Dockerfile's `pip install` stay baked into the image.
       - ./backend/app:/app/app
     ports:
       - "8000:8000"
     depends_on:
       db:
+        # Waits for db's healthcheck to pass (not just "container started")
+        # before starting the backend, since it needs Postgres actually
+        # accepting connections.
         condition: service_healthy
     healthcheck:
+      # No curl in the slim Python image, so this uses Python itself to hit
+      # the /health endpoint defined in app/main.py.
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 5s
       timeout: 5s
@@ -38,10 +77,16 @@ services:
   frontend:
     build:
       context: ./frontend
+      # Builds only up through the "build" stage of frontend/Dockerfile
+      # (Node + Vite), skipping the "production" Nginx stage -- local dev
+      # wants Vite's dev server and hot-reload, not a static Nginx build.
       target: build
     restart: unless-stopped
     command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
     environment:
+      # Deliberately localhost, not the "backend" service name: this value
+      # is used by code running in *your browser*, which only knows about
+      # the host's published ports, not Docker's internal network.
       VITE_API_URL: ${VITE_API_URL}
     volumes:
       - ./frontend/src:/app/src
@@ -53,4 +98,7 @@ services:
         condition: service_healthy
 
 volumes:
+  # Declaring the volume here (with no config) lets Docker manage its
+  # storage location; it persists until explicitly removed with
+  # `docker compose down -v`.
   db_data:
