@@ -3,8 +3,8 @@ services:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_DB: subscriptions
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - db_data:/var/lib/postgresql/data
     ports:
@@ -20,7 +20,7 @@ services:
     restart: unless-stopped
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     environment:
-      DATABASE_URL: postgresql+psycopg://postgres:devpassword@db:5432/subscriptions
+      DATABASE_URL: ${DATABASE_URL}
     volumes:
       - ./backend/app:/app/app
     ports:
@@ -28,6 +28,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   frontend:
     build:
@@ -36,14 +42,15 @@ services:
     restart: unless-stopped
     command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
     environment:
-      VITE_API_URL: http://localhost:8000
+      VITE_API_URL: ${VITE_API_URL}
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/index.html:/app/index.html
     ports:
       - "5173:5173"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   db_data:
