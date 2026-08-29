@@ -58,10 +58,26 @@ as `Authorization: Bearer <token>` on every request. Tokens expire after 12
 hours; a different browser or device starts logged out. On http://localhost:8000/docs
 the **Authorize** button logs the docs page in the same way.
 
+## CI — images on GHCR
+
+Every push to `main` runs [.github/workflows/build-and-push.yml](.github/workflows/build-and-push.yml),
+which builds both images and pushes them to GitHub Container Registry:
+
+- `ghcr.io/<owner>/subscription-tracker-backend`
+- `ghcr.io/<owner>/subscription-tracker-frontend`
+
+Each is tagged `latest` and `sha-<short commit>`. The frontend image is the
+Nginx production stage (static build), not the Vite dev server that Compose
+runs locally. Packages are private by default — make them public, or
+`docker login ghcr.io` with a personal access token, to pull them elsewhere.
+
+Nothing deploys these yet; that's milestone 7.
+
 ## Project layout
 
 ```
-backend/    # FastAPI app
-frontend/   # React (Vite) app
+backend/            # FastAPI app
+frontend/           # React (Vite) app
 docker-compose.yml
+.github/workflows/  # CI: build and push images to GHCR
 ```

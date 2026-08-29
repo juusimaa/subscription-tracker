@@ -48,9 +48,49 @@ docker-subscription-tracker/
 2. ~~**Dockerize the backend**~~ ✅ — Dockerfile, connect to a Postgres container via Compose, use env vars for the connection string, add a named volume so data persists across restarts.
 3. ~~**Build the frontend**~~ ✅ — simple React UI (list subscriptions, add/edit form, total cost summary), Dockerized as its own container, calling the backend API.
 4. ~~**docker-compose.yml**~~ ✅ ties all three together for local dev (`docker compose up`).
-5. **GitHub Actions** — on push, build both images, push to GitHub Container Registry.
+5. ~~**GitHub Actions**~~ ✅ — on push to `main`, build both images and push them to GitHub Container Registry. Details below.
 6. ~~**Multi-user auth (JWT)**~~ ✅ — add a `users` table and scope every subscription to its owner, so the app is safe to expose publicly in step 7. Details below.
 7. **Deploy to Azure Container Apps** — backend + frontend as two container apps. Postgres either via Azure Database for PostgreSQL (flexible server) or kept in a container to stay fully free.
+
+## Milestone 5 — GitHub Actions to GHCR (done)
+
+One workflow, `.github/workflows/build-and-push.yml`, triggered by pushes to
+`main` (documentation-only commits are skipped via `paths-ignore`) and by a
+manual **Run workflow** button. It builds and publishes, and nothing more —
+deploying these images is milestone 7.
+
+**Registry:** GHCR rather than Docker Hub, because it needs no external
+account. The `GITHUB_TOKEN` that Actions mints for each run is enough to push,
+once the workflow asks for `packages: write` — the default token is read-only.
+Nothing is stored as a repository secret, and the token dies with the run.
+
+**Images:** `ghcr.io/<owner>/subscription-tracker-backend` and
+`-frontend`, each tagged twice. `latest` always tracks the newest `main` build;
+`sha-<short>` is immutable and pins one commit, which is what a deploy should
+reference — `latest` moves underneath you and makes a rollback ambiguous.
+
+**One job, run twice.** A `strategy.matrix` supplies the build context and
+image name per image instead of duplicating the job. The frontend entry also
+sets `target: production`, so the published image is the Nginx stage serving
+static files — never the Vite dev server that `docker-compose.yml` targets
+locally. `fail-fast: false` keeps one failure from cancelling the other build.
+
+**Caching:** every run gets a clean runner with an empty Docker cache, so
+without `cache-from`/`cache-to: type=gha` each build would reinstall every pip
+and npm dependency from scratch. `mode=max` also caches intermediate stages,
+which is what makes the frontend's multi-stage build cheap. The scope is keyed
+per image so the two builds don't overwrite each other's cache.
+
+**Verified:** both images build locally exactly as the workflow builds them
+(`docker build ./backend` and `docker build --target production ./frontend`).
+
+**Known gap, deferred to milestone 7:** Vite inlines `VITE_API_URL` at *build*
+time, so the published frontend image has the fallback `http://localhost:8000`
+baked into its JavaScript bundle. That is correct for a local `docker compose`
+run and wrong for Azure. Fixing it means either passing the real API URL as a
+Docker build arg (and rebuilding per environment) or having the app read the
+backend URL at runtime instead — a milestone 7 decision, since the URL isn't
+known until the backend container app exists.
 
 ## Milestone 6 — JWT auth (done)
 
@@ -133,7 +173,7 @@ one, which is why the expiry is kept short.
   migration once there's an Azure database worth keeping. (Implementing it did
   in fact require a `down -v`.) And step 7 puts
   `POST`/`DELETE` endpoints on a public URL, which shouldn't happen while they're
-  unauthenticated. It doesn't block step 5, which only builds images and doesn't
+  unauthenticated. It didn't block step 5, which only builds images and doesn't
   care what's in them.
 - Doing step 1 without Docker first avoids debugging Docker networking and SQL at the same time — Postgres + FastAPI get learned locally before containers are introduced.
 - Frontend and backend are separate containers (rather than one combined container) to get more realistic multi-container Docker Compose practice.
