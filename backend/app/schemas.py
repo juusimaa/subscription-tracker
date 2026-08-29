@@ -7,7 +7,7 @@
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.models import BillingCycle
 
@@ -51,3 +51,36 @@ class Subscription(SubscriptionBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+
+
+# --- Auth ---
+
+
+class UserCreate(BaseModel):
+    """What the client sends on POST /register."""
+
+    # EmailStr rejects malformed addresses before they ever reach the database
+    # (validated by the email-validator package, pulled in via requirements).
+    email: EmailStr
+    # bcrypt hashes at most 72 bytes and raises on anything longer, so the
+    # upper bound is enforced here as a clean 422 rather than a 500 later.
+    password: str = Field(min_length=8, max_length=72)
+
+
+class User(BaseModel):
+    """What the API returns about a user. Note what is absent: the password
+    hash is never serialized, so it cannot leak through a response even by
+    accident."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: EmailStr
+
+
+class Token(BaseModel):
+    """The response from POST /token. `token_type` is always "bearer"; the
+    field is part of the OAuth2 spec that FastAPI's docs page expects."""
+
+    access_token: str
+    token_type: str = "bearer"

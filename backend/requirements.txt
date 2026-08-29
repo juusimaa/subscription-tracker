@@ -4,3 +4,9 @@ sqlalchemy==2.0.35
 psycopg[binary]==3.2.10
 python-dotenv==1.0.1
 pydantic==2.9.2
+pyjwt==2.9.0
+bcrypt==4.2.0
+email-validator==2.2.0
+# Required by FastAPI to parse the form-encoded body that the OAuth2 password
+# flow (POST /token) uses -- without it that endpoint fails at import time.
+python-multipart==0.0.12

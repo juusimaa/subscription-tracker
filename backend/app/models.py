@@ -5,7 +5,7 @@
 
 import enum
 
-from sqlalchemy import Boolean, Column, Date, Enum, Integer, Numeric, String
+from sqlalchemy import Boolean, Column, Date, Enum, ForeignKey, Integer, Numeric, String
 
 from app.database import Base
 
@@ -16,6 +16,18 @@ class BillingCycle(str, enum.Enum):
 
     monthly = "monthly"
     yearly = "yearly"
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    # unique=True makes Postgres itself reject a duplicate signup, even if two
+    # registrations race past the application's own "is this taken?" check.
+    email = Column(String, unique=True, nullable=False, index=True)
+    # Only ever the bcrypt hash -- the plaintext password is never stored,
+    # logged, or returned by the API (see schemas.User, which omits it).
+    hashed_password = Column(String, nullable=False)
 
 
 class Subscription(Base):
@@ -29,3 +41,7 @@ class Subscription(Base):
     next_renewal_date = Column(Date, nullable=False)
     category = Column(String, nullable=True)
     active = Column(Boolean, nullable=False, default=True)
+    # The owner of this row. nullable=False so a subscription can never end up
+    # orphaned and visible to everyone; indexed because every single query in
+    # crud.py filters on it.
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)

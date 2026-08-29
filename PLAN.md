@@ -44,19 +44,22 @@ docker-subscription-tracker/
 
 ## Milestones
 
-1. **Backend first, no Docker yet** — FastAPI + Postgres running locally, CRUD endpoints for subscriptions (list/add/edit/delete, maybe a "total monthly spend" endpoint). This is where the Postgres basics get learned.
-2. **Dockerize the backend** — Dockerfile, connect to a Postgres container via Compose, use env vars for the connection string, add a named volume so data persists across restarts.
-3. **Build the frontend** — simple React UI (list subscriptions, add/edit form, total cost summary), Dockerized as its own container, calling the backend API.
-4. **docker-compose.yml** ties all three together for local dev (`docker compose up`).
+1. ~~**Backend first, no Docker yet**~~ ✅ — FastAPI + Postgres running locally, CRUD endpoints for subscriptions (list/add/edit/delete, maybe a "total monthly spend" endpoint). This is where the Postgres basics get learned.
+2. ~~**Dockerize the backend**~~ ✅ — Dockerfile, connect to a Postgres container via Compose, use env vars for the connection string, add a named volume so data persists across restarts.
+3. ~~**Build the frontend**~~ ✅ — simple React UI (list subscriptions, add/edit form, total cost summary), Dockerized as its own container, calling the backend API.
+4. ~~**docker-compose.yml**~~ ✅ ties all three together for local dev (`docker compose up`).
 5. **GitHub Actions** — on push, build both images, push to GitHub Container Registry.
-6. **Multi-user auth (JWT)** — add a `users` table and scope every subscription to its owner, so the app is safe to expose publicly in step 7. Details below.
+6. ~~**Multi-user auth (JWT)**~~ ✅ — add a `users` table and scope every subscription to its owner, so the app is safe to expose publicly in step 7. Details below.
 7. **Deploy to Azure Container Apps** — backend + frontend as two container apps. Postgres either via Azure Database for PostgreSQL (flexible server) or kept in a container to stay fully free.
 
-## Milestone 6 in detail — JWT auth
+## Milestone 6 — JWT auth (done)
 
 Hand-rolled with FastAPI's `OAuth2PasswordBearer`, rather than a hosted identity
-provider (Auth0, Entra ID). Two new dependencies: `pyjwt` and `bcrypt`. No new
-containers, and local Compose dev keeps working exactly as it does now.
+provider (Auth0, Entra ID). No new containers, and local Compose dev works as it
+did before. Four new backend dependencies: `pyjwt` and `bcrypt` for the tokens
+and hashing, plus `email-validator` (backs Pydantic's `EmailStr`) and
+`python-multipart` (required to parse the form-encoded body the OAuth2 password
+flow uses -- `/token` fails at import without it).
 
 **How it works:** the user logs in with email + password, the backend checks the
 bcrypt hash and returns a signed token (`{"sub": user_id, "exp": ...}`). The
@@ -68,7 +71,13 @@ payload carries an id and an expiry, never anything secret.
 **Backend changes:**
 
 - New `app/auth.py` — password hashing, token creation, and a `get_current_user`
-  dependency that decodes the token and loads the user.
+  dependency that decodes the token and loads the user. The user is re-read from
+  the database on every request rather than trusted from the token's claims, so
+  a deleted account stops working immediately.
+- `GET /me` — added during implementation, not in the original sketch. The
+  frontend calls it on startup to find out whether a token left in
+  `localStorage` is still valid, instead of rendering the app and discovering
+  the answer from a failed data fetch.
 - `models.py` — a `User` model, plus a `user_id` foreign key on `Subscription`.
 - `crud.py` — every function takes `user_id` and filters on it. This includes
   the single-row lookups: filtering only by `id` on update/delete would let one
@@ -97,6 +106,18 @@ existing CORS block already allows the `Authorization` header via
 `localStorage` is exposed to any XSS on the page; acceptable here, and revisited
 if this ever stops being a learning project.
 
+**Verified end to end:** unauthenticated requests are rejected while `/health`
+stays open for Docker's healthcheck; two users see only their own rows and
+totals; one user's GET/PUT/DELETE against another's subscription id returns 404;
+forged and expired tokens are both 401; a wrong password and an unknown email
+give the identical message, so accounts can't be enumerated; and the backend
+refuses to boot without a `SECRET_KEY`.
+
+**Deliberately not built:** logout is client-side only -- the discarded token
+stays cryptographically valid until it expires, since real revocation needs a
+token blocklist. There is also no password reset and no email verification. The
+12-hour expiry is the only thing that ends a session.
+
 **Session behaviour to expect:** `localStorage` is per-origin, per-browser. Same
 browser tomorrow means still logged in (until the token expires); a different
 browser, device, or private window means the login screen again. Logging in from
@@ -105,11 +126,12 @@ one, which is why the expiry is kept short.
 
 ## Notes / rationale
 
-- Auth lands *before* the Azure deploy, not after, for two reasons. The schema
+- Auth landed *before* the Azure deploy, not after, for two reasons. The schema
   has no migration tool — `Base.metadata.create_all()` only creates missing
   tables, so adding a non-null `user_id` to `subscriptions` is a
   `docker compose down -v` while the only data is local test rows, and a real
-  migration once there's an Azure database worth keeping. And step 7 puts
+  migration once there's an Azure database worth keeping. (Implementing it did
+  in fact require a `down -v`.) And step 7 puts
   `POST`/`DELETE` endpoints on a public URL, which shouldn't happen while they're
   unauthenticated. It doesn't block step 5, which only builds images and doesn't
   care what's in them.

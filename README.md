@@ -17,13 +17,22 @@ A small app for tracking recurring subscriptions (Netflix, HBO, etc.), built as 
    cp .env.example .env
    ```
 
-2. Start everything:
+2. Generate a signing key for the auth tokens and put it in `.env` as
+   `SECRET_KEY` (the backend refuses to start without one):
+
+   ```
+   python -c "import secrets; print(secrets.token_hex(32))"
+   ```
+
+   `.env` is gitignored — the real key never gets committed.
+
+3. Start everything:
 
    ```
    docker compose up --build
    ```
 
-3. Open:
+4. Open:
    - Frontend: http://localhost:5173
    - Backend API docs: http://localhost:8000/docs
 
@@ -32,6 +41,22 @@ Data persists across restarts in a named Docker volume (`db_data`). To reset the
 ```
 docker compose down -v
 ```
+
+## Accounts
+
+Every subscription belongs to a user, and all API routes except `/health`,
+`/register` and `/token` require a login. Sign up on the frontend, or straight
+against the API:
+
+```
+curl -X POST localhost:8000/register -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"at-least-8-chars"}'
+```
+
+Logging in returns a JWT, which the frontend keeps in `localStorage` and sends
+as `Authorization: Bearer <token>` on every request. Tokens expire after 12
+hours; a different browser or device starts logged out. On http://localhost:8000/docs
+the **Authorize** button logs the docs page in the same way.
 
 ## Project layout
 

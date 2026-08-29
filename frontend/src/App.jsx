@@ -2,15 +2,23 @@
 // a table of existing subscriptions, and the monthly-total summary. Kept as
 // one component since the app is small; a larger app would split this into
 // separate components (Form, Table, Summary) with the state lifted up.
+//
+// Everything here renders only for a logged-in user -- see the token gate
+// below, which shows <Login> instead when there's no valid session.
 
 import { useEffect, useState } from "react";
 import {
   createSubscription,
   deleteSubscription,
+  getMe,
   getMonthlyTotal,
   getSubscriptions,
+  getToken,
+  logout,
+  onAuthExpired,
   updateSubscription,
 } from "./api";
+import Login from "./Login";
 import "./App.css";
 
 // Shared shape for a blank form and for resetting after submit/cancel.
@@ -23,6 +31,11 @@ const emptyForm = {
 };
 
 function App() {
+  // Initialised straight from localStorage so a returning user with an
+  // unexpired token skips the login screen entirely. The lazy function form
+  // means localStorage is read once on mount, not on every render.
+  const [token, setToken] = useState(() => getToken());
+  const [email, setEmail] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
   const [monthlyTotal, setMonthlyTotal] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -43,10 +56,48 @@ function App() {
     }
   }
 
-  // Empty dependency array: load data once when the component first mounts.
+  // Runs on mount and again after each login. A token found in localStorage
+  // may well be expired, so /me is called first: if the backend rejects it,
+  // api.js clears the token and fires auth-expired, and the effect below
+  // drops us back to the login screen instead of showing an empty app.
   useEffect(() => {
-    refresh();
+    if (!token) return;
+    (async () => {
+      try {
+        const me = await getMe();
+        setEmail(me.email);
+        await refresh();
+      } catch (err) {
+        setError(err.message);
+      }
+    })();
+  }, [token]);
+
+  // Any 401 from any request means the session is over -- clear the local
+  // state so the gate below re-renders as <Login>.
+  useEffect(() => {
+    return onAuthExpired(() => {
+      setToken(null);
+      setEmail(null);
+    });
   }, []);
+
+  function handleLogout() {
+    logout();
+    setToken(null);
+    setEmail(null);
+    // Drop the previous user's data so it can't flash on screen if someone
+    // else logs in on the same browser.
+    setSubscriptions([]);
+    setMonthlyTotal(null);
+    setError(null);
+  }
+
+  // The gate: no token, no app. Everything below this line is unreachable
+  // until onLogin hands back a token.
+  if (!token) {
+    return <Login onLogin={setToken} />;
+  }
 
   function startEdit(sub) {
     setEditingId(sub.id);
@@ -94,7 +145,15 @@ function App() {
 
   return (
     <div className="app">
-      <h1>Subscription Tracker</h1>
+      <header className="app-header">
+        <h1>Subscription Tracker</h1>
+        <div className="account">
+          {email && <span className="account-email">{email}</span>}
+          <button type="button" onClick={handleLogout}>
+            Log out
+          </button>
+        </div>
+      </header>
 
       {monthlyTotal !== null && (
         <div className="summary">

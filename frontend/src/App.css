@@ -42,3 +42,56 @@
 .subscription-table button {
   margin-right: 0.25rem;
 }
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.account-email {
+  color: #555;
+  font-size: 0.9rem;
+}
+
+/* The login screen reuses .app for width and font, but is narrower and
+   stacks its fields vertically rather than wrapping them in a row. */
+.login {
+  max-width: 320px;
+}
+
+.login h2 {
+  font-size: 1.1rem;
+  font-weight: normal;
+  color: #555;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.login-form input {
+  padding: 0.5rem;
+}
+
+/* A button that reads as a text link -- used for the log in / sign up
+   toggle, where a second real button would compete with the submit. */
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #0b57d0;
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: 0.9rem;
+}

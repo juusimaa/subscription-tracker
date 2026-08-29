@@ -51,6 +51,10 @@ services:
       # service a DNS name matching its key in this file, resolvable only
       # from other containers on the same Compose network.
       DATABASE_URL: ${DATABASE_URL}
+      # Read from .env, which is gitignored -- the signing key is never
+      # written into this file, into the image, or into git. In Azure this
+      # same variable comes from a Container Apps secret instead.
+      SECRET_KEY: ${SECRET_KEY}
     volumes:
       # Bind mount: maps the host's ./backend/app directly into the
       # container, so edits on your Mac are picked up immediately without
