@@ -19,6 +19,9 @@ import {
   updateSubscription,
 } from "./api";
 import Login from "./Login";
+import ServicePicker from "./ServicePicker";
+import { findService } from "./services";
+import ServiceIcon from "./ServiceIcon";
 import "./App.css";
 
 // Shared shape for a blank form and for resetting after submit/cancel.
@@ -164,11 +167,21 @@ function App() {
       {error && <div className="error">{error}</div>}
 
       <form className="subscription-form" onSubmit={handleSubmit}>
-        <input
-          placeholder="Name (e.g. Netflix)"
+        <ServicePicker
           value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          required
+          onChange={(name) => setForm({ ...form, name })}
+          // Picking a known service fills in its price as well as its name.
+          // billing_cycle is forced back to monthly because the catalogue
+          // price is a monthly one -- leaving the form on "Yearly" would
+          // otherwise record Netflix as costing 13.99 a *year*.
+          onPickService={(service) =>
+            setForm({
+              ...form,
+              name: service.name,
+              cost: service.monthlyCost,
+              billing_cycle: "monthly",
+            })
+          }
         />
         <input
           type="number"
@@ -216,19 +229,29 @@ function App() {
           </tr>
         </thead>
         <tbody>
-          {subscriptions.map((sub) => (
-            <tr key={sub.id}>
-              <td>{sub.name}</td>
-              <td>{sub.cost}</td>
-              <td>{sub.billing_cycle}</td>
-              <td>{sub.next_renewal_date}</td>
-              <td>{sub.category}</td>
-              <td>
-                <button onClick={() => startEdit(sub)}>Edit</button>
-                <button onClick={() => handleDelete(sub.id)}>Delete</button>
-              </td>
-            </tr>
-          ))}
+          {subscriptions.map((sub) => {
+            // undefined for anything typed by hand rather than picked from
+            // the catalogue, which then just renders as a bare name.
+            const service = findService(sub.name);
+            return (
+              <tr key={sub.id}>
+                <td>
+                  <span className="subscription-name">
+                    {service && <ServiceIcon service={service} />}
+                    {sub.name}
+                  </span>
+                </td>
+                <td>{sub.cost}</td>
+                <td>{sub.billing_cycle}</td>
+                <td>{sub.next_renewal_date}</td>
+                <td>{sub.category}</td>
+                <td>
+                  <button onClick={() => startEdit(sub)}>Edit</button>
+                  <button onClick={() => handleDelete(sub.id)}>Delete</button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
