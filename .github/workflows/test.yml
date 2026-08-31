@@ -1,0 +1,106 @@
+# Runs the backend test suite on every push and every pull request.
+#
+# Twice, against both databases the suite supports, because they are not the
+# same database in the one way that matters here: Postgres returns a
+# Numeric(10, 2) column as a Decimal, SQLite as a float. Postgres is what runs
+# in production and is therefore the leg that must be green; SQLite is the
+# zero-setup default a contributor gets from a bare `pytest`, and running it
+# here is what keeps that path honest rather than quietly rotting.
+
+name: Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/test.yml"
+  # Unlike the image build, this also runs on pull requests: a test suite that
+  # only runs after a merge reports the problem too late to be worth much.
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Superseded runs are cancelled: only the newest commit's result is
+# interesting, and a queue of stale runs makes the branch's real state harder
+# to read rather than easier.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      # Both results are wanted. A Postgres-only failure is a genuinely
+      # different bug from one that fails on both, and fail-fast would hide
+      # which of the two happened.
+      fail-fast: false
+      matrix:
+        include:
+          - database: sqlite
+            # Empty, not absent: matrix values have to exist. conftest.py
+            # treats an empty value as "not configured" and falls back to its
+            # throwaway SQLite file -- the same thing a bare `pytest` does.
+            test_database_url: ""
+          - database: postgres
+            # Reached over the mapped port on localhost: the steps run
+            # directly on the runner, not inside the job's container network.
+            test_database_url: postgresql+psycopg://postgres:postgres@localhost:5432/subscriptions_test
+
+    name: ${{ matrix.database }}
+
+    # Started for both legs -- a service cannot be declared per matrix leg --
+    # and simply ignored by the SQLite one. postgres:16 matches
+    # docker-compose.yml, so CI is not testing against a different major
+    # version than local development uses.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          # Created by the service itself, so no psql step is needed to make
+          # the database the tests connect to.
+          POSTGRES_DB: subscriptions_test
+        ports:
+          - 5432:5432
+        # Without this the job races the database: the container is "started"
+        # long before Postgres is accepting connections.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      # 3.13 to match backend/Dockerfile: the tests should run on the
+      # interpreter the app ships on, not whichever one the runner defaults to.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      # requirements-dev.txt pulls in requirements.txt itself, so this one line
+      # installs both the app and what tests it.
+      - name: Install dependencies
+        run: pip install -r backend/requirements-dev.txt
+
+      - name: Run the tests
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: ${{ matrix.test_database_url }}
+        # No SECRET_KEY here on purpose: conftest.py sets a throwaway one if
+        # the variable is absent, and a signing key in a workflow file is a
+        # bad habit to build even when the value is meaningless.
+        run: pytest

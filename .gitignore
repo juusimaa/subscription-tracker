@@ -19,6 +19,11 @@ build/
 # Docker
 *.log
 
+# The default test database: conftest.py points DATABASE_URL at a throwaway
+# SQLite file so `pytest` works with nothing running. It is rebuilt from
+# models.py on every test, so a committed copy would be worse than useless.
+backend/test.db
+
 # Generated API docs. The spec is built from the app (see
 # .github/workflows/docs.yml), so a local run of that command leaves a _site/
 # behind that must not be committed -- a checked-in copy is exactly the drift

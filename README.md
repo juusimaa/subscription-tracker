@@ -371,9 +371,24 @@ development:
   `build` stage to run Vite's dev server instead of Nginx. The Dockerfiles keep
   the production forms, which is exactly what CI publishes.
 
-### 9. CI — [.github/workflows/build-and-push.yml](.github/workflows/build-and-push.yml)
+### 9. CI — [.github/workflows/](.github/workflows/)
 
-Every push to `main` builds both images and pushes them to GitHub Container
+Three workflows, each triggered by what it actually depends on:
+
+| Workflow | Runs on | Does |
+| --- | --- | --- |
+| [`test.yml`](.github/workflows/test.yml) | pushes and **pull requests** touching `backend/**` | The test suite, twice — against SQLite and against Postgres 16 |
+| [`build-and-push.yml`](.github/workflows/build-and-push.yml) | pushes to `main` | Builds both images, publishes them to GHCR |
+| [`docs.yml`](.github/workflows/docs.yml) | pushes to `main` touching `backend/**` or `docs/**` | Generates `openapi.json` from the app and publishes the [API reference](https://juusimaa.github.io/subscription-tracker) |
+
+`test.yml` is the only one that also runs on pull requests: a suite that only
+runs after a merge reports the problem too late to be worth much. It runs both
+database legs because they are not the same database in the way that matters —
+Postgres returns a `Numeric` column as a `Decimal`, SQLite as a float — so
+Postgres is the leg that must be green, and the SQLite leg is what stops the
+zero-setup `pytest` path from quietly rotting.
+
+**Images.** Every push to `main` builds both and pushes them to GitHub Container
 Registry:
 
 - `ghcr.io/<owner>/subscription-tracker-backend`
@@ -383,11 +398,15 @@ Each is tagged `latest` and `sha-<short commit>` — the immutable tag is what a
 deployment should pin to, since `latest` moves. The frontend image is the Nginx
 production stage, never the Vite dev server Compose runs locally.
 
-Patterns worth copying: a **matrix** runs one job definition twice (once per
-image) instead of two near-identical copies; **`paths-ignore`** skips a build for
-documentation-only commits; **`concurrency` with `cancel-in-progress`** cancels
-a superseded run; and **`permissions`** grants the automatic `GITHUB_TOKEN` only
-`packages: write`, so it can publish images but cannot push commits.
+Patterns worth copying, visible across the three: a **matrix** runs one job
+definition twice instead of two near-identical copies (once per image in the
+build, once per database in the tests); **`paths`/`paths-ignore`** keep a
+workflow from running for commits it cannot be affected by; **`concurrency`
+with `cancel-in-progress`** cancels a superseded run — except in `docs.yml`,
+where cancelling half way through a deployment is how a site ends up broken;
+and **`permissions`** grants the automatic `GITHUB_TOKEN` only what each job
+needs, so the build can publish images but cannot push commits, and the tests
+can do neither.
 
 Packages are private by default — make them public, or `docker login ghcr.io`
 with a personal access token, to pull them elsewhere. Nothing deploys these yet;
@@ -559,6 +578,44 @@ through leaves the account untouched. The response says what happened:
 The file carries a `version` field. A file whose version this build doesn't
 read is refused with a 400 rather than imported on a guess.
 
+## Tests
+
+```
+cd backend
+pip install -r requirements-dev.txt
+pytest
+```
+
+81 tests, no services required: `conftest.py` points the app at a throwaway
+SQLite file, so a clean checkout can run the suite with nothing else started.
+To run the identical suite against real Postgres — the one place the two
+databases differ is `Numeric`, which comes back as a `Decimal` from Postgres
+and a float from SQLite:
+
+```
+docker compose up -d db
+docker compose exec db psql -U postgres -c "CREATE DATABASE subscriptions_test;"
+TEST_DATABASE_URL=postgresql+psycopg://postgres:devpassword@db:5432/subscriptions_test pytest
+```
+
+What they cover, and why those things:
+
+| File | What it pins down |
+| --- | --- |
+| `test_renewals.py` | The date arithmetic, directly: month-end clamping that does not stick, leap days, and the property that a derived renewal is never in the past. |
+| `test_isolation.py` | That one user cannot read, edit or delete another's rows — as a **404**, not a 403, which would confirm the id exists. |
+| `test_spend.py` | The spend arithmetic: a monthly plan cancelled in June, a yearly plan cancelled the day after renewing, and rows with unknown dates. |
+| `test_subscriptions.py` | The derived renewal date through the API, the cancellation bookkeeping, and every validation rule that has already reached the database once. |
+| `test_upcoming.py` | The window, one entry per charge, and what is deliberately left out. |
+
+Two conventions worth keeping if you add more: no test may depend on what
+today's date is (the spend tests all use a year fully in the past), and tests
+call the API over HTTP rather than `crud.py` directly, because the status code
+is as much a part of the contract as the body.
+
+CI runs all of this on every push and pull request that touches `backend/`,
+against both databases — see [`test.yml`](.github/workflows/test.yml).
+
 ## Deliberate simplifications
 
 Things a production app would do differently, listed so they read as choices
@@ -566,7 +623,9 @@ rather than oversights:
 
 - **No migrations.** `create_all()` instead of Alembic, with the consequences
   described in [the models section](#2-sqlalchemy-models--backendappmodelspy).
-- **No automated tests.** CI builds images; it does not verify behaviour.
+- **The tests cover the backend only.** The suite (see [Tests](#tests)) runs in
+  CI against both databases, but nothing tests the React frontend, and no test
+  drives a browser.
 - **No token revocation.** Logout is client-side only; the 12-hour expiry is the
   only thing that invalidates a token.
 - **CORS allows exactly one hardcoded origin**, which will need to become
@@ -582,6 +641,9 @@ rather than oversights:
 backend/
   Dockerfile          # python:3.13-slim, deps cached before app code
   requirements.txt
+  requirements-dev.txt # test-only deps; never installed into the image
+  pytest.ini          # so `pytest` alone works from backend/
+  tests/              # see Tests above
   app/
     main.py           # FastAPI app: routes, status codes, CORS, OpenAPI metadata
     auth.py           # bcrypt hashing, JWT mint/verify, get_current_user dependency
@@ -589,6 +651,12 @@ backend/
     crud.py           # every database query, all scoped by user_id
     models.py         # SQLAlchemy tables — source of truth for the schema
     database.py       # engine, session factory, get_db dependency
+docs/
+  index.html          # Redoc page for the published API reference
+.github/workflows/
+  test.yml            # pytest on SQLite and Postgres, on push and PR
+  build-and-push.yml  # builds and publishes both images to GHCR
+  docs.yml            # publishes the API reference to GitHub Pages
 frontend/
   Dockerfile          # multi-stage: Node builds, Nginx serves
   src/

@@ -1,36 +1,15 @@
 # Backend TODO
 
 Gaps found in a review of the backend on 2026-08-31, in roughly the order they
-are worth doing. Three items from that review are already fixed and are
+are worth doing. Four items from that review are already fixed and are
 recorded at the bottom for context, since the notes here refer back to them.
 
-## 1. No tests
-
-There are none, and no test dependency in `requirements.txt`.
-
-The two things most worth pinning down are already written and easy to get
-wrong again: the spend arithmetic (`_monthly_cost`, `_is_charged`,
-`_last_charged_month` -- cancellations mid-year, yearly plans cancelled after
-renewing, rows with no `started_date`) and the per-user isolation that every
-`crud.py` function depends on. The invalid-update bug fixed below dies to a
-single test; it would never have reached the database with one in place.
-
-`pytest` + `httpx` against a throwaway Postgres (or SQLite, if the `Numeric`
-behaviour is not what is being asserted) is enough. Start with:
-
-- one user cannot read, edit, or delete another's subscription id (404, not 403)
-- a monthly plan cancelled in June counts for six months of that year, then zero
-- a yearly plan cancelled the day after renewing still counts to the end of the
-  paid term
-- the renewal arithmetic fixed below: a stale anchor rolls forward to a date in
-  the future, and a plan anchored on the 31st bills on the 28th in February
-  without losing the 31st in March
-- the validation rules fixed below, so they cannot regress
-
-## 2. No migrations
+## 1. No migrations
 
 `Base.metadata.create_all()` creates missing *tables* and never alters existing
-ones, as the comment in `main.py` says. Adding `user_id`, then `cancelled_date`
+ones, as the comment in `main.py` says. (The test suite added below sidesteps
+this rather than solving it: it drops and recreates the schema between tests,
+so it never has an existing table to alter.) Adding `user_id`, then `cancelled_date`
 and `started_date`, has already meant a `docker compose down -v` or a
 hand-written `ALTER TABLE` each time.
 
@@ -39,7 +18,7 @@ survivable at milestone 7, where the Azure database holds data worth keeping and
 `down -v` is not an option. Alembic now, with two tables and a schema that fits
 on a screen, is far cheaper than Alembic later.
 
-## 3. Account management
+## 2. Account management
 
 `/register`, `/token` and `/me` are the entire account surface. Missing:
 
@@ -51,21 +30,21 @@ on a screen, is far cheaper than Alembic later.
   skipped in PLAN.md milestone 6. They need an email path, so they are a bigger
   step than the first two.
 
-## 4. Rate limiting on `/token` and `/register`
+## 3. Rate limiting on `/token` and `/register`
 
 Nothing throttles login attempts. bcrypt's cost factor is the only brake on
 guessing a password, and registration is a wide-open endpoint. `slowapi` (a
 `limiter.limit("5/minute")` decorator) covers both, or the equivalent at
 whatever sits in front of the app once it is deployed.
 
-## 5. `/health` does not check the database
+## 4. `/health` does not check the database
 
 It returns `{"status": "ok"}` unconditionally, so Docker's healthcheck reports
 the backend healthy while Postgres is unreachable and every real request is
 failing. A `SELECT 1` through the session makes the check mean what the
 `docker-compose.yml` healthcheck already assumes it means.
 
-## 6. CORS origin is hardcoded
+## 5. CORS origin is hardcoded
 
 `allow_origins=["http://localhost:5173"]` in `main.py`. Correct for local
 Compose, and wrong everywhere the app is actually deployed -- which is
@@ -75,7 +54,7 @@ value as the default, the same way `DATABASE_URL` is handled.
 Note it pairs with the known frontend gap in PLAN.md milestone 5: `VITE_API_URL`
 is inlined at build time. Both sides of the origin problem want solving together.
 
-## 7. Check-then-insert races return 500
+## 6. Check-then-insert races return 500
 
 `register` and `create_category` both ask "does this exist?" and then insert. Two
 concurrent identical requests both pass the check, and the second one trips the
@@ -86,7 +65,7 @@ shape.
 The check is worth keeping for the good error message; catching `IntegrityError`
 around the commit and converting it to the same 400/409 closes the window.
 
-## 8. Imports are validated more loosely than writes
+## 7. Imports are validated more loosely than writes
 
 `BackupSubscription` inherits the unconstrained `SubscriptionBase`, so a
 hand-edited backup file can still introduce the negative costs and blank names
@@ -117,6 +96,45 @@ knowing the asymmetry is there.
 ---
 
 ## Fixed on 2026-08-31
+
+**No tests.** There were none, and no test dependency. There are now 81, run
+with `pytest` from `backend/`, and the four things TODO.md asked for first are
+all pinned down: per-user isolation, a monthly plan cancelled in June, a yearly
+plan cancelled the day after renewing, and the validation rules that had
+already reached the database once.
+
+Three decisions in there worth keeping:
+
+- **SQLite by default, Postgres on demand.** `pytest` works on a clean
+  checkout with nothing running; `TEST_DATABASE_URL=...` runs the identical
+  suite against real Postgres, and both are green. That is what makes the
+  `Numeric` caveat in the original note safe to live with: the one place the
+  difference shows through (Postgres returns `Decimal`, SQLite a float) is
+  handled by a `money()` helper in `conftest.py`, so no assertion quietly
+  depends on which database it ran against.
+- **No test depends on today's date.** The spend tests all use a year that is
+  fully in the past, and the one place an exact count would have been
+  date-dependent -- how many times a monthly plan renews in a 90-day window,
+  which is three or four depending on the months -- asserts the property
+  instead: each renewal listed once, a calendar month apart, summing to the
+  total. A suite that passes in August and fails in February is worse than no
+  suite, and the first draft of that test did exactly that.
+- **Tests go through HTTP, not through `crud.py`.** The status codes are part
+  of the contract: isolation failing as a 403 instead of a 404 would leak that
+  someone else's id exists, and only a test that calls the route can see the
+  difference.
+
+Two states the API cannot produce are reached through `/import`, which is the
+honest path to them: a row with no `started_date`, and one inactive with no
+`cancelled_date`. `POST /subscriptions` defaults the first and stamps the
+second, so those rows only exist as restores of old files -- which is exactly
+what the spend summary's "assume as little as possible" branches are for.
+
+Not covered, and worth adding next: the backup round trip itself (merge vs
+replace, the duplicate-name skip), category rename and delete reassignment, and
+anything that runs this suite automatically -- it is a `pytest` a person has to
+remember to type until CI runs it.
+
 
 **Renewal dates never moved.** `next_renewal_date` was written once at creation
 and never again, so a month after adding Netflix its renewal date sat in the

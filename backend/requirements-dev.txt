@@ -1,0 +1,15 @@
+# Test-only dependencies, kept out of requirements.txt on purpose: the
+# Dockerfile installs that file into the image that ships, and a test runner
+# has no business being in a production container. Nothing here is imported by
+# app code.
+#
+#   pip install -r requirements-dev.txt
+#
+# The -r pulls the runtime dependencies in too, so this one file is enough to
+# set up a working environment from scratch.
+-r requirements.txt
+
+pytest==8.3.3
+# Not imported directly by the tests -- it is what Starlette's TestClient is
+# built on, so the client the tests use does not exist without it.
+httpx==0.27.2
