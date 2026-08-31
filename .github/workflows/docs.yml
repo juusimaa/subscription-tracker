@@ -62,13 +62,13 @@ jobs:
       - name: Install backend dependencies
         run: pip install -r backend/requirements.txt
 
-      # Two environment variables, both throwaway, both needed only because
-      # importing the app has side effects:
+      # Two environment variables, both throwaway:
       #
-      #   DATABASE_URL  main.py calls Base.metadata.create_all(bind=engine) at
-      #                 import time, which opens a real connection. Pointing it
-      #                 at in-memory SQLite means no Postgres service has to be
-      #                 stood up just to read the route signatures.
+      #   DATABASE_URL  database.py builds an engine at import time, which needs
+      #                 a URL it can parse. Nothing here connects -- migrations
+      #                 own the schema now, so importing the app no longer
+      #                 touches a database -- but in-memory SQLite keeps this
+      #                 job independent of any real one either way.
       #   SECRET_KEY    auth.py refuses to import without one (deliberately --
       #                 see the comment there). Nothing signs a token in this
       #                 job, so any value does.

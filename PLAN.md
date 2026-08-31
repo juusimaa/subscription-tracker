@@ -167,11 +167,12 @@ one, which is why the expiry is kept short.
 ## Notes / rationale
 
 - Auth landed *before* the Azure deploy, not after, for two reasons. The schema
-  has no migration tool — `Base.metadata.create_all()` only creates missing
-  tables, so adding a non-null `user_id` to `subscriptions` is a
-  `docker compose down -v` while the only data is local test rows, and a real
-  migration once there's an Azure database worth keeping. (Implementing it did
-  in fact require a `down -v`.) And step 7 puts
+  had no migration tool at the time — `Base.metadata.create_all()` only creates
+  missing tables, so adding a non-null `user_id` to `subscriptions` was a
+  `docker compose down -v` while the only data is local test rows, and would
+  have needed a real migration once there's an Azure database worth keeping.
+  (Implementing it did in fact require a `down -v`.) Alembic has since taken
+  the schema over, so step 7 no longer inherits that problem. And step 7 puts
   `POST`/`DELETE` endpoints on a public URL, which shouldn't happen while they're
   unauthenticated. It didn't block step 5, which only builds images and doesn't
   care what's in them.

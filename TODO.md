@@ -1,24 +1,10 @@
 # Backend TODO
 
 Gaps found in a review of the backend on 2026-08-31, in roughly the order they
-are worth doing. Four items from that review are already fixed and are
+are worth doing. Five items from that review are already fixed and are
 recorded at the bottom for context, since the notes here refer back to them.
 
-## 1. No migrations
-
-`Base.metadata.create_all()` creates missing *tables* and never alters existing
-ones, as the comment in `main.py` says. (The test suite added below sidesteps
-this rather than solving it: it drops and recreates the schema between tests,
-so it never has an existing table to alter.) Adding `user_id`, then `cancelled_date`
-and `started_date`, has already meant a `docker compose down -v` or a
-hand-written `ALTER TABLE` each time.
-
-That is survivable while the only data is local test rows. It stops being
-survivable at milestone 7, where the Azure database holds data worth keeping and
-`down -v` is not an option. Alembic now, with two tables and a schema that fits
-on a screen, is far cheaper than Alembic later.
-
-## 2. Account management
+## 1. Account management
 
 `/register`, `/token` and `/me` are the entire account surface. Missing:
 
@@ -30,21 +16,21 @@ on a screen, is far cheaper than Alembic later.
   skipped in PLAN.md milestone 6. They need an email path, so they are a bigger
   step than the first two.
 
-## 3. Rate limiting on `/token` and `/register`
+## 2. Rate limiting on `/token` and `/register`
 
 Nothing throttles login attempts. bcrypt's cost factor is the only brake on
 guessing a password, and registration is a wide-open endpoint. `slowapi` (a
 `limiter.limit("5/minute")` decorator) covers both, or the equivalent at
 whatever sits in front of the app once it is deployed.
 
-## 4. `/health` does not check the database
+## 3. `/health` does not check the database
 
 It returns `{"status": "ok"}` unconditionally, so Docker's healthcheck reports
 the backend healthy while Postgres is unreachable and every real request is
 failing. A `SELECT 1` through the session makes the check mean what the
 `docker-compose.yml` healthcheck already assumes it means.
 
-## 5. CORS origin is hardcoded
+## 4. CORS origin is hardcoded
 
 `allow_origins=["http://localhost:5173"]` in `main.py`. Correct for local
 Compose, and wrong everywhere the app is actually deployed -- which is
@@ -54,7 +40,7 @@ value as the default, the same way `DATABASE_URL` is handled.
 Note it pairs with the known frontend gap in PLAN.md milestone 5: `VITE_API_URL`
 is inlined at build time. Both sides of the origin problem want solving together.
 
-## 6. Check-then-insert races return 500
+## 5. Check-then-insert races return 500
 
 `register` and `create_category` both ask "does this exist?" and then insert. Two
 concurrent identical requests both pass the check, and the second one trips the
@@ -65,7 +51,7 @@ shape.
 The check is worth keeping for the good error message; catching `IntegrityError`
 around the commit and converting it to the same 400/409 closes the window.
 
-## 7. Imports are validated more loosely than writes
+## 6. Imports are validated more loosely than writes
 
 `BackupSubscription` inherits the unconstrained `SubscriptionBase`, so a
 hand-edited backup file can still introduce the negative costs and blank names
@@ -96,6 +82,45 @@ knowing the asymmetry is there.
 ---
 
 ## Fixed on 2026-08-31
+
+**No migrations.** Alembic now owns the schema, and
+`Base.metadata.create_all()` is gone from `main.py` -- importing the app no
+longer touches the database at all. The backend container runs
+`alembic upgrade head` from `entrypoint.sh` before uvicorn starts.
+
+Four decisions worth keeping:
+
+- **The first revision adopts a database it did not create.** It creates each
+  table only if it is absent, so `upgrade head` against the existing Compose
+  volume -- or anything already deployed -- records the revision instead of
+  failing on "table users already exists". Verified against the local volume:
+  stamped `0001`, all rows intact. The alternative was telling every existing
+  database to run `alembic stamp head` by hand, or to start again empty.
+- **Migrations run in the `ENTRYPOINT`, not the `CMD`.** A `command:` in
+  docker-compose.yml replaces `CMD` and leaves `ENTRYPOINT` alone, so the
+  `--reload` override local dev uses cannot skip them. A failed migration stops
+  the container rather than starting an app against a schema its code does not
+  match.
+- **`test_migrations.py` pins the migrations to models.py.** Nothing else
+  would: the fixtures build the schema with `create_all()`, so a column added
+  to a model without a revision passes every other test and only fails on a
+  database that has seen migrations -- exactly what this was meant to prevent.
+  The test upgrades an empty database and asserts `compare_metadata` finds no
+  difference from the models. Types are not compared: the same declaration
+  renders differently on SQLite and Postgres (`billing_cycle` is a native enum
+  on one, a VARCHAR with a check constraint on the other), so comparing them
+  would report which database ran the test rather than any real drift.
+- **The enum type is dropped explicitly on downgrade.** `create_table` emits
+  `CREATE TYPE` on Postgres as a side effect and `drop_table` never emits the
+  matching `DROP TYPE`, so a downgrade would leave the type behind and the next
+  upgrade would fail on "type billingcycle already exists". The second test
+  upgrades, downgrades and upgrades *again*, because a single upgrade cannot
+  see that.
+
+Not covered: nothing runs `alembic upgrade head` against a database holding
+real rows in CI, so a future data migration is tested only by the schema it
+leaves behind, not by what it does to the rows.
+
 
 **No tests.** There were none, and no test dependency. There are now 81, run
 with `pytest` from `backend/`, and the four things TODO.md asked for first are
@@ -154,7 +179,8 @@ years-old date is now saying something true rather than something stale.
 
 The attribute was renamed but the *column* keeps the name
 `next_renewal_date`, so this needed no ALTER TABLE -- which is the only reason
-it could ship while migrations (item 2) are still outstanding.
+it could ship before migrations existed. The column name is what the initial
+Alembic revision records.
 
 - `renewals.py` does the date arithmetic in whole calendar months, because
   `timedelta` cannot express "one month". A plan anchored on the 31st bills on

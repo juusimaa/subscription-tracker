@@ -1,6 +1,9 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 sqlalchemy==2.0.35
+# Owns the database schema (see backend/alembic/). A runtime dependency, not a
+# dev one: the container runs `alembic upgrade head` on startup via entrypoint.sh.
+alembic==1.19.1
 psycopg[binary]==3.2.10
 python-dotenv==1.0.1
 pydantic==2.9.2

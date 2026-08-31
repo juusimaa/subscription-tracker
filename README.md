@@ -68,7 +68,7 @@ that need them ([.env.example](.env.example) documents the same list):
 | --- | --- | --- |
 | `POSTGRES_DB` | `db` | Database created on first start. |
 | `POSTGRES_PASSWORD` | `db` | Superuser password for the `postgres` role. |
-| `DATABASE_URL` | `backend` | Full SQLAlchemy URL. Host is `db`, not `localhost` — see [Docker & Compose](#8-docker--compose). |
+| `DATABASE_URL` | `backend` | Full SQLAlchemy URL. Host is `db`, not `localhost` — see [Docker & Compose](#9-docker--compose). |
 | `SECRET_KEY` | `backend` | Signs the JWTs. Changing it logs everyone out. |
 | `VITE_API_URL` | `frontend` | Baked into the browser bundle, so it must be an address *your browser* can reach. |
 
@@ -143,9 +143,8 @@ network instead.
 
 ### 2. SQLAlchemy models — [backend/app/models.py](backend/app/models.py)
 
-Python classes that map to tables. This file is the single source of truth for
-the schema: `Base.metadata.create_all()` in [main.py](backend/app/main.py) reads
-these classes at startup and issues the `CREATE TABLE` statements.
+Python classes that map to tables. This file is the source of truth for the
+schema; [Alembic](#3-migrations--backendalembic) is what applies it to a database.
 
 Three tables: `users`, `categories`, `subscriptions`. Details worth noticing:
 
@@ -165,13 +164,54 @@ Three tables: `users`, `categories`, `subscriptions`. Details worth noticing:
   missing category row, and clients can keep sending just a name.
   `crud.ensure_category` is what keeps the two in step.
 
-> **Learning-project caveat:** `create_all()` only creates *missing* tables. It
-> never alters an existing one, so adding a column to this file does nothing to
-> a database that already exists. A real app uses a migration tool (Alembic);
-> here you either `docker compose down -v` or run the `ALTER TABLE` by hand —
-> the comment at the top of [main.py](backend/app/main.py) has the statements.
+Editing this file is only half of a schema change; the other half is a
+migration, below.
 
-### 3. Pydantic schemas — [backend/app/schemas.py](backend/app/schemas.py)
+### 3. Migrations — [backend/alembic/](backend/alembic/)
+
+Alembic owns the schema. This used to be `Base.metadata.create_all()` at
+startup, which creates missing *tables* and never alters an existing one — so
+every column added (`user_id`, then `cancelled_date` and `started_date`) cost a
+`docker compose down -v` or a hand-written `ALTER TABLE`. Survivable while the
+only data is local test rows, and not survivable at all once a deployed
+database holds anything worth keeping.
+
+The backend container runs `alembic upgrade head` before uvicorn starts, from
+[entrypoint.sh](backend/entrypoint.sh) — so `docker compose up` needs no
+migration step of its own. Three details in how that is wired:
+
+- **It is an `ENTRYPOINT`, not part of the `CMD`.** A `command:` in
+  docker-compose.yml replaces `CMD` but not `ENTRYPOINT`, so overriding how the
+  app starts (as local dev does, to add `--reload`) cannot skip the migration.
+- **A failed migration stops the container.** Better a loud failure on start
+  than an app serving requests against a schema its code does not match.
+- **The first revision adopts a database that predates Alembic.** It creates
+  each table only if it is absent, so running it against an existing Compose
+  volume records the revision instead of failing on "table users already
+  exists". Migrations could otherwise only be adopted by throwing the data
+  away.
+
+Adding a schema change, from `backend/`:
+
+```
+alembic revision --autogenerate -m "what changed"   # diff models.py, draft it
+alembic upgrade head                                # apply it
+```
+
+Always read what `--autogenerate` produced: it diffs models.py against the live
+database and is good at columns and indexes, but it cannot know that a new
+not-null column needs a default for existing rows, and it does not see a rename
+— only a drop and an add.
+
+`alembic current` shows where a database stands, `alembic downgrade -1` steps
+back one revision.
+
+The pairing that keeps this honest is in the test suite: the fixtures build the
+schema from models.py, and `test_migrations.py` asserts that
+`alembic upgrade head` on an empty database produces exactly that same schema.
+A model edited without a migration passes every other test and fails that one.
+
+### 4. Pydantic schemas — [backend/app/schemas.py](backend/app/schemas.py)
 
 The API contract. FastAPI uses these classes to parse and validate every
 request body, and to shape every response.
@@ -207,7 +247,7 @@ Three patterns recur here and are worth recognising:
   arithmetic and converting only at serialization preserves both the exactness
   and the wire format.
 
-### 4. crud.py — [backend/app/crud.py](backend/app/crud.py)
+### 5. crud.py — [backend/app/crud.py](backend/app/crud.py)
 
 Every database operation, and nothing else. No `HTTPException`, no status codes:
 a function that finds nothing returns `None`, and the route decides that means
@@ -235,7 +275,7 @@ Two techniques worth studying:
   import resolves names against a dict read once up front instead of asking the
   database per row.
 
-### 5. main.py — [backend/app/main.py](backend/app/main.py)
+### 6. main.py — [backend/app/main.py](backend/app/main.py)
 
 The HTTP layer, and the only file that knows what a status code is.
 
@@ -285,7 +325,7 @@ a note to the next reader.
 > threadpool. Marking them `async` without an async driver would block the event
 > loop and *hurt* concurrency.
 
-### 6. auth.py — [backend/app/auth.py](backend/app/auth.py)
+### 7. auth.py — [backend/app/auth.py](backend/app/auth.py)
 
 Password hashing, token minting, and the dependency that turns an
 `Authorization` header into a `User`.
@@ -315,7 +355,7 @@ Nothing invalidates an issued token, so the 12-hour expiry is the only thing
 that ever revokes one; logout is purely client-side. Real revocation needs a
 token blocklist, which is out of scope here.
 
-### 7. React frontend — [frontend/src/](frontend/src/)
+### 8. React frontend — [frontend/src/](frontend/src/)
 
 Vite serves the app in dev and builds it to static files for production. There
 is no framework beyond React itself and no state library — the app is small
@@ -344,13 +384,17 @@ machinery.
   the backend only ever sees the plain name and cost the form submits, which is
   what makes adding a service an edit to one file rather than a migration.
 
-### 8. Docker & Compose
+### 9. Docker & Compose
 
 **[backend/Dockerfile](backend/Dockerfile)** — `python:3.13-slim` for a smaller
 image and attack surface. `requirements.txt` is copied and installed *before*
 the app code, so Docker's layer cache reuses the install step on every rebuild
 where dependencies haven't changed; only the fast `COPY app` layer below it
-re-runs.
+re-runs. Its `ENTRYPOINT` is
+[entrypoint.sh](backend/entrypoint.sh), which applies migrations and then
+`exec`s the `CMD` — `exec` so uvicorn becomes PID 1 and receives Docker's
+`SIGTERM` directly, instead of a shell swallowing it and the container being
+killed after the grace period.
 
 **[frontend/Dockerfile](frontend/Dockerfile)** is a **multi-stage build**, the
 technique worth taking away from this project. The `build` stage uses Node to
@@ -373,9 +417,11 @@ development:
 - **Dev overrides production defaults here, not in the Dockerfile.** Compose
   overrides the backend `CMD` to add `--reload`, and targets the frontend's
   `build` stage to run Vite's dev server instead of Nginx. The Dockerfiles keep
-  the production forms, which is exactly what CI publishes.
+  the production forms, which is exactly what CI publishes. Note what the
+  override does *not* reach: `CMD` is replaced, `ENTRYPOINT` is not, so local
+  dev still gets its migrations applied.
 
-### 9. CI — [.github/workflows/](.github/workflows/)
+### 10. CI — [.github/workflows/](.github/workflows/)
 
 Three workflows, each triggered by what it actually depends on:
 
@@ -590,7 +636,7 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-81 tests, no services required: `conftest.py` points the app at a throwaway
+84 tests, no services required: `conftest.py` points the app at a throwaway
 SQLite file, so a clean checkout can run the suite with nothing else started.
 To run the identical suite against real Postgres — the one place the two
 databases differ is `Numeric`, which comes back as a `Decimal` from Postgres
@@ -629,8 +675,6 @@ It goes red if *either* database leg fails, which is the point of running both.
 Things a production app would do differently, listed so they read as choices
 rather than oversights:
 
-- **No migrations.** `create_all()` instead of Alembic, with the consequences
-  described in [the models section](#2-sqlalchemy-models--backendappmodelspy).
 - **The tests cover the backend only.** The suite (see [Tests](#tests)) runs in
   CI against both databases, but nothing tests the React frontend, and no test
   drives a browser.
@@ -651,6 +695,9 @@ backend/
   requirements.txt
   requirements-dev.txt # test-only deps; never installed into the image
   pytest.ini          # so `pytest` alone works from backend/
+  entrypoint.sh       # runs `alembic upgrade head`, then execs the app
+  alembic.ini         # migration config; the URL comes from DATABASE_URL
+  alembic/            # env.py + versions/ — the schema's history
   tests/              # see Tests above
   app/
     main.py           # FastAPI app: routes, status codes, CORS, OpenAPI metadata

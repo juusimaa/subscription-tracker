@@ -11,19 +11,18 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app import auth, crud, models, renewals, schemas
-from app.database import Base, engine, get_db
+from app.database import get_db
 
-# Creates any tables that don't exist yet, based on the models in models.py.
-# Fine for a learning project; a production app would use a migration tool
-# (e.g. Alembic) instead, so schema changes are tracked and reversible.
+# No Base.metadata.create_all() here any more. It used to run at import time
+# and build any missing tables, which was enough only for as long as the
+# schema was append-only and the data disposable: it creates missing *tables*
+# and never alters existing ones, so every column added so far cost a
+# `docker compose down -v` or a hand-written ALTER TABLE.
 #
-# Worth knowing: this only creates *missing* tables, it never alters existing
-# ones. Adding a column (user_id, later cancelled_date) therefore needs either
-# a `docker compose down -v` or a hand-written ALTER TABLE to take effect on a
-# database created before it:
-#   ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS cancelled_date DATE;
-#   ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS started_date DATE;
-Base.metadata.create_all(bind=engine)
+# Alembic owns the schema now (backend/alembic/). The container applies it
+# before uvicorn starts -- see backend/entrypoint.sh -- so importing this
+# module no longer touches the database at all. Running the app by hand means
+# running `alembic upgrade head` first, once, from backend/.
 
 # The title, description and tag list below are not decoration: they are what
 # FastAPI renders as the interactive API docs at /docs (Swagger UI) and /redoc,

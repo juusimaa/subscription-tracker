@@ -16,11 +16,19 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+# The schema the app expects, and the script that applies it before starting.
+COPY alembic.ini entrypoint.sh ./
+COPY alembic ./alembic
 
 # Documents which port the app listens on. This doesn't actually publish the
 # port to the host -- that's done by the "ports:" mapping in
 # docker-compose.yml (or `docker run -p`).
 EXPOSE 8000
+
+# Every start goes through entrypoint.sh, which runs `alembic upgrade head`
+# and then execs the command below. Keeping migrations in the ENTRYPOINT means
+# the `command:` override in docker-compose.yml cannot skip them.
+ENTRYPOINT ["./entrypoint.sh"]
 
 # The default command when the container starts. docker-compose.yml
 # overrides this for local dev to add --reload for hot-reloading; this

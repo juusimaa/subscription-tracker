@@ -12,8 +12,8 @@ import pytest
 # These two have to be set BEFORE app.database and app.main are imported, and
 # that is why they are at module level rather than in a fixture:
 #
-#   DATABASE_URL  app.main calls Base.metadata.create_all(bind=engine) at
-#                 import time, so importing the app opens a real connection.
+#   DATABASE_URL  what every session in the suite connects to, and what
+#                 test_migrations.py runs `alembic upgrade head` against.
 #   SECRET_KEY    app.auth refuses to import without one, deliberately (see
 #                 the comment there) -- a hardcoded default would be a
 #                 publicly known signing key.
@@ -53,10 +53,11 @@ def clean_database():
     rows fails in whatever order pytest happens to run them in, which is the
     worst kind of failure to debug.
 
-    Dropping and recreating is also the only reason these tests do not need
-    the migrations that TODO.md still lists as outstanding -- create_all()
-    builds the current schema from models.py every time, so there is nothing
-    to migrate.
+    Built from models.py with create_all() rather than by running the
+    migrations: 80-odd `alembic upgrade head` runs would pay for a schema that
+    is identical either way. That the two really are identical is not assumed
+    -- test_migrations.py asserts it, which is where a migration missing for a
+    model change is caught.
     """
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)

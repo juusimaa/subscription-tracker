@@ -61,6 +61,10 @@ services:
       # rebuilding the image. Only app code is mounted -- dependencies
       # installed by the Dockerfile's `pip install` stay baked into the image.
       - ./backend/app:/app/app
+      # The migrations too, so a revision added on the host is applied by the
+      # next `docker compose up` without rebuilding the image. The container
+      # runs `alembic upgrade head` on every start (backend/entrypoint.sh).
+      - ./backend/alembic:/app/alembic
     ports:
       - "8000:8000"
     depends_on:
