@@ -7,9 +7,17 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    PlainSerializer,
+    StringConstraints,
+    model_validator,
+)
 
 from app.models import BillingCycle
 
@@ -83,6 +91,55 @@ class Subscription(SubscriptionBase):
     """What the API returns to the client. Includes the database-assigned id."""
 
     id: int
+
+
+# --- Spend summaries ---
+#
+# The two summary routes answer different questions and so have different
+# shapes: /summary/spend is the historical/projected view of a period,
+# /summary/monthly-total is what is being paid right now. Declaring both as
+# schemas rather than returning bare dicts is what puts their fields on the
+# /docs page, where an untyped route shows an empty response instead.
+
+
+# A money amount that stays a Decimal in Python but goes out as a JSON number.
+#
+# The serializer is the whole point. Pydantic v2 renders a bare Decimal as a
+# JSON *string* ("15.99"), whereas these two routes predate having a
+# response_model at all and were encoded by FastAPI's jsonable_encoder, which
+# produces a number (15.99). Declaring the schemas without this would quietly
+# change what the routes return, so the exactness is kept where the arithmetic
+# happens and only the last step down to JSON becomes a float.
+Money = Annotated[Decimal, PlainSerializer(float, return_type=float)]
+
+
+class SpendMonth(BaseModel):
+    """One month's share of a period's cost. `month` is 1-12."""
+
+    month: int = Field(ge=1, le=12)
+    total: Money
+
+
+class SpendSummary(BaseModel):
+    """What GET /subscriptions/summary/spend returns.
+
+    `total` is the sum of `months`, not a separately computed figure, so a
+    client can chart the breakdown and show the total without the two
+    disagreeing by a rounding cent.
+    """
+
+    year: int
+    total: Money
+    # One entry when a single month was asked for, twelve otherwise.
+    months: list[SpendMonth]
+
+
+class MonthlyTotal(BaseModel):
+    """What GET /subscriptions/summary/monthly-total returns. `yearly_total`
+    is the same money viewed over 12 months, not a second sum."""
+
+    monthly_total: Money
+    yearly_total: Money
 
 
 # --- Categories ---
@@ -201,3 +258,14 @@ class ImportResult(BaseModel):
     # already there. Always 0 after a replace, which starts from nothing.
     subscriptions_skipped: int
     categories_imported: int
+
+
+# --- Health ---
+
+
+class Health(BaseModel):
+    """What GET /health returns. A fixed literal rather than a plain str: the
+    only healthy answer is "ok", and saying so in the schema means /docs
+    documents the actual value instead of promising an open-ended string."""
+
+    status: Literal["ok"] = "ok"

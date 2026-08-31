@@ -25,7 +25,46 @@ from app.database import Base, engine, get_db
 #   ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS started_date DATE;
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Subscription Tracker API")
+# The title, description and tag list below are not decoration: they are what
+# FastAPI renders as the interactive API docs at /docs (Swagger UI) and /redoc,
+# both generated from the same /openapi.json this metadata feeds. Every route
+# carries a `tags=` so those pages group the endpoints the same way the
+# sections of this file do, rather than listing all of them under "default".
+app = FastAPI(
+    title="Subscription Tracker API",
+    version="0.1.0",
+    description=(
+        "Track recurring subscriptions and what they cost.\n\n"
+        "Every route except `/health`, `/register` and `/token` needs a Bearer "
+        "token, and only ever sees the calling user's own data. To try them "
+        "out here: register, then use **Authorize** above (the OAuth2 password "
+        "flow posts to `/token`, where the email goes in the `username` field)."
+    ),
+    openapi_tags=[
+        {"name": "Health", "description": "Liveness check. No authentication."},
+        {"name": "Auth", "description": "Registration, login, and who-am-I."},
+        {
+            "name": "Subscriptions",
+            "description": "The subscriptions themselves, plus what they cost per period.",
+        },
+        {
+            "name": "Categories",
+            "description": (
+                "Managing the category list. A subscription carries a category "
+                "*name*, and using a name that isn't in the list yet adds it, so "
+                "a category never has to be created up front."
+            ),
+        },
+        {
+            "name": "Backup",
+            "description": (
+                "Export an account to one JSON file and restore it. Files carry "
+                "no ids, email or password hash, so they are safe to hand over "
+                "and can be restored into a fresh account."
+            ),
+        },
+    ],
+)
 
 # The React dev server runs on a different origin (localhost:5173) than this
 # API (localhost:8000). Browsers block cross-origin requests by default, so
@@ -41,7 +80,7 @@ app.add_middleware(
 )
 
 
-@app.get("/health")
+@app.get("/health", response_model=schemas.Health, tags=["Health"])
 def health():
     """Used by Docker's healthcheck (see docker-compose.yml) to confirm the
     API is actually up and responding, not just that the container started.
@@ -52,7 +91,7 @@ def health():
 # --- Auth routes ---
 
 
-@app.post("/register", response_model=schemas.User, status_code=201)
+@app.post("/register", response_model=schemas.User, status_code=201, tags=["Auth"])
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     """Create an account. Returns the new user without a token: the frontend
     follows this immediately with a call to /token."""
@@ -61,7 +100,7 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     return crud.create_user(db, user)
 
 
-@app.post("/token", response_model=schemas.Token)
+@app.post("/token", response_model=schemas.Token, tags=["Auth"])
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     """Exchange email + password for a JWT.
 
@@ -83,7 +122,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     return schemas.Token(access_token=auth.create_access_token(user.id))
 
 
-@app.get("/me", response_model=schemas.User)
+@app.get("/me", response_model=schemas.User, tags=["Auth"])
 def read_me(current_user: models.User = Depends(auth.get_current_user)):
     """Who am I? The frontend uses this on startup to check whether a token
     left over in localStorage is still valid before showing the app."""
@@ -98,7 +137,7 @@ def read_me(current_user: models.User = Depends(auth.get_current_user)):
 # forced to create the category first.
 
 
-@app.get("/categories", response_model=list[schemas.Category])
+@app.get("/categories", response_model=list[schemas.Category], tags=["Categories"])
 def list_categories(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
@@ -112,7 +151,9 @@ def list_categories(
     ]
 
 
-@app.post("/categories", response_model=schemas.Category, status_code=201)
+@app.post(
+    "/categories", response_model=schemas.Category, status_code=201, tags=["Categories"]
+)
 def create_category(
     category: schemas.CategoryCreate,
     db: Session = Depends(get_db),
@@ -129,7 +170,9 @@ def create_category(
     return schemas.Category(id=db_category.id, name=db_category.name, subscription_count=0)
 
 
-@app.put("/categories/{category_id}", response_model=schemas.Category)
+@app.put(
+    "/categories/{category_id}", response_model=schemas.Category, tags=["Categories"]
+)
 def update_category(
     category_id: int,
     category: schemas.CategoryUpdate,
@@ -153,7 +196,7 @@ def update_category(
     )
 
 
-@app.delete("/categories/{category_id}", status_code=204)
+@app.delete("/categories/{category_id}", status_code=204, tags=["Categories"])
 def delete_category(
     category_id: int,
     reassign_to: int | None = Query(
@@ -213,7 +256,7 @@ def delete_category(
 # fresh account, and handing one to someone gives away no credentials.
 
 
-@app.get("/export", response_model=schemas.Backup)
+@app.get("/export", response_model=schemas.Backup, tags=["Backup"])
 def export_data(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
@@ -237,7 +280,7 @@ def export_data(
     )
 
 
-@app.post("/import", response_model=schemas.ImportResult)
+@app.post("/import", response_model=schemas.ImportResult, tags=["Backup"])
 def import_data(
     backup: schemas.Backup,
     replace: bool = Query(
@@ -287,7 +330,7 @@ def import_data(
 # current_user.id into crud so it only ever touches that user's own rows.
 
 
-@app.get("/subscriptions", response_model=list[schemas.Subscription])
+@app.get("/subscriptions", response_model=list[schemas.Subscription], tags=["Subscriptions"])
 def list_subscriptions(
     category: str | None = Query(
         default=None,
@@ -317,7 +360,9 @@ def list_subscriptions(
     )
 
 
-@app.post("/subscriptions", response_model=schemas.Subscription, status_code=201)
+@app.post(
+    "/subscriptions", response_model=schemas.Subscription, status_code=201, tags=["Subscriptions"]
+)
 def create_subscription(
     subscription: schemas.SubscriptionCreate,
     db: Session = Depends(get_db),
@@ -326,7 +371,11 @@ def create_subscription(
     return crud.create_subscription(db, subscription, current_user.id)
 
 
-@app.get("/subscriptions/{subscription_id}", response_model=schemas.Subscription)
+@app.get(
+    "/subscriptions/{subscription_id}",
+    response_model=schemas.Subscription,
+    tags=["Subscriptions"],
+)
 def get_subscription(
     subscription_id: int,
     db: Session = Depends(get_db),
@@ -338,7 +387,11 @@ def get_subscription(
     return db_subscription
 
 
-@app.put("/subscriptions/{subscription_id}", response_model=schemas.Subscription)
+@app.put(
+    "/subscriptions/{subscription_id}",
+    response_model=schemas.Subscription,
+    tags=["Subscriptions"],
+)
 def update_subscription(
     subscription_id: int,
     subscription: schemas.SubscriptionUpdate,
@@ -351,7 +404,7 @@ def update_subscription(
     return db_subscription
 
 
-@app.delete("/subscriptions/{subscription_id}", status_code=204)
+@app.delete("/subscriptions/{subscription_id}", status_code=204, tags=["Subscriptions"])
 def delete_subscription(
     subscription_id: int,
     db: Session = Depends(get_db),
@@ -415,7 +468,11 @@ def _is_charged(subscription: models.Subscription, year: int, month: int) -> boo
     return (year, month) <= _last_charged_month(subscription)
 
 
-@app.get("/subscriptions/summary/spend")
+@app.get(
+    "/subscriptions/summary/spend",
+    response_model=schemas.SpendSummary,
+    tags=["Subscriptions"],
+)
 def spend(
     year: int | None = Query(
         default=None,
@@ -481,7 +538,11 @@ def spend(
     }
 
 
-@app.get("/subscriptions/summary/monthly-total")
+@app.get(
+    "/subscriptions/summary/monthly-total",
+    response_model=schemas.MonthlyTotal,
+    tags=["Subscriptions"],
+)
 def monthly_total(
     category: str | None = Query(
         default=None,
