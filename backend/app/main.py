@@ -368,7 +368,14 @@ def create_subscription(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    return crud.create_subscription(db, subscription, current_user.id)
+    """Leaving started_date off means "starts today", so a request that also
+    back-dates cancelled_date describes a subscription cancelled before it
+    began. crud spots that once the default is filled in; it is a 422 here for
+    the same reason the schema rejects the spelled-out version."""
+    try:
+        return crud.create_subscription(db, subscription, current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @app.get(
@@ -398,7 +405,18 @@ def update_subscription(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    db_subscription = crud.update_subscription(db, subscription_id, subscription, current_user.id)
+    """A rejected edit changes nothing: crud re-checks the row the update would
+    actually produce, and a request that would leave started_date after
+    cancelled_date comes back as a 422 with the stored row untouched."""
+    try:
+        db_subscription = crud.update_subscription(
+            db, subscription_id, subscription, current_user.id
+        )
+    except ValueError as exc:
+        # 422 (not 400) to match what the schemas return for the same mistake
+        # caught one layer earlier -- a client sending both dates at once and a
+        # client sending only one should not see two different status codes.
+        raise HTTPException(status_code=422, detail=str(exc))
     if db_subscription is None:
         raise HTTPException(status_code=404, detail="Subscription not found")
     return db_subscription

@@ -22,12 +22,34 @@ from pydantic import (
 from app.models import BillingCycle
 
 
-def _check_dates(started: date | None, cancelled: date | None) -> None:
+def check_dates(started: date | None, cancelled: date | None) -> None:
     """A subscription cancelled before it started would silently total up to
     zero in every month, which reads as a bug rather than as the typo it
-    usually is -- so it is rejected as a 422 instead."""
+    usually is -- so it is rejected as a 422 instead.
+
+    Public rather than private because crud.py calls it too: the schemas below
+    can only check the fields one request happened to carry, so the merged row
+    is checked again where it is actually assembled (see crud.py).
+    """
     if started is not None and cancelled is not None and cancelled < started:
         raise ValueError("cancelled_date cannot be earlier than started_date")
+
+
+# The two fields a client can get wrong in a way that neither the database nor
+# the arithmetic can absorb. Declared once and reused by the create and update
+# schemas below, so POST and PUT enforce the same limits -- a rule applied to
+# only one of them is a rule a client can walk straight around by editing.
+#
+# The upper bound on cost is not arbitrary: models.Subscription stores it as
+# Numeric(10, 2), so anything larger is rejected by Postgres itself. Catching
+# it here turns what was a 500 (psycopg NumericValueOutOfRange, raised on
+# commit, long after the request was accepted) into a plain 422. The lower
+# bound matters just as much: a negative cost is subtracted from every total,
+# so one typo can make a whole month's spend read as less than it is.
+SubscriptionName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+]
+Cost = Annotated[Decimal, Field(gt=0, le=Decimal("99999999.99"))]
 
 
 class SubscriptionBase(BaseModel):
@@ -51,18 +73,25 @@ class SubscriptionBase(BaseModel):
     # record a cancellation that happened on some other date.
     cancelled_date: date | None = None
 
-    @model_validator(mode="after")
-    def _validate_dates(self):
-        _check_dates(self.started_date, self.cancelled_date)
-        return self
-
 
 class SubscriptionCreate(SubscriptionBase):
-    """What the client sends on POST /subscriptions. Same fields as the base
-    for now, but kept as its own class so create-only fields could be added
-    later without touching the other schemas."""
+    """What the client sends on POST /subscriptions.
 
-    pass
+    The same fields as the base, but constrained: the base doubles as the
+    response shape (see the note on `Subscription`), so the rules a *request*
+    has to satisfy live here rather than there.
+    """
+
+    name: SubscriptionName
+    cost: Cost
+
+    @model_validator(mode="after")
+    def _validate_dates(self):
+        # A create carries every field at once, so this sees the whole row.
+        # It still is not the last word: crud.create_subscription fills in a
+        # missing started_date afterwards and re-checks what it ends up with.
+        check_dates(self.started_date, self.cancelled_date)
+        return self
 
 
 class SubscriptionUpdate(BaseModel):
@@ -70,8 +99,8 @@ class SubscriptionUpdate(BaseModel):
     optional so a client can update just one field (e.g. only `active`)
     without having to resend the whole subscription."""
 
-    name: str | None = None
-    cost: Decimal | None = None
+    name: SubscriptionName | None = None
+    cost: Cost | None = None
     billing_cycle: BillingCycle | None = None
     next_renewal_date: date | None = None
     started_date: date | None = None
@@ -81,14 +110,25 @@ class SubscriptionUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_dates(self):
-        # Only catches a request that sets both dates at once; a partial update
-        # cannot be checked against the stored row from here.
-        _check_dates(self.started_date, self.cancelled_date)
+        # Only catches a request that sets both dates at once. A partial update
+        # cannot be checked against the stored row from here, which is exactly
+        # why crud.update_subscription checks the merged row as well -- sending
+        # cancelled_date on its own used to slip past this and be committed.
+        check_dates(self.started_date, self.cancelled_date)
         return self
 
 
 class Subscription(SubscriptionBase):
-    """What the API returns to the client. Includes the database-assigned id."""
+    """What the API returns to the client. Includes the database-assigned id.
+
+    Deliberately inherits the *unconstrained* base. A response model that
+    rejects data is a trap: a row that somehow violates a rule would fail
+    validation on the way out, turning one bad row into a 500 for every route
+    that lists or exports it -- the whole account unreadable over a single
+    field. Requests are where bad data is stopped (SubscriptionCreate,
+    SubscriptionUpdate, and the re-check in crud.py); what is already stored
+    is always serialized as it is.
+    """
 
     id: int
 

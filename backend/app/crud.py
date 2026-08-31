@@ -258,6 +258,13 @@ def create_subscription(
     if db_subscription.started_date is None:
         db_subscription.started_date = date.today()
     _sync_cancellation(db_subscription)
+    # Both of the calls above write dates, so the row is only now final. A
+    # request carrying a back-dated cancelled_date and no started_date passes
+    # the schema (it has nothing to compare against) and then has today's date
+    # filled in above, which turns it into exactly the row the schema meant to
+    # reject. Checking here, after every default is applied, is the only place
+    # that sees what will actually be stored.
+    schemas.check_dates(db_subscription.started_date, db_subscription.cancelled_date)
     db.add(db_subscription)
     db.commit()
     # refresh() reloads the row from Postgres so db_subscription.id (assigned
@@ -282,6 +289,20 @@ def update_subscription(
     if "category" in fields:
         db_subscription.category = ensure_category(db, db_subscription.category, user_id)
     _sync_cancellation(db_subscription)
+    # The merged row, not the request. SubscriptionUpdate can only compare the
+    # fields one request happened to carry, so a PUT sending cancelled_date on
+    # its own was checked against nothing and committed -- leaving a stored row
+    # the API's own rules say cannot exist.
+    #
+    # The rollback matters as much as the check. Without it the invalid values
+    # are already set on a live ORM object, and any later flush on this session
+    # would write them; rolling back discards the whole edit, so a rejected
+    # update changes nothing at all.
+    try:
+        schemas.check_dates(db_subscription.started_date, db_subscription.cancelled_date)
+    except ValueError:
+        db.rollback()
+        raise
     db.commit()
     db.refresh(db_subscription)
     return db_subscription
