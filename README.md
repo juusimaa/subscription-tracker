@@ -1,5 +1,9 @@
 # Subscription Tracker
 
+[![Tests](https://github.com/juusimaa/subscription-tracker/actions/workflows/test.yml/badge.svg?branch=main&event=push)](https://github.com/juusimaa/subscription-tracker/actions/workflows/test.yml)
+[![Build and push images](https://github.com/juusimaa/subscription-tracker/actions/workflows/build-and-push.yml/badge.svg?branch=main)](https://github.com/juusimaa/subscription-tracker/actions/workflows/build-and-push.yml)
+[![Publish API docs](https://github.com/juusimaa/subscription-tracker/actions/workflows/docs.yml/badge.svg?branch=main)](https://github.com/juusimaa/subscription-tracker/actions/workflows/docs.yml)
+
 A small app for tracking recurring subscriptions (Netflix, HBO, etc.), built as
 a learning project for Docker, PostgreSQL, and CI/CD to Azure. See
 [PLAN.md](PLAN.md) for the full project plan and milestones.
@@ -614,7 +618,11 @@ call the API over HTTP rather than `crud.py` directly, because the status code
 is as much a part of the contract as the body.
 
 CI runs all of this on every push and pull request that touches `backend/`,
-against both databases — see [`test.yml`](.github/workflows/test.yml).
+against both databases — see [`test.yml`](.github/workflows/test.yml). The badge
+at the top of this README is that workflow's result on `main`; it is scoped to
+`branch=main&event=push` so an in-flight pull request cannot turn it red.
+
+It goes red if *either* database leg fails, which is the point of running both.
 
 ## Deliberate simplifications
 
