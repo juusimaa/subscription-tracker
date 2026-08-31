@@ -7,9 +7,17 @@
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models import BillingCycle
+
+
+def _check_dates(started: date | None, cancelled: date | None) -> None:
+    """A subscription cancelled before it started would silently total up to
+    zero in every month, which reads as a bug rather than as the typo it
+    usually is -- so it is rejected as a 422 instead."""
+    if started is not None and cancelled is not None and cancelled < started:
+        raise ValueError("cancelled_date cannot be earlier than started_date")
 
 
 class SubscriptionBase(BaseModel):
@@ -17,8 +25,21 @@ class SubscriptionBase(BaseModel):
     cost: Decimal
     billing_cycle: BillingCycle = BillingCycle.monthly
     next_renewal_date: date
+    # Left off, this defaults to today on create (see crud.create_subscription).
+    # Set it explicitly when adding a subscription you have had for a while,
+    # otherwise the spend summary shows nothing for the months before today.
+    started_date: date | None = None
     category: str | None = None
     active: bool = True
+    # Usually left off: flipping `active` to false sets this to today
+    # automatically (see crud._sync_cancellation). Send it explicitly only to
+    # record a cancellation that happened on some other date.
+    cancelled_date: date | None = None
+
+    @model_validator(mode="after")
+    def _validate_dates(self):
+        _check_dates(self.started_date, self.cancelled_date)
+        return self
 
 
 class SubscriptionCreate(SubscriptionBase):
@@ -38,8 +59,17 @@ class SubscriptionUpdate(BaseModel):
     cost: Decimal | None = None
     billing_cycle: BillingCycle | None = None
     next_renewal_date: date | None = None
+    started_date: date | None = None
     category: str | None = None
     active: bool | None = None
+    cancelled_date: date | None = None
+
+    @model_validator(mode="after")
+    def _validate_dates(self):
+        # Only catches a request that sets both dates at once; a partial update
+        # cannot be checked against the stored row from here.
+        _check_dates(self.started_date, self.cancelled_date)
+        return self
 
 
 class Subscription(SubscriptionBase):

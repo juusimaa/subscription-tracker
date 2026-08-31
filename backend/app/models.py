@@ -39,8 +39,18 @@ class Subscription(Base):
     cost = Column(Numeric(10, 2), nullable=False)
     billing_cycle = Column(Enum(BillingCycle), nullable=False, default=BillingCycle.monthly)
     next_renewal_date = Column(Date, nullable=False)
+    # When the subscription began costing money. NULL means "unknown" -- only
+    # possible for rows that predate this column -- and the spend summary
+    # treats those as having always been running, which is how it behaved
+    # before the column existed.
+    started_date = Column(Date, nullable=True)
     category = Column(String, nullable=True)
     active = Column(Boolean, nullable=False, default=True)
+    # When this subscription stopped costing money. NULL while it is running,
+    # and NULL too for a row cancelled before this column existed -- the
+    # spend summary treats that unknown case as "not charged in any period"
+    # rather than inventing a date.
+    cancelled_date = Column(Date, nullable=True)
     # The owner of this row. nullable=False so a subscription can never end up
     # orphaned and visible to everyone; indexed because every single query in
     # crud.py filters on it.

@@ -2,9 +2,10 @@
 # Run directly with `uvicorn app.main:app --reload` (see backend/Dockerfile
 # and docker-compose.yml for how this gets started in containers).
 
+from datetime import date, timedelta
 from decimal import Decimal
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -17,8 +18,11 @@ from app.database import Base, engine, get_db
 # (e.g. Alembic) instead, so schema changes are tracked and reversible.
 #
 # Worth knowing: this only creates *missing* tables, it never alters existing
-# ones. Adding user_id to subscriptions therefore needs a
-# `docker compose down -v` to take effect on a database created before auth.
+# ones. Adding a column (user_id, later cancelled_date) therefore needs either
+# a `docker compose down -v` or a hand-written ALTER TABLE to take effect on a
+# database created before it:
+#   ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS cancelled_date DATE;
+#   ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS started_date DATE;
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Subscription Tracker API")
@@ -100,10 +104,47 @@ def read_me(current_user: models.User = Depends(auth.get_current_user)):
 
 @app.get("/subscriptions", response_model=list[schemas.Subscription])
 def list_subscriptions(
+    category: str | None = Query(
+        default=None,
+        description="Only subscriptions in this category (case-insensitive).",
+    ),
+    billing_cycle: models.BillingCycle | None = Query(
+        default=None,
+        description="Only subscriptions billed on this cycle: monthly or yearly.",
+    ),
+    active: bool | None = Query(
+        default=None,
+        description="Only active (true) or only cancelled (false) subscriptions.",
+    ),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    return crud.get_subscriptions(db, current_user.id)
+    """Every filter is optional; omitting them all returns the full list, so
+    existing callers are unaffected. FastAPI validates billing_cycle against
+    the BillingCycle enum, meaning a typo like ?billing_cycle=weekly comes
+    back as a 422 rather than silently matching nothing."""
+    return crud.get_subscriptions(
+        db,
+        current_user.id,
+        category=category,
+        billing_cycle=billing_cycle,
+        active=active,
+    )
+
+
+@app.get("/subscriptions/categories", response_model=list[str])
+def list_categories(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """The categories this user has actually used -- what a category filter
+    would offer as its choices.
+
+    This route has to be declared before /subscriptions/{subscription_id}:
+    FastAPI matches routes in definition order, and the other way round
+    "categories" would be tried as a subscription id and rejected as a 422.
+    """
+    return crud.get_categories(db, current_user.id)
 
 
 @app.post("/subscriptions", response_model=schemas.Subscription, status_code=201)
@@ -150,21 +191,155 @@ def delete_subscription(
         raise HTTPException(status_code=404, detail="Subscription not found")
 
 
+def _monthly_cost(subscription: models.Subscription) -> Decimal:
+    """One subscription's cost expressed per month. Yearly plans are spread
+    across the 12 months they cover rather than landing entirely in their
+    renewal month, which is what makes monthly and yearly figures comparable."""
+    if subscription.billing_cycle == models.BillingCycle.yearly:
+        return subscription.cost / Decimal("12")
+    return subscription.cost
+
+
+def _last_charged_month(subscription: models.Subscription) -> tuple[int, int]:
+    """The last (year, month) a cancelled subscription still cost money.
+
+    Monthly plans stop at the end of the month they were cancelled in. Yearly
+    plans do not: the year has already been paid for, so cancelling the day
+    after renewing still leaves eleven months of service that were bought and
+    paid for. Those run to the end of the paid term, which ends the day before
+    next_renewal_date -- the date the *next* payment would have been due.
+
+    The later of the two dates wins, so a yearly subscription whose renewal
+    date was never kept up to date falls back to its cancellation month
+    instead of losing months it was demonstrably still being paid for.
+    """
+    cancelled = (subscription.cancelled_date.year, subscription.cancelled_date.month)
+    if subscription.billing_cycle != models.BillingCycle.yearly:
+        return cancelled
+    paid_until = subscription.next_renewal_date - timedelta(days=1)
+    return max(cancelled, (paid_until.year, paid_until.month))
+
+
+def _is_charged(subscription: models.Subscription, year: int, month: int) -> bool:
+    """Was this subscription costing money in the given month?
+
+    Months before it started are never charged. After that, a subscription
+    that is still running counts for every month asked about, including months
+    still in the future -- that is what makes a full-year figure a projection.
+    A cancelled one counts up to _last_charged_month and no further.
+
+    Rows that predate these columns are handled by assuming as little as
+    possible: no started_date means the start is unknown, so it is treated as
+    having always been running (how the summary behaved before the column
+    existed), while inactive with no cancelled_date counts for nothing rather
+    than inventing spend that may never have happened.
+    """
+    if subscription.started_date is not None:
+        started = (subscription.started_date.year, subscription.started_date.month)
+        if (year, month) < started:
+            return False
+    if subscription.active:
+        return True
+    if subscription.cancelled_date is None:
+        return False
+    return (year, month) <= _last_charged_month(subscription)
+
+
+@app.get("/subscriptions/summary/spend")
+def spend(
+    year: int | None = Query(
+        default=None,
+        ge=1970,
+        le=9999,
+        description="Calendar year to total up. Defaults to the current year.",
+    ),
+    month: int | None = Query(
+        default=None,
+        ge=1,
+        le=12,
+        description="Single month to total up. Omit for the whole year.",
+    ),
+    category: str | None = Query(
+        default=None,
+        description="Only total up subscriptions in this category (case-insensitive).",
+    ),
+    billing_cycle: models.BillingCycle | None = Query(
+        default=None,
+        description="Only total up subscriptions billed on this cycle.",
+    ),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """What a period actually costs, cancellations included up to the month
+    they were cancelled.
+
+    This is the historical/projected view, and it deliberately does not filter
+    on `active`: a monthly subscription cancelled in June contributed six
+    months of cost to that year and is counted for exactly those six, then
+    zero. A cancelled yearly plan keeps counting to the end of the term that
+    was already paid for (see _last_charged_month), and nothing counts before
+    a subscription's started_date. Compare with /summary/monthly-total, which
+    answers the different question of what is being paid *now* and so ignores
+    cancelled subscriptions entirely.
+
+    `months` always breaks the period down month by month (one entry when
+    `month` is given, twelve otherwise) and `total` is the sum of those
+    entries, so a client can chart the breakdown and show the total without
+    the two disagreeing by a rounding cent.
+    """
+    year = year or date.today().year
+    subscriptions = crud.get_subscriptions(
+        db,
+        current_user.id,
+        category=category,
+        billing_cycle=billing_cycle,
+    )
+    months = [month] if month is not None else list(range(1, 13))
+
+    breakdown = []
+    for m in months:
+        total = sum(
+            (_monthly_cost(sub) for sub in subscriptions if _is_charged(sub, year, m)),
+            Decimal("0"),
+        )
+        breakdown.append({"month": m, "total": round(total, 2)})
+
+    return {
+        "year": year,
+        "total": sum((entry["total"] for entry in breakdown), Decimal("0")),
+        "months": breakdown,
+    }
+
+
 @app.get("/subscriptions/summary/monthly-total")
 def monthly_total(
+    category: str | None = Query(
+        default=None,
+        description="Only total up subscriptions in this category (case-insensitive).",
+    ),
+    billing_cycle: models.BillingCycle | None = Query(
+        default=None,
+        description="Only total up subscriptions billed on this cycle.",
+    ),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
     """Normalizes every active subscription to a monthly cost (yearly plans
     are divided by 12) and sums them, so the frontend can show one figure
-    regardless of how each subscription bills."""
-    subscriptions = crud.get_subscriptions(db, current_user.id)
-    total = Decimal("0")
-    for sub in subscriptions:
-        if not sub.active:
-            continue
-        if sub.billing_cycle == models.BillingCycle.yearly:
-            total += sub.cost / Decimal("12")
-        else:
-            total += sub.cost
-    return {"monthly_total": round(total, 2)}
+    regardless of how each subscription bills.
+
+    Accepts the same category/billing_cycle filters as the list route, so a
+    filtered view can show the total for exactly what it displays. The yearly
+    figure is the same money viewed over 12 months, not a separate sum -- it
+    is returned alongside rather than replacing monthly_total, which existing
+    clients already read.
+    """
+    subscriptions = crud.get_subscriptions(
+        db,
+        current_user.id,
+        category=category,
+        billing_cycle=billing_cycle,
+        active=True,
+    )
+    total = sum((_monthly_cost(sub) for sub in subscriptions), Decimal("0"))
+    return {"monthly_total": round(total, 2), "yearly_total": round(total * 12, 2)}
