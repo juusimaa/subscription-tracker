@@ -19,6 +19,12 @@ build/
 # Docker
 *.log
 
+# Generated API docs. The spec is built from the app (see
+# .github/workflows/docs.yml), so a local run of that command leaves a _site/
+# behind that must not be committed -- a checked-in copy is exactly the drift
+# generating it was meant to avoid.
+_site/
+
 # OS
 .DS_Store
 

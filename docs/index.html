@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<!--
+  The published API reference: https://juusimaa.github.io/subscription-tracker
+
+  This file is the whole page. It carries no API description of its own -- it
+  loads openapi.json, which .github/workflows/docs.yml generates from the
+  FastAPI app on every push to main. That is the point of doing it this way:
+  the docstrings and Query descriptions in backend/app/main.py stay the single
+  source of truth, and the published page cannot drift from the code the way a
+  hand-maintained API document does.
+
+  Redoc rather than Swagger UI, deliberately. Swagger UI's "Try it out" button
+  is the most prominent thing on its page, and against a static spec with no
+  server behind it every request it sends fails. Redoc has no such button, so
+  nothing here is broken by design. Once the API is actually deployed
+  (milestone 7), Swagger UI becomes the better choice -- add a `servers:` entry
+  to the spec and the button starts doing something real.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Subscription Tracker API</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="HTTP API reference for the Subscription Tracker backend, generated from the FastAPI app."
+    />
+    <link
+      href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      hide-hostname suppresses the host shown against each endpoint. Nothing is
+      deployed yet, so the only honest answer is a relative path; advertising
+      one would be advertising a server that does not exist. Remove this
+      attribute once there is a real base URL to show.
+    -->
+    <redoc spec-url="openapi.json" hide-hostname></redoc>
+    <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
+  </body>
+</html>

@@ -46,6 +46,7 @@ at all.
 4. Open:
    - Frontend: http://localhost:5173
    - Backend API docs: http://localhost:8000/docs
+     (or the published reference: https://juusimaa.github.io/subscription-tracker)
 
 Data persists across restarts in a named Docker volume (`db_data`). To reset the
 database entirely:
@@ -270,7 +271,10 @@ rather than a cookie, no CSRF or SameSite configuration is needed.
 **The OpenAPI metadata is functional.** The `title`, `description` and
 `openapi_tags` on the `FastAPI(...)` call, plus the `tags=` on every route, are
 what `/docs` and `/redoc` render — all generated from the same `/openapi.json`
-that the type annotations feed.
+that the type annotations feed, and the same document that gets published to
+[GitHub Pages](https://juusimaa.github.io/subscription-tracker). Every docstring
+and `description=` on a `Query` is therefore public API documentation, not just
+a note to the next reader.
 
 > Note the routes are `def`, not `async def`. That is correct here: SQLAlchemy's
 > synchronous `Session` blocks, and FastAPI runs plain `def` handlers in a
@@ -438,8 +442,17 @@ screen.
 ## API reference
 
 Everything except the first three requires `Authorization: Bearer <token>`, and
-only ever sees the calling user's own data. The full interactive reference is at
-http://localhost:8000/docs.
+only ever sees the calling user's own data.
+
+**Published reference: https://juusimaa.github.io/subscription-tracker** — the
+full API, browsable without running anything. It is generated from the app
+itself: `.github/workflows/docs.yml` imports the FastAPI application on every
+push to `main`, dumps its `openapi.json`, and publishes it with the Redoc page
+in [`docs/index.html`](docs/index.html). Nothing there is written by hand, so it
+cannot drift from the routes it describes.
+
+Running locally, the same spec is served interactively at
+http://localhost:8000/docs (Swagger UI) and http://localhost:8000/redoc.
 
 | Method | Path | What it does |
 | --- | --- | --- |
