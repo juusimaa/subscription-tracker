@@ -4,7 +4,7 @@
 # these describe the API contract. Keeping them apart means, e.g., the client
 # is never allowed to set `id` on create, even though the DB model has one.
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from typing import Annotated
@@ -23,6 +23,11 @@ def _check_dates(started: date | None, cancelled: date | None) -> None:
 
 
 class SubscriptionBase(BaseModel):
+    # from_attributes=True lets this be built directly from a SQLAlchemy row
+    # (Subscription.model_validate(db_row)), which is what the export route
+    # does; the subclasses below inherit it.
+    model_config = ConfigDict(from_attributes=True)
+
     name: str
     cost: Decimal
     billing_cycle: BillingCycle = BillingCycle.monthly
@@ -76,11 +81,6 @@ class SubscriptionUpdate(BaseModel):
 
 class Subscription(SubscriptionBase):
     """What the API returns to the client. Includes the database-assigned id."""
-
-    # from_attributes=True lets this schema be built directly from a
-    # SQLAlchemy model instance (e.g. Subscription.model_validate(db_row)),
-    # rather than requiring a plain dict.
-    model_config = ConfigDict(from_attributes=True)
 
     id: int
 
@@ -149,3 +149,55 @@ class Token(BaseModel):
 
     access_token: str
     token_type: str = "bearer"
+
+
+# --- Backup (export / import) ---
+#
+# The backup file is deliberately made of the same SubscriptionBase fields the
+# rest of the API speaks, minus anything account-specific: no `id`, no
+# `user_id`, no email. That makes a file portable -- it can be restored into a
+# fresh account, or into a different one, without carrying over ids that mean
+# nothing there.
+
+
+BACKUP_VERSION = 1
+
+
+class BackupSubscription(SubscriptionBase):
+    """One subscription as it appears in a backup file. Identical to what the
+    API returns, except the database-assigned id is left out."""
+
+    pass
+
+
+class Backup(BaseModel):
+    """The whole file: what GET /export produces and POST /import accepts.
+
+    `version` is what makes this survivable. A future change to the fields can
+    look at it and decide whether to migrate the file or refuse it, instead of
+    guessing at the shape of whatever it was handed.
+    """
+
+    version: int = BACKUP_VERSION
+    # Set on export, ignored on import -- it is there so a file found later on
+    # disk says when it was taken.
+    exported_at: datetime | None = None
+    # Category names only. Included in their own right so that categories with
+    # nothing in them yet survive a backup, which they wouldn't if the list
+    # were reconstructed from the subscriptions.
+    categories: list[
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
+    ] = []
+    subscriptions: list[BackupSubscription] = []
+
+
+class ImportResult(BaseModel):
+    """What POST /import reports back: enough to tell at a glance whether the
+    file landed as expected, without having to re-fetch the whole list."""
+
+    mode: str
+    subscriptions_imported: int
+    # Merge mode only: rows skipped because a subscription of that name was
+    # already there. Always 0 after a replace, which starts from nothing.
+    subscriptions_skipped: int
+    categories_imported: int

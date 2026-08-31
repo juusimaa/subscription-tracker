@@ -2,7 +2,7 @@
 # Run directly with `uvicorn app.main:app --reload` (see backend/Dockerfile
 # and docker-compose.yml for how this gets started in containers).
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
@@ -203,6 +203,76 @@ def delete_category(
             ),
         )
     crud.delete_category(db, db_category, target)
+
+
+# --- Backup routes ---
+#
+# One file in, one file out, holding everything an account owns: its
+# subscriptions and its category list. What is *not* in it matters as much --
+# no ids, no email, no password hash -- so a backup can be restored into a
+# fresh account, and handing one to someone gives away no credentials.
+
+
+@app.get("/export", response_model=schemas.Backup)
+def export_data(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Everything in the calling user's account, as one JSON document.
+
+    Empty categories are listed in their own right rather than being inferred
+    from the subscriptions, so a category set up in advance survives a backup
+    and restore even while nothing is using it yet.
+    """
+    return schemas.Backup(
+        version=schemas.BACKUP_VERSION,
+        # Timezone-aware and in UTC: a bare local timestamp in a file that may
+        # be restored anywhere is ambiguous by the time anyone reads it.
+        exported_at=datetime.now(timezone.utc),
+        categories=[category.name for category, _ in crud.get_categories(db, current_user.id)],
+        subscriptions=[
+            schemas.BackupSubscription.model_validate(sub)
+            for sub in crud.get_subscriptions(db, current_user.id)
+        ],
+    )
+
+
+@app.post("/import", response_model=schemas.ImportResult)
+def import_data(
+    backup: schemas.Backup,
+    replace: bool = Query(
+        default=False,
+        description=(
+            "Delete this account's existing subscriptions and categories first, "
+            "so the account ends up matching the file exactly. Off by default: "
+            "the file is merged into what is already there."
+        ),
+    ),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Restores a file from GET /export into the calling user's account.
+
+    Merging is the default because it is the one that cannot lose data: a
+    subscription whose name is already in the account is skipped, so importing
+    the same file twice is harmless. `replace=true` is the true restore -- it
+    empties the account first, and is the only mode that can delete anything.
+
+    The import is one transaction. If any part of it fails, the account is
+    left exactly as it was rather than half-restored.
+    """
+    if backup.version != schemas.BACKUP_VERSION:
+        # Refusing beats guessing: a file from a version this build has never
+        # seen may name its fields differently, and importing it on hope would
+        # write silently wrong data.
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unsupported backup version {backup.version}; "
+                f"this API reads version {schemas.BACKUP_VERSION}"
+            ),
+        )
+    return crud.import_backup(db, backup, current_user.id, replace=replace)
 
 
 # --- Subscription routes ---

@@ -294,3 +294,115 @@ def delete_subscription(db: Session, subscription_id: int, user_id: int) -> bool
     db.delete(db_subscription)
     db.commit()
     return True
+
+
+# --- Backup (export / import) ---
+
+
+def delete_all_user_data(db: Session, user_id: int) -> None:
+    """Wipes one user's subscriptions and categories, and nothing else -- the
+    account itself stays. Used by a `replace` import, which has to clear the
+    slate before it writes.
+
+    No commit: the caller runs this inside the same transaction as the import
+    that follows, so a file that fails validation half way through can't leave
+    the account empty.
+    """
+    db.query(models.Subscription).filter(models.Subscription.user_id == user_id).delete(
+        synchronize_session=False
+    )
+    db.query(models.Category).filter(models.Category.user_id == user_id).delete(
+        synchronize_session=False
+    )
+
+
+def import_backup(
+    db: Session, backup: schemas.Backup, user_id: int, replace: bool = False
+) -> schemas.ImportResult:
+    """Writes a backup file's contents into one user's account.
+
+    `replace` empties the account first, so what comes back is exactly what is
+    in the file. Otherwise the file is merged in, and a subscription whose name
+    already exists (in any capitalisation) is skipped rather than added a
+    second time -- re-importing the same file twice should not leave two of
+    everything.
+
+    Only names already in the account are treated as duplicates: two rows
+    called "Netflix" *within* the file are both imported, because a user really
+    can have two, and silently dropping one would lose data the file says
+    exists.
+
+    The whole thing is one transaction. A file that fails part way through
+    leaves the account exactly as it was, rather than half-restored.
+    """
+    if replace:
+        delete_all_user_data(db, user_id)
+        existing_names: set[str] = set()
+    else:
+        existing_names = {
+            name.lower()
+            for (name,) in db.query(models.Subscription.name)
+            .filter(models.Subscription.user_id == user_id)
+            .all()
+        }
+
+    # Categories are resolved against this dict rather than through
+    # ensure_category, which asks the database each time. The session is
+    # autoflush=False (see database.py), so a category added a moment ago is
+    # still invisible to a query until the commit -- asking per row would
+    # insert the same name repeatedly and trip the unique constraint. One read
+    # up front, kept in step as names are added, avoids both.
+    known_categories: dict[str, str] = {
+        category.name.lower(): category.name
+        for category in db.query(models.Category)
+        .filter(models.Category.user_id == user_id)
+        .all()
+    }
+    categories_added = 0
+
+    def register_category(name: str | None) -> str | None:
+        """The import's own ensure_category: registers a name if it is new and
+        returns the spelling to store, so a subscription labelled "netflix"
+        joins an existing "Netflix" rather than splitting it in two."""
+        nonlocal categories_added
+        if name is None:
+            return None
+        name = name.strip()
+        if not name:
+            return None
+        existing = known_categories.get(name.lower())
+        if existing is not None:
+            return existing
+        db.add(models.Category(name=name, user_id=user_id))
+        known_categories[name.lower()] = name
+        categories_added += 1
+        return name
+
+    # Categories first, so a subscription referring to one picks up the file's
+    # own spelling for it rather than introducing its own capitalisation.
+    for name in backup.categories:
+        register_category(name)
+
+    imported = skipped = 0
+    for subscription in backup.subscriptions:
+        if subscription.name.lower() in existing_names:
+            skipped += 1
+            continue
+        db_subscription = models.Subscription(**subscription.model_dump(), user_id=user_id)
+        db_subscription.category = register_category(db_subscription.category)
+        # Deliberately no started_date default and no _sync_cancellation here,
+        # unlike create_subscription: a restore reproduces what the file says,
+        # including "start unknown". Stamping today's date on a subscription
+        # that has been running for years would quietly rewrite its history in
+        # the spend summary.
+        db.add(db_subscription)
+        imported += 1
+
+    db.commit()
+
+    return schemas.ImportResult(
+        mode="replace" if replace else "merge",
+        subscriptions_imported=imported,
+        subscriptions_skipped=skipped,
+        categories_imported=categories_added,
+    )
