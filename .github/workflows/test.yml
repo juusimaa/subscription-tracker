@@ -80,12 +80,12 @@ jobs:
 
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # 3.13 to match backend/Dockerfile: the tests should run on the
       # interpreter the app ships on, not whichever one the runner defaults to.
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip

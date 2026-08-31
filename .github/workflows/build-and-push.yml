@@ -63,19 +63,19 @@ jobs:
       # Checks the repo out into the runner's filesystem. Without this the
       # runner is an empty machine -- it doesn't have the code by default.
       - name: Check out the repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Buildx is Docker's extended builder. It's what makes the registry
       # cache used below available, and would also be what builds
       # multi-architecture images if this ever needs arm64 as well.
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # Authenticates to GHCR using the token GitHub mints for this run.
       # It's scoped to this repository and expires when the run ends, so
       # there's no long-lived registry password stored as a secret.
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -88,7 +88,7 @@ jobs:
       # uppercase, while GitHub usernames allow it.)
       - name: Compute image tags
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}-${{ matrix.name }}
           # Two tags per build:
@@ -103,7 +103,7 @@ jobs:
             type=sha,format=short
 
       - name: Build and push ${{ matrix.name }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.context }}
           target: ${{ matrix.target }}
