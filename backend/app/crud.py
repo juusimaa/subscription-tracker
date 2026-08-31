@@ -185,6 +185,20 @@ def ensure_category(db: Session, name: str | None, user_id: int) -> str | None:
 # --- Subscriptions ---
 
 
+def _columns(fields: dict) -> dict:
+    """Translates a schema's field names into model attribute names.
+
+    Only one differs: the API speaks `next_renewal_date`, which is derived
+    (see models.Subscription), while the table stores the anchor it is derived
+    from. Writes have to land on the anchor -- setting the property itself
+    would raise, since a computed field has nothing to write to.
+    """
+    fields = dict(fields)
+    if "next_renewal_date" in fields:
+        fields["renewal_anchor_date"] = fields.pop("next_renewal_date")
+    return fields
+
+
 def get_subscriptions(
     db: Session,
     user_id: int,
@@ -207,7 +221,15 @@ def get_subscriptions(
         query = query.filter(models.Subscription.billing_cycle == billing_cycle)
     if active is not None:
         query = query.filter(models.Subscription.active.is_(active))
-    return query.order_by(models.Subscription.next_renewal_date).all()
+    # Soonest renewal first, as before -- but sorted in Python rather than by
+    # the database, because the date being sorted on is now computed and the
+    # stored anchor is not a stand-in for it: a 2019 anchor and a 2026 one can
+    # both renew next Tuesday. The list is one user's subscriptions, so this
+    # is a handful of rows; the day it is not, it wants pagination first (see
+    # TODO.md) and an expression index or a stored column after that.
+    subscriptions = query.all()
+    subscriptions.sort(key=lambda sub: (sub.next_renewal_date, sub.name.lower(), sub.id))
+    return subscriptions
 
 
 
@@ -250,7 +272,7 @@ def create_subscription(
     # unpacked as keyword args to build the SQLAlchemy model instance. The
     # owner is added separately -- it comes from the token, and deliberately
     # isn't a field the client can send.
-    db_subscription = models.Subscription(**subscription.model_dump(), user_id=user_id)
+    db_subscription = models.Subscription(**_columns(subscription.model_dump()), user_id=user_id)
     db_subscription.category = ensure_category(db, db_subscription.category, user_id)
     # A subscription being added now almost always starts now. Recording that
     # beats leaving it unknown: without a start date the spend summary has to
@@ -282,7 +304,7 @@ def update_subscription(
     # exclude_unset=True skips fields the client didn't include in the
     # request, so a partial update doesn't overwrite existing values with None.
     fields = subscription.model_dump(exclude_unset=True)
-    for field, value in fields.items():
+    for field, value in _columns(fields).items():
         setattr(db_subscription, field, value)
     # Only when the request actually touched the category: doing it
     # unconditionally would re-register the existing name on every edit.
@@ -409,7 +431,9 @@ def import_backup(
         if subscription.name.lower() in existing_names:
             skipped += 1
             continue
-        db_subscription = models.Subscription(**subscription.model_dump(), user_id=user_id)
+        db_subscription = models.Subscription(
+            **_columns(subscription.model_dump()), user_id=user_id
+        )
         db_subscription.category = register_category(db_subscription.category)
         # Deliberately no started_date default and no _sync_cancellation here,
         # unlike create_subscription: a restore reproduces what the file says,

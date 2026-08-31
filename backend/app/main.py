@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-from app import auth, crud, models, schemas
+from app import auth, crud, models, renewals, schemas
 from app.database import Base, engine, get_db
 
 # Creates any tables that don't exist yet, based on the models in models.py.
@@ -378,6 +378,92 @@ def create_subscription(
         raise HTTPException(status_code=422, detail=str(exc))
 
 
+# Declared before /subscriptions/{subscription_id}, and it has to stay there:
+# FastAPI matches routes in the order they are defined, so with the parameter
+# route first, "upcoming" would be handed to it as a subscription id and come
+# back as a 422 for a path that plainly exists. The two summary routes are
+# safe either way -- they are two path segments deep, so nothing can confuse
+# them with a single id.
+@app.get(
+    "/subscriptions/upcoming",
+    response_model=schemas.UpcomingSummary,
+    tags=["Subscriptions"],
+)
+def upcoming(
+    days: int = Query(
+        default=30,
+        ge=1,
+        le=365,
+        description="How far ahead to look, in days from today (inclusive).",
+    ),
+    category: str | None = Query(
+        default=None,
+        description="Only subscriptions in this category (case-insensitive).",
+    ),
+    billing_cycle: models.BillingCycle | None = Query(
+        default=None,
+        description="Only subscriptions billed on this cycle.",
+    ),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """What is about to be charged, and when.
+
+    Only active subscriptions: a cancelled one is not going to be billed
+    again, whatever its dates say. Each renewal in the window is listed
+    separately with the full amount due on the day, so a monthly plan appears
+    three times in a 90-day window and a yearly plan brings its whole year's
+    cost to the one day it lands on. That is deliberately not what
+    /summary/spend does -- it spreads a yearly cost across the twelve months
+    it covers, because it answers what a period costs rather than what is
+    leaving the account this week.
+
+    Renewals before a subscription's started_date are skipped, so a plan added
+    now but starting next quarter does not show up as due tomorrow.
+    """
+    today = date.today()
+    through = today + timedelta(days=days)
+    subscriptions = crud.get_subscriptions(
+        db,
+        current_user.id,
+        category=category,
+        billing_cycle=billing_cycle,
+        active=True,
+    )
+
+    due = []
+    for subscription in subscriptions:
+        for renewal_date in renewals.occurrences_between(
+            subscription.renewal_anchor_date, subscription.cycle_months, today, through
+        ):
+            if subscription.started_date is not None and renewal_date < subscription.started_date:
+                continue
+            due.append(
+                {
+                    "subscription": subscription,
+                    "renewal_date": renewal_date,
+                    "days_until": (renewal_date - today).days,
+                    "cost": subscription.cost,
+                }
+            )
+
+    # Soonest first; name and id only to keep two renewals on the same day in
+    # a stable, predictable order rather than whatever the query returned.
+    due.sort(
+        key=lambda entry: (
+            entry["renewal_date"],
+            entry["subscription"].name.lower(),
+            entry["subscription"].id,
+        )
+    )
+    return {
+        "days": days,
+        "through": through,
+        "total": round(sum((entry["cost"] for entry in due), Decimal("0")), 2),
+        "renewals": due,
+    }
+
+
 @app.get(
     "/subscriptions/{subscription_id}",
     response_model=schemas.Subscription,
@@ -450,9 +536,16 @@ def _last_charged_month(subscription: models.Subscription) -> tuple[int, int]:
     paid for. Those run to the end of the paid term, which ends the day before
     next_renewal_date -- the date the *next* payment would have been due.
 
-    The later of the two dates wins, so a yearly subscription whose renewal
-    date was never kept up to date falls back to its cancellation month
-    instead of losing months it was demonstrably still being paid for.
+    That date is computed from the cancellation date for a cancelled
+    subscription (see models.Subscription.next_renewal_date), so this is now
+    the real end of the real term. It used to be whatever renewal date was
+    stored when the row was created, which for anything more than a year old
+    was in the past -- and a paid term that ends before the cancellation is
+    not a term at all.
+
+    The later of the two dates still wins, which matters at the boundary:
+    cancelling exactly on a renewal date makes the derived date that same day,
+    so the month of cancellation would otherwise be dropped.
     """
     cancelled = (subscription.cancelled_date.year, subscription.cancelled_date.month)
     if subscription.billing_cycle != models.BillingCycle.yearly:

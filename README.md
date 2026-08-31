@@ -449,6 +449,7 @@ http://localhost:8000/docs.
 | `GET` | `/me` | The logged-in user — used to check a stored token is still valid. |
 | `GET` | `/subscriptions` | List, with optional `category`, `billing_cycle`, `active` filters. |
 | `POST` | `/subscriptions` | Create one. |
+| `GET` | `/subscriptions/upcoming` | What is about to be charged: every renewal in the next `days` (default 30), with the full amount due on each day. |
 | `GET` | `/subscriptions/{id}` | Fetch one. |
 | `PUT` | `/subscriptions/{id}` | Partial update — send only the fields that change. |
 | `DELETE` | `/subscriptions/{id}` | Delete one. |
@@ -466,6 +467,34 @@ are separate endpoints rather than one with a flag: `monthly-total` ignores
 cancelled subscriptions entirely, while `spend` counts a cancelled monthly plan
 for exactly the months it ran — and keeps counting a cancelled *yearly* plan to
 the end of the term already paid for.
+
+`upcoming` is a third question again, and the money in it is not the same money:
+the summaries spread a yearly plan across the twelve months it covers, while
+`upcoming` reports the whole year's cost on the single day it is actually taken.
+A monthly plan appears once per renewal, so it is listed three times in
+`?days=90`.
+
+### Renewal dates
+
+`next_renewal_date` is written like a date and read like a schedule. What a
+client sends is the **anchor** the billing schedule is measured from; what comes
+back is the next renewal *derived* from it — the first one falling on or after
+today. Nothing rolls the stored value forward, so it cannot go stale: a
+subscription added in 2020 and never touched since still reports the right date
+today, and no scheduled job or write-on-read is involved.
+
+Two consequences worth knowing:
+
+- Sending a date in the past is fine, and is usually the right thing to do when
+  adding a subscription you have had for a while — it says when the plan started
+  billing.
+- Whole calendar months are used, not 30-day steps, so a plan anchored on the
+  31st bills on the 28th in February and is back on the 31st in March.
+
+A cancelled subscription is measured from the day it was cancelled rather than
+from today, so it reports the renewal that *would* have come next — the day the
+term already paid for runs out, which is what lets `spend` count a cancelled
+yearly plan to the end of that term.
 
 ## Accounts
 

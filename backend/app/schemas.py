@@ -61,6 +61,12 @@ class SubscriptionBase(BaseModel):
     name: str
     cost: Decimal
     billing_cycle: BillingCycle = BillingCycle.monthly
+    # Read and written through the same name, but not quite the same thing on
+    # each side: what a client sends is the *anchor* the schedule is measured
+    # from, and what comes back is the next renewal derived from it (see the
+    # property on models.Subscription). Sending a date years in the past is
+    # therefore fine and often right -- it says when the plan started billing,
+    # and the response rolls it forward to the renewal that is actually next.
     next_renewal_date: date
     # Left off, this defaults to today on create (see crud.create_subscription).
     # Set it explicitly when adding a subscription you have had for a while,
@@ -180,6 +186,44 @@ class MonthlyTotal(BaseModel):
 
     monthly_total: Money
     yearly_total: Money
+
+
+# --- Upcoming renewals ---
+#
+# A different question again from either summary: not what a period costs on
+# average, but what is about to be charged and when.
+
+
+class UpcomingRenewal(BaseModel):
+    """One charge that is about to happen. `cost` is the full amount that will
+    be billed on the day, not the per-month share /summary/spend works in: the
+    question here is what will leave the account, and a yearly plan takes its
+    whole year's cost at once."""
+
+    subscription: Subscription
+    renewal_date: date
+    # Days from today, so a client can say "in 3 days" without redoing the
+    # date arithmetic (and without disagreeing with the server about what
+    # today is, which is a real risk across timezones).
+    days_until: int
+    cost: Money
+
+
+class UpcomingSummary(BaseModel):
+    """What GET /subscriptions/upcoming returns.
+
+    A monthly plan renews more than once in a long enough window, and each of
+    those renewals is listed separately, so `renewals` can hold more entries
+    than the account has subscriptions. `total` is the sum of their costs --
+    the real money due in the window.
+    """
+
+    days: int
+    # The last day covered, inclusive. Returned rather than left to the client
+    # to work out, so what the window meant is never in doubt.
+    through: date
+    total: Money
+    renewals: list[UpcomingRenewal]
 
 
 # --- Categories ---

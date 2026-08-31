@@ -4,6 +4,7 @@
 # the database schema.
 
 import enum
+from datetime import date
 
 from sqlalchemy import (
     Boolean,
@@ -17,6 +18,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 
+from app import renewals
 from app.database import Base
 
 
@@ -71,7 +73,16 @@ class Subscription(Base):
     # Numeric (not Float) avoids floating-point rounding errors on money values.
     cost = Column(Numeric(10, 2), nullable=False)
     billing_cycle = Column(Enum(BillingCycle), nullable=False, default=BillingCycle.monthly)
-    next_renewal_date = Column(Date, nullable=False)
+    # The renewal date the client last told us about -- an *anchor*, not a
+    # deadline. Every future renewal is derived from it by the property below
+    # rather than being written back here, so nothing has to keep it current:
+    # a row created in 2020 and never touched since still reports the right
+    # next renewal today.
+    #
+    # The attribute is named for what it is; the column keeps its original
+    # name so the change needs no ALTER TABLE (see the note on migrations in
+    # main.py).
+    renewal_anchor_date = Column("next_renewal_date", Date, nullable=False)
     # When the subscription began costing money. NULL means "unknown" -- only
     # possible for rows that predate this column -- and the spend summary
     # treats those as having always been running, which is how it behaved
@@ -88,3 +99,30 @@ class Subscription(Base):
     # orphaned and visible to everyone; indexed because every single query in
     # crud.py filters on it.
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    @property
+    def cycle_months(self) -> int:
+        """How many months one billing period covers."""
+        return 12 if self.billing_cycle == BillingCycle.yearly else 1
+
+    @property
+    def next_renewal_date(self) -> date:
+        """When money next changes hands -- computed, never stored.
+
+        This is the field the API returns and the frontend displays. Deriving
+        it is what stops a renewal date from going stale: there is no rolled
+        value to keep in step, no scheduled job, and no GET that quietly
+        writes to the database.
+
+        A cancelled subscription is measured from the day it was cancelled
+        instead of from today, so it reports the renewal that would have come
+        next -- the day the term already paid for runs out, which is exactly
+        what the spend summary needs (see _last_charged_month in main.py).
+        Rolling it past that point would be inventing renewals that never
+        happen.
+        """
+        if not self.active and self.cancelled_date is not None:
+            reference = self.cancelled_date
+        else:
+            reference = date.today()
+        return renewals.next_occurrence(self.renewal_anchor_date, self.cycle_months, reference)

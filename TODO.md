@@ -1,39 +1,10 @@
 # Backend TODO
 
 Gaps found in a review of the backend on 2026-08-31, in roughly the order they
-are worth doing. Two items from that review are already fixed and are recorded
-at the bottom for context, since the notes here refer back to them.
+are worth doing. Three items from that review are already fixed and are
+recorded at the bottom for context, since the notes here refer back to them.
 
-## 1. Renewal dates never move
-
-`next_renewal_date` is written when a subscription is created and never again --
-nothing in `crud.py` or `main.py` advances it. A month after adding Netflix its
-renewal date is in the past, and it stays there forever.
-
-For an app whose whole subject is *recurring* payments this is the missing
-mechanic rather than a missing nicety, and it quietly damages something else:
-`_last_charged_month` in `main.py` uses `next_renewal_date` to work out how much
-of a cancelled yearly plan was already paid for, so a stale date makes that
-figure wrong too.
-
-Two ways to fix it, and the choice matters:
-
-- **Roll the date forward** when it falls into the past -- on read, or in a
-  scheduled job. Simple, but it mutates rows as a side effect of a GET, and a
-  job needs somewhere to run.
-- **Store an anchor** (the day of the month or the start date) and *derive* the
-  next occurrence on demand. Nothing to keep in step, and history stays intact.
-  This is the better shape; `next_renewal_date` becomes a computed field.
-
-Either way, watch the month-end case: a plan anchored on the 31st has to bill on
-the 28th/30th in shorter months, and `timedelta` cannot express "one month".
-
-Once dates are live, the feature the app is actually missing becomes possible:
-`GET /subscriptions/upcoming?days=30` -- what is about to be charged. That is
-the question a subscription tracker exists to answer, and today there is no way
-to ask it.
-
-## 2. No tests
+## 1. No tests
 
 There are none, and no test dependency in `requirements.txt`.
 
@@ -51,9 +22,12 @@ behaviour is not what is being asserted) is enough. Start with:
 - a monthly plan cancelled in June counts for six months of that year, then zero
 - a yearly plan cancelled the day after renewing still counts to the end of the
   paid term
+- the renewal arithmetic fixed below: a stale anchor rolls forward to a date in
+  the future, and a plan anchored on the 31st bills on the 28th in February
+  without losing the 31st in March
 - the validation rules fixed below, so they cannot regress
 
-## 3. No migrations
+## 2. No migrations
 
 `Base.metadata.create_all()` creates missing *tables* and never alters existing
 ones, as the comment in `main.py` says. Adding `user_id`, then `cancelled_date`
@@ -65,7 +39,7 @@ survivable at milestone 7, where the Azure database holds data worth keeping and
 `down -v` is not an option. Alembic now, with two tables and a schema that fits
 on a screen, is far cheaper than Alembic later.
 
-## 4. Account management
+## 3. Account management
 
 `/register`, `/token` and `/me` are the entire account surface. Missing:
 
@@ -77,21 +51,21 @@ on a screen, is far cheaper than Alembic later.
   skipped in PLAN.md milestone 6. They need an email path, so they are a bigger
   step than the first two.
 
-## 5. Rate limiting on `/token` and `/register`
+## 4. Rate limiting on `/token` and `/register`
 
 Nothing throttles login attempts. bcrypt's cost factor is the only brake on
 guessing a password, and registration is a wide-open endpoint. `slowapi` (a
 `limiter.limit("5/minute")` decorator) covers both, or the equivalent at
 whatever sits in front of the app once it is deployed.
 
-## 6. `/health` does not check the database
+## 5. `/health` does not check the database
 
 It returns `{"status": "ok"}` unconditionally, so Docker's healthcheck reports
 the backend healthy while Postgres is unreachable and every real request is
 failing. A `SELECT 1` through the session makes the check mean what the
 `docker-compose.yml` healthcheck already assumes it means.
 
-## 7. CORS origin is hardcoded
+## 6. CORS origin is hardcoded
 
 `allow_origins=["http://localhost:5173"]` in `main.py`. Correct for local
 Compose, and wrong everywhere the app is actually deployed -- which is
@@ -101,7 +75,7 @@ value as the default, the same way `DATABASE_URL` is handled.
 Note it pairs with the known frontend gap in PLAN.md milestone 5: `VITE_API_URL`
 is inlined at build time. Both sides of the origin problem want solving together.
 
-## 8. Check-then-insert races return 500
+## 7. Check-then-insert races return 500
 
 `register` and `create_category` both ask "does this exist?" and then insert. Two
 concurrent identical requests both pass the check, and the second one trips the
@@ -112,7 +86,7 @@ shape.
 The check is worth keeping for the good error message; catching `IntegrityError`
 around the commit and converting it to the same 400/409 closes the window.
 
-## 9. Imports are validated more loosely than writes
+## 8. Imports are validated more loosely than writes
 
 `BackupSubscription` inherits the unconstrained `SubscriptionBase`, so a
 hand-edited backup file can still introduce the negative costs and blank names
@@ -143,6 +117,47 @@ knowing the asymmetry is there.
 ---
 
 ## Fixed on 2026-08-31
+
+**Renewal dates never moved.** `next_renewal_date` was written once at creation
+and never again, so a month after adding Netflix its renewal date sat in the
+past for good -- the missing mechanic in an app whose whole subject is
+*recurring* payments. It also quietly broke the spend summary:
+`_last_charged_month` reads that date to work out how much of a cancelled
+yearly plan was already paid for, and a stale one made a plan cancelled in its
+fourth year count three months of that year instead of twelve.
+
+The date is now **derived rather than stored**, which is the part worth
+keeping: the column holds an *anchor* (`Subscription.renewal_anchor_date`) and
+`next_renewal_date` is a property computing the first renewal on or after
+today. There is nothing to keep in step -- no scheduled job needing somewhere
+to run, and no GET quietly writing to the database as a side effect of being
+read. The anchor also stays intact as history, and a client sending a
+years-old date is now saying something true rather than something stale.
+
+The attribute was renamed but the *column* keeps the name
+`next_renewal_date`, so this needed no ALTER TABLE -- which is the only reason
+it could ship while migrations (item 2) are still outstanding.
+
+- `renewals.py` does the date arithmetic in whole calendar months, because
+  `timedelta` cannot express "one month". A plan anchored on the 31st bills on
+  the 28th in February and is back on the 31st in March: every step is measured
+  from the anchor, so the month-end clamp cannot accumulate and drag the
+  schedule permanently backwards.
+- A cancelled subscription is measured from its cancellation date, not from
+  today, so it reports the renewal that would have come next -- the end of the
+  term already paid for -- instead of rolling forward through renewals that
+  will never happen. `_last_charged_month` is now reading a real date.
+- `GET /subscriptions` sorts in Python: the anchor is not a stand-in for the
+  derived date, since a 2019 anchor and a 2026 one can both renew next Tuesday.
+  Fine for one account's rows; it wants pagination before it wants an index.
+
+**`GET /subscriptions/upcoming?days=30`**, which live dates made possible: what
+is about to be charged, and when. Each renewal in the window is listed with the
+full amount due on the day -- so a monthly plan appears three times in
+`?days=90`, and a yearly plan brings its whole cost to the one day it lands on,
+rather than the per-month share the spend summary works in. Active
+subscriptions only, and renewals before a `started_date` are skipped.
+
 
 **A partial update could make an account permanently unreadable.** `PUT
 /subscriptions/{id}` with only `cancelled_date` was validated against nothing --
