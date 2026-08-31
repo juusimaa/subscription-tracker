@@ -5,7 +5,17 @@
 
 import enum
 
-from sqlalchemy import Boolean, Column, Date, Enum, ForeignKey, Integer, Numeric, String
+from sqlalchemy import (
+    Boolean,
+    Column,
+    Date,
+    Enum,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+)
 
 from app.database import Base
 
@@ -28,6 +38,29 @@ class User(Base):
     # Only ever the bcrypt hash -- the plaintext password is never stored,
     # logged, or returned by the API (see schemas.User, which omits it).
     hashed_password = Column(String, nullable=False)
+
+
+class Category(Base):
+    """A user's own list of categories, so they can be managed (added,
+    renamed, deleted) as things in their own right rather than only existing
+    as a side effect of typing a name into a subscription.
+
+    Subscription.category deliberately stays a plain string rather than a
+    foreign key here: that keeps the subscription API unchanged for clients
+    that just send a name, and means a subscription is never blocked by a
+    missing category row. crud.ensure_category keeps the two in step by
+    registering any name a subscription introduces.
+    """
+
+    __tablename__ = "categories"
+    # Two categories called "Music" belonging to *different* users are fine;
+    # the same user having two is not. The database enforces that rather than
+    # trusting every code path to remember to check.
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_categories_user_name"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
 
 class Subscription(Base):

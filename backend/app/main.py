@@ -90,6 +90,121 @@ def read_me(current_user: models.User = Depends(auth.get_current_user)):
     return current_user
 
 
+# --- Category routes ---
+#
+# Categories exist so they can be managed as a list in their own right. A
+# subscription still just carries a category *name*, and using a name that
+# isn't in the list yet adds it (crud.ensure_category), so a client is never
+# forced to create the category first.
+
+
+@app.get("/categories", response_model=list[schemas.Category])
+def list_categories(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """This user's categories, each with a count of the subscriptions using
+    it -- enough for a filter list, and enough to warn before deleting one
+    that is still in use."""
+    return [
+        schemas.Category(id=category.id, name=category.name, subscription_count=count)
+        for category, count in crud.get_categories(db, current_user.id)
+    ]
+
+
+@app.post("/categories", response_model=schemas.Category, status_code=201)
+def create_category(
+    category: schemas.CategoryCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Adds an empty category, ready to be used by subscriptions later."""
+    if crud.get_category_by_name(db, category.name, current_user.id) is not None:
+        # 409 rather than 400: the request is well-formed, it just collides
+        # with something that already exists.
+        raise HTTPException(status_code=409, detail="Category already exists")
+    db_category = crud.create_category(db, category.name, current_user.id)
+    # A brand new category has nothing using it yet, so the count is 0 without
+    # needing to ask the database.
+    return schemas.Category(id=db_category.id, name=db_category.name, subscription_count=0)
+
+
+@app.put("/categories/{category_id}", response_model=schemas.Category)
+def update_category(
+    category_id: int,
+    category: schemas.CategoryUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Renames a category, relabelling every subscription that used the old
+    name so nothing is left behind under a name that no longer exists."""
+    db_category = crud.get_category(db, category_id, current_user.id)
+    if db_category is None:
+        raise HTTPException(status_code=404, detail="Category not found")
+    clash = crud.get_category_by_name(db, category.name, current_user.id)
+    if clash is not None and clash.id != db_category.id:
+        # Allowing this would silently merge two categories into one, which is
+        # a bigger decision than a rename and not obviously what was meant.
+        raise HTTPException(status_code=409, detail="Category already exists")
+    db_category = crud.rename_category(db, db_category, category.name)
+    count = crud.count_subscriptions_in_category(db, db_category.name, current_user.id)
+    return schemas.Category(
+        id=db_category.id, name=db_category.name, subscription_count=count
+    )
+
+
+@app.delete("/categories/{category_id}", status_code=204)
+def delete_category(
+    category_id: int,
+    reassign_to: int | None = Query(
+        default=None,
+        description="Move subscriptions using this category to the category with this id.",
+    ),
+    detach: bool = Query(
+        default=False,
+        description="Leave subscriptions using this category with no category at all.",
+    ),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Deletes a category.
+
+    A category still in use needs to say what happens to those subscriptions:
+    pass reassign_to to move them, or detach=true to clear their category.
+    Without either, the request is refused rather than quietly stripping the
+    category off subscriptions the caller may have forgotten about -- the
+    error says how many would have been affected.
+    """
+    db_category = crud.get_category(db, category_id, current_user.id)
+    if db_category is None:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+    target = None
+    if reassign_to is not None:
+        if detach:
+            raise HTTPException(
+                status_code=400, detail="Pass either reassign_to or detach, not both"
+            )
+        if reassign_to == category_id:
+            raise HTTPException(
+                status_code=400, detail="Cannot reassign a category to itself"
+            )
+        target = crud.get_category(db, reassign_to, current_user.id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="Category to reassign to not found")
+
+    in_use = crud.count_subscriptions_in_category(db, db_category.name, current_user.id)
+    if in_use and target is None and not detach:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{in_use} subscription(s) still use this category; "
+                "pass reassign_to=<category_id> or detach=true"
+            ),
+        )
+    crud.delete_category(db, db_category, target)
+
+
 # --- Subscription routes ---
 #
 # Depends(get_db) is FastAPI's dependency injection: for each request, it
@@ -130,21 +245,6 @@ def list_subscriptions(
         billing_cycle=billing_cycle,
         active=active,
     )
-
-
-@app.get("/subscriptions/categories", response_model=list[str])
-def list_categories(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
-):
-    """The categories this user has actually used -- what a category filter
-    would offer as its choices.
-
-    This route has to be declared before /subscriptions/{subscription_id}:
-    FastAPI matches routes in definition order, and the other way round
-    "categories" would be tried as a subscription id and rejected as a 422.
-    """
-    return crud.get_categories(db, current_user.id)
 
 
 @app.post("/subscriptions", response_model=schemas.Subscription, status_code=201)

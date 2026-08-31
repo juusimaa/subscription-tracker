@@ -7,7 +7,9 @@
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, model_validator
 
 from app.models import BillingCycle
 
@@ -81,6 +83,39 @@ class Subscription(SubscriptionBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+
+
+# --- Categories ---
+
+
+class CategoryBase(BaseModel):
+    """A category name. Whitespace is stripped and the result must be
+    non-empty, so " " never becomes a category that is impossible to pick out
+    of a list."""
+
+    name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)
+    ]
+
+
+class CategoryCreate(CategoryBase):
+    pass
+
+
+class CategoryUpdate(CategoryBase):
+    """Renaming is the only edit a category has: everything else about it is
+    derived from the subscriptions that use it."""
+
+    pass
+
+
+class Category(CategoryBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    # How many of this user's subscriptions currently use the category. Mostly
+    # there so a client can warn before deleting one that is still in use.
+    subscription_count: int = 0
 
 
 # --- Auth ---

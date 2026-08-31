@@ -8,7 +8,7 @@
 
 from datetime import date
 
-from sqlalchemy import func
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -29,6 +29,157 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     db.commit()
     db.refresh(db_user)
     return db_user
+
+
+# --- Categories ---
+#
+# Subscriptions store a category *name*, not a foreign key (see the comment on
+# models.Category), so these functions are responsible for keeping the two in
+# step: a rename rewrites the name on every subscription using it, and a
+# delete decides what happens to those subscriptions rather than leaving them
+# pointing at something that no longer exists.
+
+
+def get_categories(db: Session, user_id: int) -> list[tuple[models.Category, int]]:
+    """This user's categories, each with the number of subscriptions using it.
+
+    The count comes from one grouped query with an outer join rather than a
+    follow-up count per category, so listing N categories stays a single
+    round trip. The join matches on lowercased names because a subscription
+    may have been saved with different capitalisation.
+    """
+    return (
+        db.query(models.Category, func.count(models.Subscription.id))
+        .outerjoin(
+            models.Subscription,
+            and_(
+                models.Subscription.user_id == user_id,
+                func.lower(models.Subscription.category) == func.lower(models.Category.name),
+            ),
+        )
+        .filter(models.Category.user_id == user_id)
+        .group_by(models.Category.id)
+        # Sorted case-insensitively so "music" lands next to "Movies" rather
+        # than after every capitalised name, as a plain sort would put it.
+        .order_by(func.lower(models.Category.name))
+        .all()
+    )
+
+
+def get_category(db: Session, category_id: int, user_id: int) -> models.Category | None:
+    # Scoped by user_id for the same reason get_subscription is: an id alone
+    # must never be enough to reach someone else's row.
+    return (
+        db.query(models.Category)
+        .filter(models.Category.id == category_id, models.Category.user_id == user_id)
+        .first()
+    )
+
+
+def get_category_by_name(db: Session, name: str, user_id: int) -> models.Category | None:
+    return (
+        db.query(models.Category)
+        .filter(
+            models.Category.user_id == user_id,
+            func.lower(models.Category.name) == name.strip().lower(),
+        )
+        .first()
+    )
+
+
+def count_subscriptions_in_category(db: Session, name: str, user_id: int) -> int:
+    return (
+        db.query(models.Subscription)
+        .filter(
+            models.Subscription.user_id == user_id,
+            func.lower(models.Subscription.category) == name.lower(),
+        )
+        .count()
+    )
+
+
+def create_category(db: Session, name: str, user_id: int) -> models.Category:
+    db_category = models.Category(name=name.strip(), user_id=user_id)
+    db.add(db_category)
+    db.commit()
+    db.refresh(db_category)
+    return db_category
+
+
+def rename_category(db: Session, category: models.Category, new_name: str) -> models.Category:
+    """Renames the category and carries every subscription using it across.
+
+    Both halves happen in one transaction: a rename that updated the category
+    list but left subscriptions labelled with the old name would quietly split
+    one category into two.
+    """
+    old_name = category.name
+    category.name = new_name.strip()
+    _relabel_subscriptions(db, old_name, category.user_id, category.name)
+    db.commit()
+    db.refresh(category)
+    return category
+
+
+def delete_category(
+    db: Session, category: models.Category, reassign_to: models.Category | None = None
+) -> None:
+    """Deletes the category, moving any subscriptions using it to
+    `reassign_to`, or clearing their category when that is None.
+
+    The caller decides which of those it wants; refusing to delete a category
+    that is still in use is handled in the route, so this function is only
+    ever asked to carry out a decision that has already been made.
+    """
+    _relabel_subscriptions(
+        db,
+        category.name,
+        category.user_id,
+        reassign_to.name if reassign_to is not None else None,
+    )
+    db.delete(category)
+    db.commit()
+
+
+def _relabel_subscriptions(db: Session, old_name: str, user_id: int, new_name: str | None) -> None:
+    """Points every subscription labelled `old_name` at `new_name` (or at no
+    category at all). A bulk UPDATE rather than a loop: this is one statement
+    the database can do by itself, however many rows it touches."""
+    (
+        db.query(models.Subscription)
+        .filter(
+            models.Subscription.user_id == user_id,
+            func.lower(models.Subscription.category) == old_name.lower(),
+        )
+        .update({models.Subscription.category: new_name}, synchronize_session=False)
+    )
+
+
+def ensure_category(db: Session, name: str | None, user_id: int) -> str | None:
+    """Registers a category name a subscription is about to use, and returns
+    the spelling to store.
+
+    This is what keeps the managed list complete without forcing clients to
+    create a category before they can use it: typing a brand new name into a
+    subscription adds it to the list. If the name already exists in any
+    capitalisation, the stored spelling wins, so "netflix" typed into one
+    subscription does not sit alongside an existing "Netflix" as a second
+    category that filtering would treat as the same thing anyway.
+    """
+    if name is None:
+        return None
+    name = name.strip()
+    if not name:
+        # An empty string is not a category; store it as "no category" so it
+        # cannot show up as a nameless entry in the list.
+        return None
+    existing = get_category_by_name(db, name, user_id)
+    if existing is not None:
+        return existing.name
+    # No commit here: this runs inside the caller's create/update transaction,
+    # so the category and the subscription are saved together or not at all.
+    db.add(models.Category(name=name, user_id=user_id))
+    return name
 
 
 # --- Subscriptions ---
@@ -59,21 +210,6 @@ def get_subscriptions(
     return query.order_by(models.Subscription.next_renewal_date).all()
 
 
-def get_categories(db: Session, user_id: int) -> list[str]:
-    """The distinct categories this user has actually used, so a client can
-    offer a filter list without pulling down every subscription. Rows with no
-    category are skipped -- there is nothing to filter by."""
-    rows = (
-        db.query(models.Subscription.category)
-        .filter(
-            models.Subscription.user_id == user_id,
-            models.Subscription.category.isnot(None),
-        )
-        .distinct()
-        .order_by(models.Subscription.category)
-        .all()
-    )
-    return [category for (category,) in rows]
 
 
 def get_subscription(db: Session, subscription_id: int, user_id: int) -> models.Subscription | None:
@@ -115,6 +251,7 @@ def create_subscription(
     # owner is added separately -- it comes from the token, and deliberately
     # isn't a field the client can send.
     db_subscription = models.Subscription(**subscription.model_dump(), user_id=user_id)
+    db_subscription.category = ensure_category(db, db_subscription.category, user_id)
     # A subscription being added now almost always starts now. Recording that
     # beats leaving it unknown: without a start date the spend summary has to
     # assume the subscription was running for every month it is asked about.
@@ -137,8 +274,13 @@ def update_subscription(
         return None
     # exclude_unset=True skips fields the client didn't include in the
     # request, so a partial update doesn't overwrite existing values with None.
-    for field, value in subscription.model_dump(exclude_unset=True).items():
+    fields = subscription.model_dump(exclude_unset=True)
+    for field, value in fields.items():
         setattr(db_subscription, field, value)
+    # Only when the request actually touched the category: doing it
+    # unconditionally would re-register the existing name on every edit.
+    if "category" in fields:
+        db_subscription.category = ensure_category(db, db_subscription.category, user_id)
     _sync_cancellation(db_subscription)
     db.commit()
     db.refresh(db_subscription)
