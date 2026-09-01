@@ -1,14 +1,16 @@
 # Backend TODO
 
 Gaps found in a review of the backend on 2026-08-31, in roughly the order they
-are worth doing. Five items from that review are already fixed and are
+are worth doing. Six items from that review are already fixed and are
 recorded at the bottom for context, since the notes here refer back to them.
+Item 3 is the most recent of them, and the numbering of what is left is not
+closed up, for the same reason the D-items keep theirs.
 
 Items D1-D7 came later and from somewhere else -- reading the spending dashboard
 design handoff against the API on 2026-09-01 -- so they carry their own
-numbering and their own priority order. D1 is done and is written up at the
-bottom with the rest; the numbering of the others is left alone, because the
-notes below refer to each other by it.
+numbering and their own priority order. D1 is done and D4 is closed without a
+change; both are written up at the bottom with the rest. The numbering of the
+others is left alone, because the notes below refer to each other by it.
 
 ## 1. Account management
 
@@ -28,13 +30,6 @@ Nothing throttles login attempts. bcrypt's cost factor is the only brake on
 guessing a password, and registration is a wide-open endpoint. `slowapi` (a
 `limiter.limit("5/minute")` decorator) covers both, or the equivalent at
 whatever sits in front of the app once it is deployed.
-
-## 3. `/health` does not check the database
-
-It returns `{"status": "ok"}` unconditionally, so Docker's healthcheck reports
-the backend healthy while Postgres is unreachable and every real request is
-failing. A `SELECT 1` through the session makes the check mean what the
-`docker-compose.yml` healthcheck already assumes it means.
 
 ## 4. CORS origin is hardcoded
 
@@ -118,22 +113,6 @@ reason that logic lives on the server. A grouped response on the existing route
 is the smaller change; a separate route is the cleaner one, since the current
 response shape (`year`, `total`, `months`) has no room for a second axis.
 
-### D4. Duplicate subscription names are accepted
-
-STATES.md specifies a `Duplicate (409)` state -- "You already track Netflix. Edit
-that subscription instead." -- with nothing behind it. There is no uniqueness on
-subscription name, so `POST /subscriptions` creates a second Netflix without
-complaint, and `PUT` will rename one row onto another's name.
-
-The concept already exists in `crud.import_backup`, which skips a row whose
-lowercased name is already in the account. Putting the same rule on the write
-path is mostly a matter of deciding whether it is a database constraint (and so
-subject to item 5's check-then-insert race) or an application check.
-
-Worth a moment's thought first: `import_backup` deliberately allows two rows
-called "Netflix" *within* one file, on the grounds that a user really can have
-two. That reasoning does not disappear because the row arrives over `POST`.
-
 ### D5. Validation answers 422 where the design expects 400, with no field map
 
 The design renders validation errors at the field that caused them, and prints
@@ -210,6 +189,66 @@ Recorded so the question is not reopened, not because they need doing:
 ---
 
 ## Fixed on 2026-09-01
+
+**3. `/health` did not check the database.** It returned `{"status": "ok"}`
+unconditionally, which made it a check on nothing: the route never touched the
+database, so it answered 200 with Postgres stopped and every real request
+failing. It now runs a `SELECT 1` through the request's session and answers
+**503** when that raises.
+
+- **503, not 500.** The app is fine; its dependency is not. Docker's
+  healthcheck cannot tell the difference -- `urllib.request.urlopen` raises on
+  any non-2xx -- but anything else in front of the app can, and 503 is the code
+  that means "try again later" rather than "this request was broken".
+- **The success body is unchanged.** Still exactly `{"status": "ok"}`, so
+  nothing that already reads this route has to learn a new shape; what changed
+  is which requests get it. `schemas.Health` keeps its `Literal["ok"]` for the
+  same reason -- there is no second healthy answer, and an unhealthy one is not
+  a 200 with a different string in it.
+- **The exception text never reaches the body.** SQLAlchemy quotes the
+  connection string it tried, credentials included, and this route is
+  unauthenticated. The response says "Database unavailable" and nothing else;
+  `raise ... from exc` keeps the original in the traceback uvicorn prints,
+  which is the only place it belongs until there is real logging (see "Minor").
+- **The failure is tested, which is the part that was missing.** A healthcheck
+  that cannot go red is decoration. `test_health.py` overrides the `get_db`
+  dependency with a session that raises from `execute()` -- not from the
+  constructor, because that is where a real outage surfaces: SQLAlchemy
+  connects lazily, so `SessionLocal()` succeeds with Postgres stopped, and that
+  is precisely why the old route could not fail.
+
+This is what `docker-compose.yml` always assumed the route meant: the frontend
+waits on `condition: service_healthy` for the backend, and until now that
+gate would open on a backend that could not serve a single page.
+
+**D4. Duplicate subscription names -- closed, no change.** STATES.md specifies a
+`Duplicate (409)` state ("You already track Netflix. Edit that subscription
+instead.") with nothing behind it, and the item asked whether to put uniqueness
+on the write path.
+
+The answer is no: **two subscriptions can legitimately have the same name.** Two
+Netflix accounts -- one per household member, one personal and one shared -- are
+an ordinary thing to track, and so are two phone plans on the same carrier. A
+409 there would refuse to record something true about the user's money, and the
+only workaround it leaves is a fake name, which corrupts the data to satisfy a
+rule that was never real.
+
+That also settles the tension the item recorded: `crud.import_backup` already
+allows two rows called "Netflix" *within* one file, on exactly this reasoning.
+The rule now matches in both directions instead of contradicting itself
+depending on how the row arrived.
+
+`import_backup`'s merge skip stays as it is, and is not the same rule. It
+compares against names *already in the account* so that re-importing a file
+twice does not leave two of everything -- de-duplicating one operation, not
+policing what the account may contain. A user who wants a second Netflix still
+adds one; nothing about the write path stops them.
+
+The design's Duplicate state has no server behind it and will not get one. Its
+copy is worth keeping as a **warning** rather than an error if anyone wants it
+-- "you already track Netflix" is useful information right up until it becomes
+a refusal -- but that is a frontend decision, and this API has nothing to say
+about it.
 
 **D1. Status was a boolean; the design has four states.** `active: bool` could
 only say "running" or "not running", which collapsed three genuinely different

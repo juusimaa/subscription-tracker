@@ -75,7 +75,10 @@ services:
         condition: service_healthy
     healthcheck:
       # No curl in the slim Python image, so this uses Python itself to hit
-      # the /health endpoint defined in app/main.py.
+      # the /health endpoint defined in app/main.py. That route runs a
+      # SELECT 1, and urlopen() raises on the 503 it answers with when the
+      # database is unreachable -- so "backend healthy" means the backend can
+      # actually serve a request, not merely that its process is listening.
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 5s
       timeout: 5s

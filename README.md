@@ -525,7 +525,7 @@ http://localhost:8000/docs (Swagger UI) and http://localhost:8000/redoc.
 
 | Method | Path | What it does |
 | --- | --- | --- |
-| `GET` | `/health` | Liveness check, used by Docker's healthcheck. Unauthenticated. |
+| `GET` | `/health` | Readiness check, used by Docker's healthcheck: 200 only if a `SELECT 1` reaches the database, 503 otherwise. Unauthenticated. |
 | `POST` | `/register` | Create an account. |
 | `POST` | `/token` | Exchange email + password for a JWT (form-encoded; email goes in `username`). |
 | `GET` | `/me` | The logged-in user — used to check a stored token is still valid. |

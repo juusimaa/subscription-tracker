@@ -8,6 +8,8 @@ from decimal import Decimal
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app import auth, crud, models, renewals, schemas
@@ -80,10 +82,36 @@ app.add_middleware(
 
 
 @app.get("/health", response_model=schemas.Health, tags=["Health"])
-def health():
+def health(db: Session = Depends(get_db)):
     """Used by Docker's healthcheck (see docker-compose.yml) to confirm the
     API is actually up and responding, not just that the container started.
-    Deliberately left unauthenticated -- Docker has no token to present."""
+    Deliberately left unauthenticated -- Docker has no token to present.
+
+    The `SELECT 1` is the whole point of the route being more than `return
+    {"status": "ok"}`: every real request needs the database, so a check that
+    answers 200 while Postgres is unreachable reports the container healthy
+    at exactly the moment nothing works -- and `depends_on: condition:
+    service_healthy` then lets the frontend start against a backend that
+    cannot serve a single page.
+
+    A failure is a **503**, not a 500: the app is fine, its dependency is
+    not, and 503 is the code that says "try again later" to anything in front
+    of the app. Docker's healthcheck only cares that the status is not 2xx --
+    `urllib.request.urlopen` raises on 503 -- so the container goes unhealthy
+    either way; the distinction is for whoever reads the logs.
+    """
+    try:
+        db.execute(text("SELECT 1"))
+    except SQLAlchemyError as exc:
+        # The exception text can carry the connection string, credentials and
+        # all, so it goes nowhere near the response body. Nothing logs it
+        # either yet (see TODO.md "No logging"), which is the reason it is
+        # chained rather than swallowed: `raise ... from exc` keeps the
+        # original in the traceback uvicorn prints.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database unavailable",
+        ) from exc
     return {"status": "ok"}
 
 
