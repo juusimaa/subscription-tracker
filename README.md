@@ -358,18 +358,43 @@ token blocklist, which is out of scope here.
 ### 8. React frontend — [frontend/src/](frontend/src/)
 
 Vite serves the app in dev and builds it to static files for production. There
-is no framework beyond React itself and no state library — the app is small
-enough that `useState` in [App.jsx](frontend/src/App.jsx) is the right amount of
-machinery.
+is no framework beyond React itself, no router and no state library — one
+screen, so `useState` is the right amount of machinery.
+
+The UI is the **spending dashboard** from the design handoff: a headline total
+for a selected period, a trend strip, four KPIs, spend by category, the charges
+coming up, and the full subscription list with inline editing. The split is
+[App.jsx](frontend/src/App.jsx) for the data and the error states,
+[dashboard/](frontend/src/dashboard/) for the view. That line is where the
+design's most demanding rule lives: **a failed fetch must never blank the
+page** — the last known good data stays on screen under a banner saying how
+old it is, which only works if the thing holding the data is not the thing
+rendering the failure.
+
+- **Every colour, size and space is a token.** The design system's stylesheet
+  is vendored as [modernist.css](frontend/src/modernist.css) and is the source
+  of truth; [dashboard.css](frontend/src/dashboard.css) only arranges things.
+  Zero border radius anywhere, everything flush left, 2px rules between major
+  sections and 1px between peer rows.
+- **The period drives everything.** One `{ view, year, month }` selection feeds
+  the headline, the KPIs, the category bars, the Coming up list and the trend
+  highlight, so they cannot disagree. The figures behind it are the server's
+  real month-by-month totals from `/subscriptions/summary/spend`, one request
+  per year in the 2025–2027 range.
+- **Errors appear where the user can act on them.** Field problems render at
+  the field, transport and auth problems as a strip at the top of the page, a
+  record deleted elsewhere in the row it affects. Nothing is a toast.
 
 - **[api.js](frontend/src/api.js) is the only file that knows the backend
   exists.** One `request()` wrapper attaches the bearer token, normalises
   errors, and handles `204 No Content` (a `DELETE` has no body to parse). Every
   other module calls named functions like `getSubscriptions()`.
 - **The 401 path is centralised.** When the backend rejects a token, `request()`
-  clears it and dispatches an `auth-expired` event; `App.jsx` listens and drops
-  to the login screen. A stale session surfaces as a login prompt rather than
-  "Request failed: 401" over an empty table.
+  clears it and dispatches an `auth-expired` event. What `App.jsx` does with it
+  depends on whether there is a page worth keeping: with no data it drops to
+  the login screen, and with a rendered dashboard it shows a quiet strip under
+  the header instead. The figures are still worth reading — only writes will
+  fail — and signing in from there keeps the period, sort and scroll position.
 - **The token lives in `localStorage`**, so a reload keeps you logged in while a
   different browser or private window starts logged out. `App.jsx` initialises
   its state lazily from it, then calls `/me` to check the token is still valid
@@ -380,9 +405,14 @@ machinery.
   which knows nothing of Docker's internal network. It is also why the signing
   key is never a `VITE_` variable.
 - **[services.js](frontend/src/services.js) is a client-side catalogue** of
-  well-known services that pre-fills the add form. Nothing about it is stored;
-  the backend only ever sees the plain name and cost the form submits, which is
-  what makes adding a service an edit to one file rather than a migration.
+  well-known services: the brand tile drawn beside a name, and a typical price
+  for the empty state's one-tap tiles. Nothing about it is stored — the API has
+  no home for a brand colour or a monogram — so adding a service is an edit to
+  one file rather than a migration.
+- **[renewals.js](frontend/src/renewals.js) mirrors the backend's date
+  arithmetic**, because `/subscriptions/upcoming` is anchored to today while
+  the period picker reaches back to 2025 and forward to 2027. It is a mirror,
+  not the truth; the comment at the top says exactly where it can differ.
 
 ### 9. Docker & Compose
 
@@ -713,8 +743,14 @@ rather than oversights:
   configurable before a deployed frontend can call the API.
 - **Postgres runs as the superuser** with a password from `.env`; a real
   deployment would use a least-privilege role and a managed secret store.
-- **The frontend is one large component.** `App.jsx` holds the form, table and
-  summary together; splitting it would be the first refactor if it grew.
+- **Some of the dashboard is computed client-side because the API cannot
+  answer it yet**: the charges in an arbitrary month (the `upcoming` route only
+  looks forward from today), and the per-category split for a period, which
+  costs one request per category instead of one grouped response. Both are
+  written up as D2 and D3 in [TODO.md](TODO.md).
+- **No currency anywhere in the schema.** `cost` is a bare `Numeric(10, 2)` and
+  the frontend hardcodes EUR, which is an unstated assumption rather than a
+  decision anyone made.
 
 ## Project layout
 
@@ -744,11 +780,18 @@ docs/
 frontend/
   Dockerfile          # multi-stage: Node builds, Nginx serves
   src/
-    App.jsx           # the whole UI: form, table, summary, auth gate
+    App.jsx           # auth gate, data loading, and the page-level error states
     api.js            # the only module that talks to the backend
-    Login.jsx         # register / log in
-    ServicePicker.jsx # pre-fill the form from services.js
-    services.js       # client-side catalogue of well-known services
+    Login.jsx         # register / log in; also the re-auth dialog
+    modernist.css     # the design system's tokens and component classes
+    dashboard.css     # layout for the dashboard, built from those tokens
+    format.js         # money, dates, and the period range
+    renewals.js       # client-side mirror of backend/app/renewals.py
+    services.js       # brand tiles and the quick-add catalogue
+    icons.jsx         # the four Lucide glyphs the design uses
+    MonoTile.jsx      # the 20px brand square
+    dashboard/        # Hero, TrendStrip, KpiBand, CategoryBars, ComingUp,
+                      # TrialBanner, SubscriptionTable, AddForm, dialogs
 docker-compose.yml    # db + backend + frontend for local dev
 .env.example          # every variable the stack reads
 .github/workflows/    # CI: build and push images to GHCR
