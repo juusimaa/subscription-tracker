@@ -266,6 +266,61 @@ class TestTheDateInvariant:
         assert client.get("/export", headers=auth).status_code == 200
 
 
+class TestEditingTheStartDate:
+    """PUT /subscriptions/{id} with started_date -- the contract behind the
+    dashboard's editable start date. Backdating is the whole point of it: a
+    plan added today but running since last year contributes nothing to the
+    months before today until its start moves back.
+    """
+
+    def test_the_start_date_can_be_moved_back(self, client, auth):
+        created = add_subscription(client, auth)
+        assert created["started_date"] == str(date.today()), "the create default"
+        updated = client.put(
+            f"/subscriptions/{created['id']}",
+            json={"started_date": "2022-03-15"},
+            headers=auth,
+        ).json()
+        assert updated["started_date"] == "2022-03-15"
+
+    def test_clearing_it_records_an_unknown_start(self, client, auth):
+        """An explicit null is not "not sent": it is the honest state for a row
+        whose start nobody knows, which the spend summary reads as "running in
+        every month asked about" rather than inventing a date."""
+        created = add_subscription(client, auth, started_date="2022-03-15")
+        updated = client.put(
+            f"/subscriptions/{created['id']}", json={"started_date": None}, headers=auth
+        ).json()
+        assert updated["started_date"] is None
+
+    def test_an_edit_that_does_not_mention_it_leaves_it_alone(self, client, auth):
+        created = add_subscription(client, auth, started_date="2022-03-15")
+        updated = client.put(
+            f"/subscriptions/{created['id']}", json={"cost": "19.99"}, headers=auth
+        ).json()
+        assert updated["started_date"] == "2022-03-15"
+
+    def test_moving_it_past_a_stored_pause_is_rejected(self, client, auth):
+        """The invariant from the other side. Every existing case sends a stop
+        date against a stored start; the editable field makes the reverse
+        reachable -- a start moved forward past a pause that already happened.
+        """
+        created = add_subscription(client, auth, started_date="2022-03-15")
+        client.put(
+            f"/subscriptions/{created['id']}",
+            json={"status": "paused", "paused_date": "2023-01-01"},
+            headers=auth,
+        )
+        response = client.put(
+            f"/subscriptions/{created['id']}",
+            json={"started_date": "2024-01-01"},
+            headers=auth,
+        )
+        assert response.status_code == 422
+        stored = client.get(f"/subscriptions/{created['id']}", headers=auth).json()
+        assert stored["started_date"] == "2022-03-15", "a rejected edit changes nothing"
+
+
 class TestDeleting:
     def test_delete_removes_it(self, client, auth):
         created = add_subscription(client, auth)

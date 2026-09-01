@@ -31,6 +31,7 @@ const COLUMNS = [
   { key: "status", label: "Status" },
   { key: "cost", label: "Cost" },
   { key: "perMonth", label: "Per month" },
+  { key: "started", label: "Started" },
   { key: "renewal", label: "Next renewal" },
 ];
 
@@ -42,6 +43,10 @@ function sortValue(subscription, key) {
     // Non-charging rows sort together at one end rather than being scattered
     // through the numbers by a cost they are not paying.
     case "perMonth": return subscription.status === "active" ? perMonth(subscription) : -1;
+    // Rows restored from a backup taken before this column existed have no
+    // start date; "" groups those together at one end rather than scattering
+    // them, the same idea as the -1 above.
+    case "started": return subscription.started_date || "";
     case "renewal": return subscription.next_renewal_date;
     default: return subscription.name.toLowerCase();
   }
@@ -83,6 +88,9 @@ function SubscriptionTable({
       status: editing.status,
       cost: String(editing.cost),
       billing_cycle: editing.billing_cycle,
+      // "" rather than null so the date input stays controlled; a row that
+      // genuinely has no start date opens with an empty picker.
+      started_date: editing.started_date || "",
       next_renewal_date: editing.next_renewal_date,
     });
     setRowError(null);
@@ -134,6 +142,10 @@ function SubscriptionTable({
         status: draft.status,
         cost: Number(draft.cost),
         billing_cycle: draft.billing_cycle,
+        // Cleared on purpose means "start unknown", which is a real state the
+        // spend summary handles (it counts the plan as always having run), so
+        // it is sent as null rather than quietly left as it was.
+        started_date: draft.started_date || null,
         next_renewal_date: draft.next_renewal_date,
       });
       closeEditor();
@@ -204,7 +216,7 @@ function SubscriptionTable({
             if (subscription.id === staleId) {
               return (
                 <tr key={subscription.id} className="row-message">
-                  <td colSpan={7}>
+                  <td colSpan={8}>
                     <span className="row-stale-inner">
                       <TriangleAlert />
                       <span>
@@ -292,6 +304,15 @@ function SubscriptionTable({
                     <input
                       className="input tnum"
                       type="date"
+                      aria-label="Started"
+                      value={draft.started_date}
+                      onChange={(e) => setDraft({ ...draft, started_date: e.target.value })}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="input tnum"
+                      type="date"
                       aria-label="Next renewal"
                       value={draft.next_renewal_date}
                       onChange={(e) => setDraft({ ...draft, next_renewal_date: e.target.value })}
@@ -313,7 +334,7 @@ function SubscriptionTable({
                 </tr>
                 {rowError && (
                   <tr className="row-message row-error">
-                    <td colSpan={7}>
+                    <td colSpan={8}>
                       <span role="alert" className="row-message-inner">
                         <TriangleAlert />
                         <span>{rowError}</span>
@@ -348,6 +369,12 @@ function SubscriptionTable({
                 </td>
                 <td className="tnum">
                   {subscription.status === "active" ? money(perMonth(subscription)) : "—"}
+                </td>
+                <td className="tnum">
+                  {/* Blank for rows imported from a backup written before the
+                      column existed -- an em dash says "not recorded", which
+                      is what the spend summary reads it as. */}
+                  {subscription.started_date ? longDate(subscription.started_date) : "—"}
                 </td>
                 <td className="tnum">
                   <span>{longDate(subscription.next_renewal_date)}</span>

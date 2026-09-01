@@ -1,6 +1,6 @@
 // The add form, shared by the populated page and the empty state -- the
-// design draws the same six-column grid in both, differing only in vertical
-// alignment, so it is one component with a variant rather than two.
+// design draws the same grid in both, differing only in vertical alignment,
+// so it is one component with a variant rather than two.
 //
 // Validation happens here first (non-empty name, cost greater than zero) so a
 // server rejection is the rare second line of defence. When one does come
@@ -16,6 +16,12 @@ const blank = {
   name: "",
   cost: "",
   billing_cycle: "monthly",
+  // Defaulted to today because that is what the API does with a missing start
+  // date anyway (crud.create_subscription); showing it makes the assumption
+  // visible and, more to the point, editable -- a plan you have had for two
+  // years contributes nothing to the months before today until this is moved
+  // back.
+  started_date: todayISO(),
   next_renewal_date: todayISO(),
   category: "",
 };
@@ -60,6 +66,9 @@ function AddForm({ categories, existing = [], onSubmit, onOpenExisting, prefill,
         name: form.name.trim(),
         cost: Number(form.cost),
         billing_cycle: form.billing_cycle,
+        // Cleared means "not stated", which the API answers with today. Sent
+        // as null rather than "": an empty string is a 422, not a default.
+        started_date: form.started_date || null,
         next_renewal_date: form.next_renewal_date,
         // The API takes null for "no category"; an empty string would create
         // a category with a blank name.
@@ -138,6 +147,20 @@ function AddForm({ categories, existing = [], onSubmit, onOpenExisting, prefill,
             <option value="monthly">Monthly</option>
             <option value="yearly">Yearly</option>
           </select>
+        </label>
+
+        {/* Before the renewal date, so the two read in the order they
+            happen. No client-side rule about the future or the past: the API
+            has none either, and a start date after the next renewal is how a
+            plan booked ahead of time looks. */}
+        <label className="field">
+          <span className="field-label">Started</span>
+          <input
+            className="input tnum"
+            type="date"
+            value={form.started_date}
+            onChange={set("started_date")}
+          />
         </label>
 
         <label className="field">

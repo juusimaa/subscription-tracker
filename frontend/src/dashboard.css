@@ -625,10 +625,13 @@ body { text-wrap: pretty; }
 }
 .add-grid {
   display: grid;
+  /* Service, cost, cycle, started, next renewal, category, button. The gap is
+     tighter than the design's 20px because the two date fields cannot shrink
+     below their picker without clipping it. */
   grid-template-columns:
-    minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr)
-    minmax(0, 1.2fr) minmax(0, 1.4fr) auto;
-  gap: 20px;
+    minmax(0, 1.9fr) minmax(0, 1fr) minmax(0, 1fr)
+    minmax(0, 1.25fr) minmax(0, 1.25fr) minmax(0, 1.3fr) auto;
+  gap: 16px;
   align-items: start;
 }
 .add-grid.baseline { align-items: end; }
