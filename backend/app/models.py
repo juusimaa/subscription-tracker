@@ -1,13 +1,12 @@
 # SQLAlchemy ORM models -- these map directly to Postgres tables.
-# Base.metadata.create_all() in main.py reads these classes and issues the
-# CREATE TABLE statements, so this file is the single source of truth for
-# the database schema.
+# Alembic owns the schema (backend/alembic/), and test_migrations.py asserts
+# the revisions and these classes describe the same tables, so this file stays
+# the single source of truth for what the schema *means*.
 
 import enum
 from datetime import date
 
 from sqlalchemy import (
-    Boolean,
     Column,
     Date,
     Enum,
@@ -28,6 +27,33 @@ class BillingCycle(str, enum.Enum):
 
     monthly = "monthly"
     yearly = "yearly"
+
+
+class SubscriptionStatus(str, enum.Enum):
+    """Where a subscription is in its life, replacing the `active` boolean.
+
+    A boolean could only say "running" or "not running", which collapsed three
+    genuinely different situations into one. All three exist, none of them
+    bills, and they are not interchangeable:
+
+    - `trial` is running and costs nothing yet. It converts on one date and
+      converts once, which is why its renewal date is never rolled forward.
+    - `paused` has stopped billing but is expected back, so what it cost
+      before the pause is still real history.
+    - `cancelled` has stopped for good, and the term already paid for may
+      still be running (see main._last_charged_month).
+
+    Inheriting from str as well as Enum, for the same reason BillingCycle
+    does: it serializes straight to a JSON string.
+    """
+
+    active = "active"
+    trial = "trial"
+    paused = "paused"
+    # "cancelled", not the design's internal "archived": this API has said
+    # cancelled since it had a cancelled_date column, and the design's own UI
+    # label is "Cancelled" too.
+    cancelled = "cancelled"
 
 
 class User(Base):
@@ -89,12 +115,23 @@ class Subscription(Base):
     # before the column existed.
     started_date = Column(Date, nullable=True)
     category = Column(String, nullable=True)
-    active = Column(Boolean, nullable=False, default=True)
-    # When this subscription stopped costing money. NULL while it is running,
-    # and NULL too for a row cancelled before this column existed -- the
-    # spend summary treats that unknown case as "not charged in any period"
-    # rather than inventing a date.
+    # The single source of truth for whether this subscription bills. It
+    # replaced an `active` boolean in revision 0002; `active` survives as a
+    # derived property below, because it is what every existing client and
+    # every backup file written so far speaks.
+    status = Column(
+        Enum(SubscriptionStatus), nullable=False, default=SubscriptionStatus.active
+    )
+    # When this subscription stopped costing money for good. NULL while it is
+    # running, and NULL too for a row cancelled before this column existed --
+    # the spend summary treats that unknown case as "not charged in any
+    # period" rather than inventing a date.
     cancelled_date = Column(Date, nullable=True)
+    # The same thing for a pause, and it exists for the same reason. Without a
+    # date, a subscription paused today would report having never cost
+    # anything, retroactively erasing every month it really did bill -- the
+    # bug _last_charged_month was written to prevent for cancellations.
+    paused_date = Column(Date, nullable=True)
     # The owner of this row. nullable=False so a subscription can never end up
     # orphaned and visible to everyone; indexed because every single query in
     # crud.py filters on it.
@@ -106,6 +143,40 @@ class Subscription(Base):
         return 12 if self.billing_cycle == BillingCycle.yearly else 1
 
     @property
+    def active(self) -> bool:
+        """Whether this subscription is billing normally.
+
+        Kept as a read/write alias over `status` rather than dropped: it is
+        what every client written against this API sends and reads, and what
+        sits in every backup file taken so far. The mapping preserves the
+        *meaning* the flag always had -- "counts toward the totals and will be
+        billed again" -- which trial and paused both fail, so both report
+        false. See schemas.SubscriptionUpdate for the write direction.
+        """
+        return self.status == SubscriptionStatus.active
+
+    @property
+    def stopped_date(self) -> date | None:
+        """The day this subscription stopped costing money, or None if it has
+        not stopped.
+
+        Cancelled and paused are different states with the same arithmetic:
+        both bill up to a date and not after it. Naming that idea once is what
+        lets the spend summary and next_renewal_date treat them together
+        without either having to know which one it is looking at.
+
+        None for a row that stopped before its date column existed, which is
+        deliberately indistinguishable from "still running" here -- the
+        callers decide what to do with an unknown, and they do different
+        things (see main._is_charged).
+        """
+        if self.status == SubscriptionStatus.cancelled:
+            return self.cancelled_date
+        if self.status == SubscriptionStatus.paused:
+            return self.paused_date
+        return None
+
+    @property
     def next_renewal_date(self) -> date:
         """When money next changes hands -- computed, never stored.
 
@@ -114,15 +185,23 @@ class Subscription(Base):
         value to keep in step, no scheduled job, and no GET that quietly
         writes to the database.
 
-        A cancelled subscription is measured from the day it was cancelled
-        instead of from today, so it reports the renewal that would have come
-        next -- the day the term already paid for runs out, which is exactly
-        what the spend summary needs (see _last_charged_month in main.py).
-        Rolling it past that point would be inventing renewals that never
-        happen.
+        A stopped subscription -- cancelled or paused -- is measured from the
+        day it stopped instead of from today, so it reports the renewal that
+        would have come next: the day the term already paid for runs out,
+        which is exactly what the spend summary needs (see
+        _last_charged_month in main.py). Rolling it past that point would be
+        inventing renewals that never happen. For a paused plan that same date
+        is also the honest answer to "when would this resume charging".
+
+        A trial is the exception that does not roll at all. It converts once,
+        on one date, and the anchor *is* that date -- so rolling a conversion
+        that has come and gone into next month would report a second
+        conversion that is never going to happen. It stays put until something
+        moves the subscription off `trial`, which is the event the date was
+        always describing.
         """
-        if not self.active and self.cancelled_date is not None:
-            reference = self.cancelled_date
-        else:
-            reference = date.today()
+        if self.status == SubscriptionStatus.trial:
+            return self.renewal_anchor_date
+        stopped = self.stopped_date
+        reference = stopped if stopped is not None else date.today()
         return renewals.next_occurrence(self.renewal_anchor_date, self.cycle_months, reference)

@@ -188,14 +188,35 @@ def ensure_category(db: Session, name: str | None, user_id: int) -> str | None:
 def _columns(fields: dict) -> dict:
     """Translates a schema's field names into model attribute names.
 
-    Only one differs: the API speaks `next_renewal_date`, which is derived
-    (see models.Subscription), while the table stores the anchor it is derived
-    from. Writes have to land on the anchor -- setting the property itself
-    would raise, since a computed field has nothing to write to.
+    Two differ, and for the same underlying reason -- the API's name for
+    something is not always the column that stores it, and a write has to land
+    on the column:
+
+    - `next_renewal_date` is derived from the anchor the table actually holds
+      (see models.Subscription).
+    - `active` stopped being a column in revision 0002 and is now a read-only
+      property over `status`. Setting either of these properties would raise,
+      since a computed attribute has nothing to write to.
+
+    A lone `active` is translated into the status it stands for; when `status`
+    came too, it wins and `active` is dropped, because schemas.resolve_status
+    has already rejected the case where the two disagree. Dropping it is not
+    optional either way: leaving it in the dict is the setattr that raises.
     """
     fields = dict(fields)
     if "next_renewal_date" in fields:
         fields["renewal_anchor_date"] = fields.pop("next_renewal_date")
+    legacy_active = fields.pop("active", None)
+    if legacy_active is not None and fields.get("status") is None:
+        fields["status"] = (
+            models.SubscriptionStatus.active
+            if legacy_active
+            else models.SubscriptionStatus.cancelled
+        )
+    # A partial update that mentioned neither must not write status=None over
+    # a real one; SubscriptionUpdate uses None to mean "not sent".
+    if "status" in fields and fields["status"] is None:
+        del fields["status"]
     return fields
 
 
@@ -205,12 +226,21 @@ def get_subscriptions(
     category: str | None = None,
     billing_cycle: models.BillingCycle | None = None,
     active: bool | None = None,
+    status: models.SubscriptionStatus | None = None,
 ) -> list[models.Subscription]:
     """All of one user's subscriptions, optionally narrowed down.
 
     The filters are additive: passing None for one leaves that dimension
     unfiltered, so the same function serves both the plain list and the
     filtered views without a second query builder.
+
+    `status` and `active` are the precise and the coarse version of the same
+    filter. `active=True` still means exactly what it used to -- the status
+    that bills -- so every existing caller is unaffected. `active=False` now
+    means every status that does not bill rather than only `cancelled`, which
+    is the honest reading of "not active" and the only one that stays true as
+    statuses are added; a caller that specifically wants cancelled rows should
+    say `status=cancelled`.
     """
     query = db.query(models.Subscription).filter(models.Subscription.user_id == user_id)
     if category is not None:
@@ -219,8 +249,13 @@ def get_subscriptions(
         query = query.filter(func.lower(models.Subscription.category) == category.lower())
     if billing_cycle is not None:
         query = query.filter(models.Subscription.billing_cycle == billing_cycle)
+    if status is not None:
+        query = query.filter(models.Subscription.status == status)
     if active is not None:
-        query = query.filter(models.Subscription.active.is_(active))
+        # Not `Subscription.active`, which is a Python property now and has no
+        # SQL to compile to.
+        running = models.Subscription.status == models.SubscriptionStatus.active
+        query = query.filter(running if active else ~running)
     # Soonest renewal first, as before -- but sorted in Python rather than by
     # the database, because the date being sorted on is now computed and the
     # stored anchor is not a stand-in for it: a 2019 anchor and a 2026 one can
@@ -249,20 +284,39 @@ def get_subscription(db: Session, subscription_id: int, user_id: int) -> models.
     )
 
 
-def _sync_cancellation(db_subscription: models.Subscription) -> None:
-    """Keeps `active` and `cancelled_date` telling the same story.
+def _sync_status_dates(db_subscription: models.Subscription) -> None:
+    """Keeps `status`, `cancelled_date` and `paused_date` telling one story.
 
-    A client that cancels a subscription normally just sends active=false, so
+    A client that stops a subscription normally just sends the new status, so
     the date it stopped costing money is filled in here -- without it the
     spend summary has no way to know which months it should still count. An
-    explicit cancelled_date in the request is left alone, so a cancellation
-    can be backdated. Reactivating clears the date: the subscription is
-    running again, and a stale date would zero out its future months.
+    explicit date in the request is left alone, so a stop can be backdated.
+    Moving back to a running status clears both dates: the subscription is
+    billing again, and a stale date would zero out its future months.
+
+    Only the date belonging to the current status is kept. A subscription is
+    in one state at a time, and a leftover paused_date on a cancelled row
+    would be read by stopped_date as a pause that is no longer happening.
+
+    The one case worth spelling out is pausing and *then* cancelling. It
+    stopped costing money on the day it was paused, not on the day someone got
+    around to making that permanent, so the pause date carries over rather
+    than today's being stamped -- otherwise the months in between are counted
+    as spend that never happened. An explicit cancelled_date still wins, which
+    is what makes the fix correctable when the intent really was today.
     """
-    if db_subscription.active:
+    status = db_subscription.status
+    if status == models.SubscriptionStatus.cancelled:
+        if db_subscription.cancelled_date is None:
+            db_subscription.cancelled_date = db_subscription.paused_date or date.today()
+        db_subscription.paused_date = None
+    elif status == models.SubscriptionStatus.paused:
+        if db_subscription.paused_date is None:
+            db_subscription.paused_date = date.today()
         db_subscription.cancelled_date = None
-    elif db_subscription.cancelled_date is None:
-        db_subscription.cancelled_date = date.today()
+    else:
+        db_subscription.cancelled_date = None
+        db_subscription.paused_date = None
 
 
 def create_subscription(
@@ -279,14 +333,18 @@ def create_subscription(
     # assume the subscription was running for every month it is asked about.
     if db_subscription.started_date is None:
         db_subscription.started_date = date.today()
-    _sync_cancellation(db_subscription)
+    _sync_status_dates(db_subscription)
     # Both of the calls above write dates, so the row is only now final. A
     # request carrying a back-dated cancelled_date and no started_date passes
     # the schema (it has nothing to compare against) and then has today's date
     # filled in above, which turns it into exactly the row the schema meant to
     # reject. Checking here, after every default is applied, is the only place
     # that sees what will actually be stored.
-    schemas.check_dates(db_subscription.started_date, db_subscription.cancelled_date)
+    schemas.check_dates(
+        db_subscription.started_date,
+        db_subscription.cancelled_date,
+        db_subscription.paused_date,
+    )
     db.add(db_subscription)
     db.commit()
     # refresh() reloads the row from Postgres so db_subscription.id (assigned
@@ -310,7 +368,7 @@ def update_subscription(
     # unconditionally would re-register the existing name on every edit.
     if "category" in fields:
         db_subscription.category = ensure_category(db, db_subscription.category, user_id)
-    _sync_cancellation(db_subscription)
+    _sync_status_dates(db_subscription)
     # The merged row, not the request. SubscriptionUpdate can only compare the
     # fields one request happened to carry, so a PUT sending cancelled_date on
     # its own was checked against nothing and committed -- leaving a stored row
@@ -321,7 +379,11 @@ def update_subscription(
     # would write them; rolling back discards the whole edit, so a rejected
     # update changes nothing at all.
     try:
-        schemas.check_dates(db_subscription.started_date, db_subscription.cancelled_date)
+        schemas.check_dates(
+            db_subscription.started_date,
+            db_subscription.cancelled_date,
+            db_subscription.paused_date,
+        )
     except ValueError:
         db.rollback()
         raise
@@ -435,7 +497,7 @@ def import_backup(
             **_columns(subscription.model_dump()), user_id=user_id
         )
         db_subscription.category = register_category(db_subscription.category)
-        # Deliberately no started_date default and no _sync_cancellation here,
+        # Deliberately no started_date default and no _sync_status_dates here,
         # unlike create_subscription: a restore reproduces what the file says,
         # including "start unknown". Stamping today's date on a subscription
         # that has been running for years would quietly rewrite its history in

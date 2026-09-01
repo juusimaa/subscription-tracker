@@ -103,6 +103,86 @@ def test_downgrade_removes_everything_it_created(empty_database):
     assert {"users", "categories", "subscriptions"} <= set(inspect(engine).get_table_names())
 
 
+def test_the_status_backfill_maps_every_existing_row(empty_database):
+    """Revision 0002 against a database holding rows, not just tables.
+
+    Every migration before it only ever moved schema around, so the suite
+    could get away with checking the shape it left behind. 0002 rewrites data
+    -- the `active` boolean becomes a `status` -- and a backfill that dropped
+    or mislabelled rows would leave a schema that still matches models.py
+    perfectly while quietly cancelling everyone's subscriptions.
+    """
+    config = alembic_config()
+    command.upgrade(config, "0001")
+
+    with engine.begin() as connection:
+        connection.execute(
+            text("INSERT INTO users (id, email, hashed_password) VALUES (1, 'a@b.c', 'x')")
+        )
+        # One of each, written the way 0001's schema spells them: the boolean
+        # is all that schema has to say whether a subscription is running.
+        for row_id, name, active in [(1, "Running", True), (2, "Stopped", False)]:
+            connection.execute(
+                text(
+                    "INSERT INTO subscriptions "
+                    "(id, name, cost, billing_cycle, next_renewal_date, active, user_id) "
+                    "VALUES (:id, :name, 10.00, 'monthly', '2026-01-01', :active, 1)"
+                ),
+                {"id": row_id, "name": name, "active": active},
+            )
+
+    command.upgrade(config, "head")
+
+    with engine.connect() as connection:
+        statuses = dict(
+            connection.execute(text("SELECT name, status FROM subscriptions")).all()
+        )
+
+    assert statuses == {"Running": "active", "Stopped": "cancelled"}
+
+
+def test_the_status_backfill_reverses_into_the_boolean_it_came_from(empty_database):
+    """Downgrading is lossy on purpose -- three statuses share one `false` --
+    but it must not lose *rows*, and the one distinction the old schema can
+    still make has to survive.
+    """
+    config = alembic_config()
+    command.upgrade(config, "head")
+
+    with engine.begin() as connection:
+        connection.execute(
+            text("INSERT INTO users (id, email, hashed_password) VALUES (1, 'a@b.c', 'x')")
+        )
+        for row_id, name, status in [
+            (1, "Running", "active"),
+            (2, "Trialling", "trial"),
+            (3, "Paused", "paused"),
+            (4, "Stopped", "cancelled"),
+        ]:
+            connection.execute(
+                text(
+                    "INSERT INTO subscriptions "
+                    "(id, name, cost, billing_cycle, next_renewal_date, status, user_id) "
+                    "VALUES (:id, :name, 10.00, 'monthly', '2026-01-01', :status, 1)"
+                ),
+                {"id": row_id, "name": name, "status": status},
+            )
+
+    command.downgrade(config, "0001")
+
+    with engine.connect() as connection:
+        flags = dict(connection.execute(text("SELECT name, active FROM subscriptions")).all())
+
+    # bool() because SQLite stores the column as 0/1 and Postgres as a real
+    # boolean; the same assertion has to mean the same thing on both.
+    assert {name: bool(flag) for name, flag in flags.items()} == {
+        "Running": True,
+        "Trialling": False,
+        "Paused": False,
+        "Stopped": False,
+    }
+
+
 def test_upgrade_adopts_a_database_that_predates_alembic():
     """A schema built by the old `create_all()` is adopted, not rebuilt.
 

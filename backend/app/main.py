@@ -303,15 +303,18 @@ def import_data(
     The import is one transaction. If any part of it fails, the account is
     left exactly as it was rather than half-restored.
     """
-    if backup.version != schemas.BACKUP_VERSION:
+    if backup.version not in schemas.SUPPORTED_BACKUP_VERSIONS:
         # Refusing beats guessing: a file from a version this build has never
         # seen may name its fields differently, and importing it on hope would
-        # write silently wrong data.
+        # write silently wrong data. Versions it *can* read are read -- a
+        # version 1 file predates statuses and says `active` instead, which
+        # schemas.BackupSubscription resolves on the way in.
+        readable = ", ".join(str(v) for v in sorted(schemas.SUPPORTED_BACKUP_VERSIONS))
         raise HTTPException(
             status_code=400,
             detail=(
                 f"Unsupported backup version {backup.version}; "
-                f"this API reads version {schemas.BACKUP_VERSION}"
+                f"this API reads version(s) {readable}"
             ),
         )
     return crud.import_backup(db, backup, current_user.id, replace=replace)
@@ -339,23 +342,33 @@ def list_subscriptions(
         default=None,
         description="Only subscriptions billed on this cycle: monthly or yearly.",
     ),
+    status: models.SubscriptionStatus | None = Query(
+        default=None,
+        description="Only subscriptions with this status: active, trial, paused or cancelled.",
+    ),
     active: bool | None = Query(
         default=None,
-        description="Only active (true) or only cancelled (false) subscriptions.",
+        description=(
+            "Only billing (true) or only non-billing (false) subscriptions. The "
+            "coarse version of `status`, kept for clients that predate it: false "
+            "now covers trial and paused as well as cancelled, so use "
+            "`status=cancelled` to ask for cancelled rows specifically."
+        ),
     ),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
     """Every filter is optional; omitting them all returns the full list, so
-    existing callers are unaffected. FastAPI validates billing_cycle against
-    the BillingCycle enum, meaning a typo like ?billing_cycle=weekly comes
-    back as a 422 rather than silently matching nothing."""
+    existing callers are unaffected. FastAPI validates billing_cycle and
+    status against their enums, meaning a typo like ?billing_cycle=weekly
+    comes back as a 422 rather than silently matching nothing."""
     return crud.get_subscriptions(
         db,
         current_user.id,
         category=category,
         billing_cycle=billing_cycle,
         active=active,
+        status=status,
     )
 
 
@@ -408,43 +421,67 @@ def upcoming(
 ):
     """What is about to be charged, and when.
 
-    Only active subscriptions: a cancelled one is not going to be billed
-    again, whatever its dates say. Each renewal in the window is listed
-    separately with the full amount due on the day, so a monthly plan appears
-    three times in a 90-day window and a yearly plan brings its whole year's
-    cost to the one day it lands on. That is deliberately not what
-    /summary/spend does -- it spreads a yearly cost across the twelve months
-    it covers, because it answers what a period costs rather than what is
-    leaving the account this week.
+    Active subscriptions and trials about to convert; nothing else. A
+    cancelled or paused one is not going to be billed, whatever its dates say.
+
+    Each renewal in the window is listed separately with the full amount due
+    on the day, so a monthly plan appears three times in a 90-day window and a
+    yearly plan brings its whole year's cost to the one day it lands on. That
+    is deliberately not what /summary/spend does -- it spreads a yearly cost
+    across the twelve months it covers, because it answers what a period costs
+    rather than what is leaving the account this week.
+
+    A trial appears **once**, on the day it converts, at a cost of 0. Both
+    halves of that are deliberate. Once, because a trial converts one time and
+    then bills as a normal subscription under a different status, so treating
+    its date as a recurring anchor would invent conversions that never happen.
+    At 0, because nothing leaves the account on that day -- the trial is free
+    until it ends -- and this route's `total` is real money due, which a
+    trial's eventual price is not yet. The full price still travels in the
+    nested `subscription`, which is what lets a client say "then EUR 9.99/mo"
+    without a second request.
 
     Renewals before a subscription's started_date are skipped, so a plan added
     now but starting next quarter does not show up as due tomorrow.
     """
     today = date.today()
     through = today + timedelta(days=days)
+    # Deliberately unfiltered by status: which statuses belong here is this
+    # route's own rule, decided per subscription below, not something a caller
+    # passes in.
     subscriptions = crud.get_subscriptions(
         db,
         current_user.id,
         category=category,
         billing_cycle=billing_cycle,
-        active=True,
     )
+
+    def add(subscription, renewal_date, cost):
+        if subscription.started_date is not None and renewal_date < subscription.started_date:
+            return
+        due.append(
+            {
+                "subscription": subscription,
+                "renewal_date": renewal_date,
+                "days_until": (renewal_date - today).days,
+                "cost": cost,
+            }
+        )
 
     due = []
     for subscription in subscriptions:
-        for renewal_date in renewals.occurrences_between(
-            subscription.renewal_anchor_date, subscription.cycle_months, today, through
-        ):
-            if subscription.started_date is not None and renewal_date < subscription.started_date:
-                continue
-            due.append(
-                {
-                    "subscription": subscription,
-                    "renewal_date": renewal_date,
-                    "days_until": (renewal_date - today).days,
-                    "cost": subscription.cost,
-                }
-            )
+        if subscription.status == models.SubscriptionStatus.trial:
+            # next_renewal_date is the conversion date and is never rolled for
+            # a trial (see models.Subscription), so this is a window check
+            # rather than a schedule.
+            conversion = subscription.next_renewal_date
+            if today <= conversion <= through:
+                add(subscription, conversion, Decimal("0"))
+        elif subscription.active:
+            for renewal_date in renewals.occurrences_between(
+                subscription.renewal_anchor_date, subscription.cycle_months, today, through
+            ):
+                add(subscription, renewal_date, subscription.cost)
 
     # Soonest first; name and id only to keep two renewals on the same day in
     # a stable, predictable order rather than whatever the query returned.
@@ -526,56 +563,71 @@ def _monthly_cost(subscription: models.Subscription) -> Decimal:
     return subscription.cost
 
 
-def _last_charged_month(subscription: models.Subscription) -> tuple[int, int]:
-    """The last (year, month) a cancelled subscription still cost money.
+def _last_charged_month(
+    subscription: models.Subscription, stopped: date
+) -> tuple[int, int]:
+    """The last (year, month) a stopped subscription still cost money.
 
-    Monthly plans stop at the end of the month they were cancelled in. Yearly
-    plans do not: the year has already been paid for, so cancelling the day
-    after renewing still leaves eleven months of service that were bought and
-    paid for. Those run to the end of the paid term, which ends the day before
+    Monthly plans stop at the end of the month they stopped in. Yearly plans
+    do not: the year has already been paid for, so stopping the day after
+    renewing still leaves eleven months of service that were bought and paid
+    for. Those run to the end of the paid term, which ends the day before
     next_renewal_date -- the date the *next* payment would have been due.
 
-    That date is computed from the cancellation date for a cancelled
-    subscription (see models.Subscription.next_renewal_date), so this is now
-    the real end of the real term. It used to be whatever renewal date was
-    stored when the row was created, which for anything more than a year old
-    was in the past -- and a paid term that ends before the cancellation is
-    not a term at all.
+    That date is computed from the stop date (see
+    models.Subscription.next_renewal_date), so this is the real end of the
+    real term. It used to be whatever renewal date was stored when the row was
+    created, which for anything more than a year old was in the past -- and a
+    paid term that ends before the stop is not a term at all.
 
     The later of the two dates still wins, which matters at the boundary:
-    cancelling exactly on a renewal date makes the derived date that same day,
-    so the month of cancellation would otherwise be dropped.
+    stopping exactly on a renewal date makes the derived date that same day,
+    so the month it stopped in would otherwise be dropped.
+
+    `stopped` is passed in rather than read off the subscription because a
+    pause and a cancellation are the same arithmetic on different columns, and
+    the caller has already resolved which one applies.
     """
-    cancelled = (subscription.cancelled_date.year, subscription.cancelled_date.month)
+    stopped_month = (stopped.year, stopped.month)
     if subscription.billing_cycle != models.BillingCycle.yearly:
-        return cancelled
+        return stopped_month
     paid_until = subscription.next_renewal_date - timedelta(days=1)
-    return max(cancelled, (paid_until.year, paid_until.month))
+    return max(stopped_month, (paid_until.year, paid_until.month))
 
 
 def _is_charged(subscription: models.Subscription, year: int, month: int) -> bool:
     """Was this subscription costing money in the given month?
 
+    A trial never was: it is free until it converts, and converting is what
+    moves it off `trial`, so as long as it carries that status the answer is
+    no for every month including past ones. That is checked before the start
+    date, because it holds regardless of when the trial began.
+
     Months before it started are never charged. After that, a subscription
     that is still running counts for every month asked about, including months
     still in the future -- that is what makes a full-year figure a projection.
-    A cancelled one counts up to _last_charged_month and no further.
+    A stopped one -- cancelled or paused -- counts up to _last_charged_month
+    and no further, which is what keeps a pause from retroactively erasing the
+    months the subscription really did bill in.
 
     Rows that predate these columns are handled by assuming as little as
     possible: no started_date means the start is unknown, so it is treated as
     having always been running (how the summary behaved before the column
-    existed), while inactive with no cancelled_date counts for nothing rather
+    existed), while a stopped row with no stop date counts for nothing rather
     than inventing spend that may never have happened.
     """
+    if subscription.status == models.SubscriptionStatus.trial:
+        return False
     if subscription.started_date is not None:
         started = (subscription.started_date.year, subscription.started_date.month)
         if (year, month) < started:
             return False
     if subscription.active:
         return True
-    if subscription.cancelled_date is None:
+    stopped = subscription.stopped_date
+    if stopped is None:
         return False
-    return (year, month) <= _last_charged_month(subscription)
+    return (year, month) <= _last_charged_month(subscription, stopped)
 
 
 @app.get(
@@ -604,20 +656,32 @@ def spend(
         default=None,
         description="Only total up subscriptions billed on this cycle.",
     ),
+    status: models.SubscriptionStatus | None = Query(
+        default=None,
+        description=(
+            "Only total up subscriptions with this status -- e.g. what the "
+            "plans you have since cancelled cost you over the year."
+        ),
+    ),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    """What a period actually costs, cancellations included up to the month
-    they were cancelled.
+    """What a period actually costs, stopped plans included up to the month
+    they stopped.
 
-    This is the historical/projected view, and it deliberately does not filter
-    on `active`: a monthly subscription cancelled in June contributed six
-    months of cost to that year and is counted for exactly those six, then
-    zero. A cancelled yearly plan keeps counting to the end of the term that
-    was already paid for (see _last_charged_month), and nothing counts before
-    a subscription's started_date. Compare with /summary/monthly-total, which
-    answers the different question of what is being paid *now* and so ignores
-    cancelled subscriptions entirely.
+    This is the historical/projected view, and it deliberately does not
+    filter by status of its own accord: a monthly subscription cancelled in
+    June contributed six months of cost to that year and is counted for
+    exactly those six, then zero. The same goes for one paused in June -- the
+    pause stops the spend, it does not undo it. A stopped yearly plan keeps
+    counting to the end of the term that was already paid for (see
+    _last_charged_month), a trial counts for nothing at all, and nothing
+    counts before a subscription's started_date. Compare with
+    /summary/monthly-total, which answers the different question of what is
+    being paid *now* and so ignores everything that is not billing.
+
+    The optional `status` filter narrows *which* subscriptions are totalled;
+    it does not change any of the above for the ones that remain.
 
     `months` always breaks the period down month by month (one entry when
     `month` is given, twelve otherwise) and `total` is the sum of those
@@ -630,6 +694,7 @@ def spend(
         current_user.id,
         category=category,
         billing_cycle=billing_cycle,
+        status=status,
     )
     months = [month] if month is not None else list(range(1, 13))
 
@@ -668,6 +733,11 @@ def monthly_total(
     """Normalizes every active subscription to a monthly cost (yearly plans
     are divided by 12) and sums them, so the frontend can show one figure
     regardless of how each subscription bills.
+
+    Active only, in the strict sense: trials cost nothing yet, paused plans
+    are not being charged, and cancelled ones are gone. None of the three
+    belongs in what is being paid right now, which is why this route takes no
+    `status` filter -- the status set is the question it answers.
 
     Accepts the same category/billing_cycle filters as the list route, so a
     filtered view can show the total for exactly what it displays. The yearly

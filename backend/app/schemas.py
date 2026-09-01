@@ -19,20 +19,57 @@ from pydantic import (
     model_validator,
 )
 
-from app.models import BillingCycle
+from app.models import BillingCycle, SubscriptionStatus
 
 
-def check_dates(started: date | None, cancelled: date | None) -> None:
-    """A subscription cancelled before it started would silently total up to
+def check_dates(
+    started: date | None, cancelled: date | None, paused: date | None = None
+) -> None:
+    """A subscription stopped before it started would silently total up to
     zero in every month, which reads as a bug rather than as the typo it
     usually is -- so it is rejected as a 422 instead.
+
+    Both stop dates are checked, and named individually in the message: a
+    client that sent a bad paused_date is not helped by being told about
+    cancelled_date. `paused` defaults to None so the two-argument calls that
+    predate it still mean what they did.
 
     Public rather than private because crud.py calls it too: the schemas below
     can only check the fields one request happened to carry, so the merged row
     is checked again where it is actually assembled (see crud.py).
     """
-    if started is not None and cancelled is not None and cancelled < started:
-        raise ValueError("cancelled_date cannot be earlier than started_date")
+    for field, stopped in (("cancelled_date", cancelled), ("paused_date", paused)):
+        if started is not None and stopped is not None and stopped < started:
+            raise ValueError(f"{field} cannot be earlier than started_date")
+
+
+def resolve_status(
+    status: SubscriptionStatus | None, active: bool | None
+) -> SubscriptionStatus | None:
+    """Reconciles the `status` field with the legacy `active` boolean.
+
+    `active` is the only way clients written before statuses existed can say
+    "cancel this", and backup files taken by those builds carry it instead of
+    a status, so it keeps working: on its own it means active or cancelled,
+    exactly as it always did.
+
+    Sending both is fine when they agree and a 422 when they do not. Picking a
+    winner would mean guessing which half of a contradiction the client meant,
+    and guessing wrong here silently cancels a subscription or silently
+    revives one.
+
+    Returns None when neither was sent, which a partial update reads as "leave
+    the status alone" -- the reason this returns rather than defaulting.
+    """
+    if status is None:
+        if active is None:
+            return None
+        return SubscriptionStatus.active if active else SubscriptionStatus.cancelled
+    if active is not None and active != (status == SubscriptionStatus.active):
+        raise ValueError(
+            f"active={active} contradicts status={status.value}; send one or the other"
+        )
+    return status
 
 
 # The two fields a client can get wrong in a way that neither the database nor
@@ -73,11 +110,23 @@ class SubscriptionBase(BaseModel):
     # otherwise the spend summary shows nothing for the months before today.
     started_date: date | None = None
     category: str | None = None
+    # Where the subscription is in its life. This is the field to send; see
+    # models.SubscriptionStatus for what each value means and what it costs.
+    status: SubscriptionStatus = SubscriptionStatus.active
+    # The legacy spelling of the same thing, always returned so that clients
+    # predating statuses keep working. On the way in it is optional and
+    # reconciled by resolve_status; on the way out it is computed from
+    # `status` (models.Subscription.active), so the two can never disagree in
+    # a response.
     active: bool = True
-    # Usually left off: flipping `active` to false sets this to today
-    # automatically (see crud._sync_cancellation). Send it explicitly only to
-    # record a cancellation that happened on some other date.
+    # Usually left off: moving to `cancelled` sets this to today automatically
+    # (see crud._sync_status_dates). Send it explicitly only to record a
+    # cancellation that happened on some other date.
     cancelled_date: date | None = None
+    # The same, for a pause. Set automatically when the status becomes
+    # `paused`; what the spend summary reads to know which months a paused
+    # subscription really did bill in.
+    paused_date: date | None = None
 
 
 class SubscriptionCreate(SubscriptionBase):
@@ -90,13 +139,23 @@ class SubscriptionCreate(SubscriptionBase):
 
     name: SubscriptionName
     cost: Cost
+    # Both optional here, unlike the base, so that "not sent" is distinguishable
+    # from "sent as the default" -- without which a client sending only
+    # active=false could not be told apart from one sending nothing, and the
+    # legacy alias would be silently ignored.
+    status: SubscriptionStatus | None = None
+    active: bool | None = None
 
     @model_validator(mode="after")
-    def _validate_dates(self):
+    def _validate(self):
+        # Resolved here rather than in crud so that a contradictory pair is a
+        # 422 from the schema, alongside every other malformed-request check,
+        # instead of a ValueError the route has to translate.
+        self.status = resolve_status(self.status, self.active) or SubscriptionStatus.active
         # A create carries every field at once, so this sees the whole row.
         # It still is not the last word: crud.create_subscription fills in a
         # missing started_date afterwards and re-checks what it ends up with.
-        check_dates(self.started_date, self.cancelled_date)
+        check_dates(self.started_date, self.cancelled_date, self.paused_date)
         return self
 
 
@@ -111,16 +170,25 @@ class SubscriptionUpdate(BaseModel):
     next_renewal_date: date | None = None
     started_date: date | None = None
     category: str | None = None
+    status: SubscriptionStatus | None = None
+    # None means "not sent" for both of these, so a PUT touching neither
+    # leaves the status alone. crud._columns translates a lone `active` into
+    # the status it stands for.
     active: bool | None = None
     cancelled_date: date | None = None
+    paused_date: date | None = None
 
     @model_validator(mode="after")
-    def _validate_dates(self):
+    def _validate(self):
+        # Checked but deliberately not assigned: writing the resolved status
+        # back would mark the field as set, and exclude_unset is what stops a
+        # partial update from overwriting everything it did not mention.
+        resolve_status(self.status, self.active)
         # Only catches a request that sets both dates at once. A partial update
         # cannot be checked against the stored row from here, which is exactly
         # why crud.update_subscription checks the merged row as well -- sending
         # cancelled_date on its own used to slip past this and be committed.
-        check_dates(self.started_date, self.cancelled_date)
+        check_dates(self.started_date, self.cancelled_date, self.paused_date)
         return self
 
 
@@ -301,14 +369,36 @@ class Token(BaseModel):
 # nothing there.
 
 
-BACKUP_VERSION = 1
+# Bumped to 2 when subscriptions gained a status. Version 1 files are still
+# read -- see SUPPORTED_BACKUP_VERSIONS -- so every backup taken before this
+# change restores exactly as it did.
+BACKUP_VERSION = 2
+
+# What POST /import accepts. A version 1 file carries `active` and no
+# `status`, which BackupSubscription resolves the same way it resolves a
+# legacy request, so reading one needs no separate code path -- only the
+# permission to try. This is the migration the `version` field was put there
+# to make possible: refusing a file this build genuinely cannot read stays the
+# behaviour for anything outside this set.
+SUPPORTED_BACKUP_VERSIONS = frozenset({1, 2})
 
 
 class BackupSubscription(SubscriptionBase):
     """One subscription as it appears in a backup file. Identical to what the
-    API returns, except the database-assigned id is left out."""
+    API returns, except the database-assigned id is left out.
 
-    pass
+    Both fields are optional for the same reason they are on
+    SubscriptionCreate: this schema reads version 1 files, which say `active`
+    and have never heard of `status`. Export always writes both.
+    """
+
+    status: SubscriptionStatus | None = None
+    active: bool | None = None
+
+    @model_validator(mode="after")
+    def _resolve_status(self):
+        self.status = resolve_status(self.status, self.active) or SubscriptionStatus.active
+        return self
 
 
 class Backup(BaseModel):
@@ -322,6 +412,7 @@ class Backup(BaseModel):
     version: int = BACKUP_VERSION
     # Set on export, ignored on import -- it is there so a file found later on
     # disk says when it was taken.
+
     exported_at: datetime | None = None
     # Category names only. Included in their own right so that categories with
     # nothing in them yet survive a backup, which they wouldn't if the list

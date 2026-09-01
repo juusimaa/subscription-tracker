@@ -529,14 +529,14 @@ http://localhost:8000/docs (Swagger UI) and http://localhost:8000/redoc.
 | `POST` | `/register` | Create an account. |
 | `POST` | `/token` | Exchange email + password for a JWT (form-encoded; email goes in `username`). |
 | `GET` | `/me` | The logged-in user — used to check a stored token is still valid. |
-| `GET` | `/subscriptions` | List, with optional `category`, `billing_cycle`, `active` filters. |
+| `GET` | `/subscriptions` | List, with optional `category`, `billing_cycle`, `status`, `active` filters. |
 | `POST` | `/subscriptions` | Create one. |
-| `GET` | `/subscriptions/upcoming` | What is about to be charged: every renewal in the next `days` (default 30), with the full amount due on each day. |
+| `GET` | `/subscriptions/upcoming` | What is about to be charged: every renewal in the next `days` (default 30), with the full amount due on each day, plus any trial converting in the window. |
 | `GET` | `/subscriptions/{id}` | Fetch one. |
 | `PUT` | `/subscriptions/{id}` | Partial update — send only the fields that change. |
 | `DELETE` | `/subscriptions/{id}` | Delete one. |
 | `GET` | `/subscriptions/summary/monthly-total` | What is being paid *now*: active subscriptions normalised to a monthly figure, plus the yearly equivalent. |
-| `GET` | `/subscriptions/summary/spend` | What a period *cost*: month-by-month breakdown for a year, cancellations included up to the month they stopped costing money. |
+| `GET` | `/subscriptions/summary/spend` | What a period *cost*: month-by-month breakdown for a year, stopped plans included up to the month they stopped costing money. |
 | `GET` | `/categories` | Categories with a count of the subscriptions using each. |
 | `POST` | `/categories` | Add an empty category. |
 | `PUT` | `/categories/{id}` | Rename, relabelling every subscription using the old name. |
@@ -545,16 +545,43 @@ http://localhost:8000/docs (Swagger UI) and http://localhost:8000/redoc.
 | `POST` | `/import` | Restore such a document (`?replace=true` for a true restore). |
 
 The two summary routes answer genuinely different questions, which is why they
-are separate endpoints rather than one with a flag: `monthly-total` ignores
-cancelled subscriptions entirely, while `spend` counts a cancelled monthly plan
-for exactly the months it ran — and keeps counting a cancelled *yearly* plan to
-the end of the term already paid for.
+are separate endpoints rather than one with a flag: `monthly-total` counts only
+what is billing right now, while `spend` counts a stopped monthly plan for
+exactly the months it ran — and keeps counting a stopped *yearly* plan to the
+end of the term already paid for.
 
 `upcoming` is a third question again, and the money in it is not the same money:
 the summaries spread a yearly plan across the twelve months it covers, while
 `upcoming` reports the whole year's cost on the single day it is actually taken.
 A monthly plan appears once per renewal, so it is listed three times in
 `?days=90`.
+
+### Subscription statuses
+
+A subscription is `active`, `trial`, `paused` or `cancelled`. The distinction
+that matters is that three of those do not bill, and they do not mean the same
+thing:
+
+- **`trial`** is running and free. It counts toward no total, converts **once**
+  on its renewal date — which is therefore never rolled forward — and appears
+  in `upcoming` on that day at a cost of `0`, with the real price in the nested
+  subscription so a client can say "then €9.99/mo".
+- **`paused`** has stopped billing but is expected back. What it cost *before*
+  the pause is still real history: `paused_date` records when it stopped, and
+  `spend` counts every month up to it. Without that date a pause would
+  retroactively erase a year of spend.
+- **`cancelled`** has stopped for good, with `cancelled_date` playing the same
+  role — and a yearly plan keeps counting to the end of the term already paid
+  for. Pausing and *then* cancelling keeps the pause date, because that is when
+  the money actually stopped.
+
+The older `active` boolean still works, on the way in and the way out: it maps
+to active-or-cancelled exactly as it always did, so trial and paused both report
+`false`. Sending `status` and `active` together is fine when they agree and a
+422 when they contradict each other — guessing which half was meant would
+silently cancel a subscription or silently revive one. As a *filter*,
+`active=false` means every status that does not bill; use `status=cancelled` to
+ask for cancelled rows specifically.
 
 ### Renewal dates
 
@@ -636,7 +663,7 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-84 tests, no services required: `conftest.py` points the app at a throwaway
+119 tests, no services required: `conftest.py` points the app at a throwaway
 SQLite file, so a clean checkout can run the suite with nothing else started.
 To run the identical suite against real Postgres — the one place the two
 databases differ is `Numeric`, which comes back as a `Decimal` from Postgres
@@ -657,6 +684,8 @@ What they cover, and why those things:
 | `test_spend.py` | The spend arithmetic: a monthly plan cancelled in June, a yearly plan cancelled the day after renewing, and rows with unknown dates. |
 | `test_subscriptions.py` | The derived renewal date through the API, the cancellation bookkeeping, and every validation rule that has already reached the database once. |
 | `test_upcoming.py` | The window, one entry per charge, and what is deliberately left out. |
+| `test_status.py` | The four subscription statuses: that a pause stops the spend without erasing the months already billed, that a trial costs nothing and converts once, and that the legacy `active` boolean still means what it always meant. |
+| `test_migrations.py` | That the revisions and `models.py` describe the same schema, that a downgrade leaves nothing behind, and — since revision 0002 — what a data migration does to the rows themselves. |
 
 Two conventions worth keeping if you add more: no test may depend on what
 today's date is (the spend tests all use a year fully in the past), and tests

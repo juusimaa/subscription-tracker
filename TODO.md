@@ -6,7 +6,9 @@ recorded at the bottom for context, since the notes here refer back to them.
 
 Items D1-D7 came later and from somewhere else -- reading the spending dashboard
 design handoff against the API on 2026-09-01 -- so they carry their own
-numbering and their own priority order.
+numbering and their own priority order. D1 is done and is written up at the
+bottom with the rest; the numbering of the others is left alone, because the
+notes below refer to each other by it.
 
 ## 1. Account management
 
@@ -75,8 +77,8 @@ A second set of gaps, from reading the frontend handoff in
 against the current API on 2026-09-01. These are feature work rather than
 defects: the API is self-consistent, it just cannot answer some of what the
 design asks. Numbered separately because they do not slot into the priority
-order above -- D1 is worth doing before items 4-6 if the dashboard is being
-built, and D7 may never be worth doing at all.
+order above -- D2 and D3 are the ones the dashboard cannot be built without,
+and D7 may never be worth doing at all.
 
 Worth recording first, so nobody re-investigates it: **sorting is already
 covered.** The design specifies all six columns sorted client-side with ties
@@ -84,26 +86,6 @@ broken on name (README §7, *Interactions*), `GET /subscriptions` returns the
 whole unpaginated list, and `crud.get_subscriptions` already sorts by next
 renewal, then lowercased name, then id -- which is exactly the design's default
 sort and tie-break. No query parameters needed.
-
-### D1. Status is a boolean; the design has four states
-
-`models.Subscription` has `active: bool` plus `cancelled_date`. The design needs
-**Active / Trial / Paused / Cancelled**, and trial and paused are both "the row
-exists, it has a renewal date, and it counts toward no total" -- a state the
-current schema cannot express. `active=False` is the only non-active value, and
-`crud._sync_cancellation` stamps `cancelled_date` on it, which is wrong for a
-paused plan: it is not cancelled and its date should not be recorded as such.
-
-This is the largest item because it ripples outward. `_is_charged`,
-`_monthly_cost`, `/subscriptions/summary/monthly-total` and
-`/subscriptions/upcoming` all key off `active`, and each would need to exclude
-trial and paused rows. It needs an enum column and an Alembic revision, and the
-revision is the first one that touches rows rather than just schema -- which
-`test_migrations.py` does not cover, as the migration notes below say outright.
-
-One thing it does *not* need: a trial end date. The design uses the existing
-renewal date as the conversion date and relabels it "trial ends", so the status
-column carries the whole difference.
 
 ### D2. `upcoming` cannot be asked about an arbitrary period
 
@@ -185,8 +167,9 @@ where the design shows Delete enabled.
 The dialog also wants two things `schemas.Category` cannot supply: a monthly
 total per category ("EUR 41.97/mo"), and a usage string that distinguishes "Only
 cancelled plans" from "Unused". `subscription_count` is a single all-inclusive
-number and cannot tell those apart. Note this interacts with D1 -- once trial and
-paused exist, "live" needs defining for both purposes.
+number and cannot tell those apart. Note that "live" now needs defining against
+four statuses rather than a boolean (see the D1 write-up): a trial occupies a
+category without paying for it, and a paused plan is coming back.
 
 ### D7. Presentation fields with no home, probably by design
 
@@ -226,6 +209,82 @@ Recorded so the question is not reopened, not because they need doing:
 
 ---
 
+## Fixed on 2026-09-01
+
+**D1. Status was a boolean; the design has four states.** `active: bool` could
+only say "running" or "not running", which collapsed three genuinely different
+situations into one. `models.SubscriptionStatus` replaces it with **active /
+trial / paused / cancelled**, and `paused_date` joins `cancelled_date` so a
+pause has a date of its own.
+
+The decisions worth keeping:
+
+- **`active` did not go away; it became a derived alias.** It is still
+  accepted on every write and still returned on every read, mapping to
+  active-or-cancelled exactly as it always did. That is what let 21 existing
+  test assertions and every backup file taken so far keep working untouched.
+  The mapping preserves the *meaning* the flag always had -- "counts toward
+  the totals and will be billed again" -- so trial and paused both report
+  false, which is the reading every existing consumer of the flag already
+  assumed.
+- **Sending `status` and `active` together is a 422 when they disagree.**
+  Resolving a contradiction by picking a winner would silently cancel a
+  subscription or silently revive one, depending on which half was guessed.
+  They are accepted when they agree, so a client can migrate one call at a
+  time.
+- **A pause needs a date for the same reason a cancellation does.** Without
+  one, a subscription paused today reports having never cost anything, and a
+  year of real spend disappears from the trend the moment someone hits pause
+  -- the exact bug `_last_charged_month` was written to prevent for
+  cancellations. `stopped_date` names the idea once, and `_is_charged` and
+  `_last_charged_month` now work in terms of it, so the two states share
+  arithmetic instead of duplicating it.
+- **Pausing and then cancelling keeps the pause date.** It stopped costing
+  money the day it was paused, not the day someone got around to making that
+  permanent; stamping today's date would count the months in between as spend
+  that never happened. An explicit `cancelled_date` still wins, which is what
+  makes it correctable when the intent really was today.
+- **A trial's renewal date is never rolled forward.** A trial converts once,
+  on one date, and the anchor *is* that date -- so rolling a conversion that
+  has come and gone into next month would report a second one that is never
+  going to happen. It stays put until something moves the row off `trial`,
+  which is the event the date was always describing.
+- **Trials appear in `/upcoming` once, at a cost of 0.** Nothing leaves the
+  account on a conversion day -- the trial is free until it ends -- and this
+  route's `total` is real money due, which a trial's eventual price is not
+  yet. The full price still travels in the nested `subscription`, so a client
+  can render "then EUR 9.99/mo" without a second request.
+- **`active=false` as a *filter* now means every status that does not bill**,
+  not only cancelled. That is the honest reading of "not active" and the only
+  one that stays true as statuses are added; `?status=cancelled` is how to ask
+  for cancelled rows specifically. This is the one place the alias is not a
+  perfect stand-in for the old behaviour, and it is documented on the route.
+- **The backup version went to 2, and version 1 files are still read.** A
+  version 1 file says `active` and has never heard of `status`, which the
+  import schema resolves the same way it resolves a legacy request -- so
+  reading one needs no separate code path, only the permission to try. This
+  is the migration the `version` field was put there to make possible;
+  refusing a file this build genuinely cannot read is still the behaviour for
+  anything outside the supported set.
+
+**Revision 0002 is the first migration that moves rows**, and the first one
+tested that way (see the amended note above). Going up is lossless: every
+existing row is active or cancelled, two of the four new values. Going down
+cannot be -- three statuses have to land on `active = false` -- but what it
+leaves behind is a shape the old code already understands rather than a broken
+one: a trial or paused row becomes inactive with a NULL `cancelled_date`,
+which is exactly the "stopped, date unknown" case `_is_charged` has always had
+a branch for, and which counts toward no month rather than inventing spend.
+
+Verified on both databases, since the enum handling is where they differ most:
+119 tests green on SQLite and on Postgres 16.
+
+Not covered: the frontend still speaks the old vocabulary. It never read
+`active` at all, so nothing is broken, but nothing surfaces trial or paused
+either until the dashboard is built.
+
+---
+
 ## Fixed on 2026-08-31
 
 **No migrations.** Alembic now owns the schema, and
@@ -262,9 +321,11 @@ Four decisions worth keeping:
   upgrades, downgrades and upgrades *again*, because a single upgrade cannot
   see that.
 
-Not covered: nothing runs `alembic upgrade head` against a database holding
-real rows in CI, so a future data migration is tested only by the schema it
-leaves behind, not by what it does to the rows.
+Covered as of revision 0002, which was the first data migration and brought
+the two tests that caveat asked for: `test_migrations.py` now inserts rows
+under the old schema, upgrades, and checks what the backfill made of them --
+in both directions. Before that, a migration was tested only by the schema it
+left behind, never by what it did to the rows.
 
 
 **No tests.** There were none, and no test dependency. There are now 81, run
