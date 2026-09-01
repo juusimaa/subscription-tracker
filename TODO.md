@@ -65,6 +65,20 @@ constrained schema for the import direction only, so export stays permissive and
 import does not. Low priority -- the file is the user's own data -- but worth
 knowing the asymmetry is there.
 
+Since the import UI landed (see the fix notes below) the *browser* does enforce
+those rules before sending, so the loose path is now only reachable by calling
+`POST /import` directly. That narrows the exposure and does not close it, and it
+introduces a second asymmetry worth naming: the design's copy for a bad file
+prints a status code ("422 -- nothing was imported"), and a file the browser
+rejected never reached the server, so there is no code to print. The UI says
+"Nothing was imported." without one. Tightening the import schema is what would
+let that message be literally true, and is the reason to do this item.
+
+Note the one field where import *is* now stricter than the schema:
+`crud.import_backup` trims `name`, because `_match_key` already trims to find
+the row and storing the untrimmed spelling would leave the account holding a
+name no sort or search agrees with.
+
 ## Supporting the spending dashboard design
 
 A second set of gaps, from reading the frontend handoff in
@@ -474,3 +488,49 @@ subtracted from every total (a real `monthly_total` of `-88.99` during the
 review); a cost above `Numeric(10, 2)` was a 500 from Postgres on commit; a
 blank or whitespace-only name was accepted. `SubscriptionName` and `Cost` in
 `schemas.py` now constrain both, on create and update alike.
+
+**Import and export, section 12.** The handoff's maintenance panel had nothing
+behind it on the frontend and two gaps on the backend. Both halves now exist:
+`GET /export?format=csv`, `POST /import?mode=merge|replace`, and the page-foot
+panel with its drop zone, paste box and summary dialog.
+
+The decisions worth keeping:
+
+- **Merge updates a matching name; it used to skip it.** Skipping made
+  re-importing an *edited* file do nothing at all -- which is the case this
+  whole surface exists for -- and it did so silently. Updating still leaves
+  re-importing an unchanged file a no-op, which is the property the skip was
+  really protecting; it just reports it as `unchanged` instead of pretending
+  there was a conflict. `subscriptions_skipped` is gone from `ImportResult` and
+  `subscriptions_updated`, `subscriptions_unchanged` and `subscriptions_removed`
+  replace it.
+- **Duplicates are paired off in order, not collapsed.** Two rows called
+  "Netflix" in one file are still both imported (D4), so the file's first one
+  updates the account's first one and a third with nothing left to match is
+  added. That is what keeps a file containing duplicates idempotent: it neither
+  multiplies the rows nor merges them into one.
+- **CSV goes out but does not come in.** The design requires the summary
+  dialog's diff to be computed before anything is written, so the browser has to
+  parse the file regardless; a second parser on the server would be a second
+  place for the two to disagree about what a row means. The cost is that a CSV
+  cannot be `curl`-ed into `POST /import` -- convert it or use the JSON.
+- **The CSV carries three columns the handoff does not list.**
+  `started_date`, `cancelled_date` and `paused_date` are appended after the six
+  pinned ones. Without them a CSV round trip rewrites when each subscription
+  started and stopped, and every past month in the spend summary with it. The
+  two things a CSV still cannot carry -- a category nothing is using, and the
+  `version` stamp -- are why JSON is the backup.
+- **`mode` and `replace` are reconciled the way `status` and `active` are.**
+  Both are accepted, agreeing is fine, disagreeing is a 422. Guessing which half
+  of that contradiction the caller meant empties an account on a coin flip.
+- **The import is diffed against the page, then confirmed, then written once.**
+  Nothing is optimistic and nothing is estimated: the Add / Update / Unchanged
+  counts in the dialog are the counts the server reports back, which is checked
+  end to end rather than assumed.
+
+One rough edge found while building and left alone, because it is the D1
+decision working as designed: hand-editing `status` in an exported *JSON* file
+is a 422 unless `active` is edited or deleted too, since export writes both and
+`resolve_status` refuses a contradiction. The CSV has no `active` column and the
+browser's parser drops it, so both of the paths a person actually uses are
+clear; only `curl` with a hand-edited JSON hits it.

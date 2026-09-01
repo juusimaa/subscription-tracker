@@ -14,12 +14,14 @@ import {
   createSubscription,
   deleteCategory,
   deleteSubscription,
+  exportBackup,
   getCategories,
   getMe,
   getSpend,
   getSubscriptions,
   getToken,
   getUpcoming,
+  importBackup,
   logout,
   onAuthExpired,
   renameCategory,
@@ -191,6 +193,12 @@ function App() {
       createCategory: (name) => perform(() => createCategory(name)),
       renameCategory: (id, name) => perform(() => renameCategory(id, name)),
       deleteCategory: (id) => perform(() => deleteCategory(id)),
+      // A batch write like any other, so it reloads the same way -- an import
+      // can change every figure on the page, and the category caches with
+      // them. Export goes out raw: it reads nothing this app is holding and
+      // writes nothing, so there is nothing to reload afterwards.
+      importBackup: (backup, mode) => perform(() => importBackup(backup, mode)),
+      exportBackup,
       refresh: () => { setStaleId(null); return load(); },
     }),
     [perform, load],

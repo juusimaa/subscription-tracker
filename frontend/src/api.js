@@ -42,7 +42,12 @@ export class ApiError extends Error {
   }
 }
 
-async function request(path, options = {}) {
+// The transport: one fetch, with the token attached and every way the server
+// can say no turned into an ApiError. Split out from request() because the
+// export download wants the response itself -- a .csv is not JSON, and
+// parsing it as JSON to hand it straight back to a Blob would be a detour
+// through a shape it does not have.
+async function send(path, options = {}) {
   const token = getToken();
   let res;
   try {
@@ -75,6 +80,11 @@ async function request(path, options = {}) {
       fieldErrors(body.detail),
     );
   }
+  return res;
+}
+
+async function request(path, options = {}) {
+  const res = await send(path, options);
   // DELETE returns 204 No Content, so there's no JSON body to parse.
   if (res.status === 204) return null;
   return res.json();
@@ -183,3 +193,23 @@ export const renameCategory = (id, name) =>
 // live uses the category, so this is normally the plain form.
 export const deleteCategory = (id, { detach = false } = {}) =>
   request(`/categories/${id}${detach ? "?detach=true" : ""}`, { method: "DELETE" });
+
+// --- Backup ---
+
+// The whole account as one file. JSON is re-serialized rather than passed
+// through: the server sends it compact, and this is a file people open in an
+// editor to build a test dataset with, where two-space indentation is the
+// difference between a readable diff and one long line. CSV is handed back
+// exactly as the server wrote it -- reformatting a CSV means re-quoting it,
+// and the server already did that correctly.
+export async function exportBackup(format = "json") {
+  const res = await send(`/export?format=${format}`);
+  const text = await res.text();
+  return format === "json" ? JSON.stringify(JSON.parse(text), null, 2) : text;
+}
+
+// One batch write, atomic on the server: if any part of it fails the account
+// is left exactly as it was. `mode` is merge or replace; the summary the user
+// confirmed was computed from this same parsed file (see backup.js).
+export const importBackup = (backup, mode = "merge") =>
+  request(`/import?mode=${mode}`, { method: "POST", body: JSON.stringify(backup) });

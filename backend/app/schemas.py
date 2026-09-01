@@ -4,6 +4,7 @@
 # these describe the API contract. Keeping them apart means, e.g., the client
 # is never allowed to set `id` on create, even though the DB model has one.
 
+import enum
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -423,15 +424,78 @@ class Backup(BaseModel):
     subscriptions: list[BackupSubscription] = []
 
 
+class BackupFormat(str, enum.Enum):
+    """What GET /export writes.
+
+    JSON is the backup: it carries the version, the timestamp and the
+    categories nothing is using yet, so a round trip through it reproduces the
+    account exactly. CSV is the interchange format -- a spreadsheet can open
+    it and a person can hand-edit it, which is most of why it exists -- and it
+    is lossy in two known ways, both recorded in app/backup_csv.py.
+    """
+
+    json = "json"
+    csv = "csv"
+
+
+class ImportMode(str, enum.Enum):
+    """How POST /import treats what is already in the account.
+
+    Named rather than a boolean because the two are not degrees of the same
+    thing: merge writes, replace deletes and then writes, and only one of them
+    can lose data. A caller has to say which it meant.
+    """
+
+    merge = "merge"
+    replace = "replace"
+
+
+def resolve_import_mode(mode: ImportMode | None, replace: bool | None) -> ImportMode:
+    """Reconciles ?mode= with the older ?replace= boolean.
+
+    The same shape as resolve_status, and for the same reason: `replace` is
+    what the route has accepted since importing existed, so it keeps working,
+    while `mode` is the spelling the design asks for. Sending both is fine
+    when they agree and a 422 when they do not -- picking a winner would mean
+    guessing which half of a contradiction the caller meant, and guessing
+    wrong here wipes an account.
+
+    Merge is the default because it is the one that cannot delete anything.
+    """
+    from_replace = None if replace is None else (ImportMode.replace if replace else ImportMode.merge)
+    if mode is None:
+        return from_replace or ImportMode.merge
+    if from_replace is not None and from_replace is not mode:
+        raise ValueError(
+            f"replace={replace} contradicts mode={mode.value}; send one or the other"
+        )
+    return mode
+
+
 class ImportResult(BaseModel):
     """What POST /import reports back: enough to tell at a glance whether the
-    file landed as expected, without having to re-fetch the whole list."""
+    file landed as expected, without having to re-fetch the whole list.
+
+    The four subscription counters partition the file plus, in replace mode,
+    what was there before -- so they add up to something a caller can check
+    rather than being four loosely related numbers.
+    """
 
     mode: str
+    # Rows in the file that had no counterpart in the account and were added.
     subscriptions_imported: int
-    # Merge mode only: rows skipped because a subscription of that name was
-    # already there. Always 0 after a replace, which starts from nothing.
-    subscriptions_skipped: int
+    # Merge mode only: rows whose name matched something already there and
+    # whose fields differed, so the stored row was brought in line with the
+    # file. Always 0 after a replace, which starts from an empty account.
+    subscriptions_updated: int
+    # Merge mode only: matched and already identical, so nothing was written.
+    # This is what makes importing the same file twice a visible no-op rather
+    # than an invisible one.
+    subscriptions_unchanged: int
+    # Replace mode only: rows deleted to make room for the file. Reported
+    # because it is the only number in here that describes a loss, and the
+    # caller should be able to see it without diffing before and after.
+    subscriptions_removed: int
     categories_imported: int
 
 

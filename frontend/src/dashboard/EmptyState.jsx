@@ -5,8 +5,9 @@
 import MonoTile from "../MonoTile";
 import { QUICK_ADD } from "../services";
 import AddForm from "./AddForm";
+import ImportExport from "./ImportExport";
 
-function EmptyState({ categories, onSubmit, prefill, onQuickAdd }) {
+function EmptyState({ categories, onSubmit, prefill, onQuickAdd, actions }) {
   return (
     <>
       <section className="empty-hero">
@@ -36,6 +37,16 @@ function EmptyState({ categories, onSubmit, prefill, onQuickAdd }) {
         {/* A tile pre-fills this form with the service's name and typical
             price; it does not save silently. */}
         <AddForm categories={categories} onSubmit={onSubmit} prefill={prefill} endAligned />
+
+        {/* Import is offered here too -- a list that already exists somewhere
+            is the fastest way out of an empty page. Export is not: there is
+            nothing yet to export. */}
+        <ImportExport
+          variant="entry"
+          subscriptions={[]}
+          categories={categories}
+          onImport={actions.importBackup}
+        />
       </section>
     </>
   );

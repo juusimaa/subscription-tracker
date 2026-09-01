@@ -363,7 +363,8 @@ screen, so `useState` is the right amount of machinery.
 
 The UI is the **spending dashboard** from the design handoff: a headline total
 for a selected period, a trend strip, four KPIs, spend by category, the charges
-coming up, and the full subscription list with inline editing. The split is
+coming up, the full subscription list with inline editing, and the import
+and export panel at the page foot. The split is
 [App.jsx](frontend/src/App.jsx) for the data and the error states,
 [dashboard/](frontend/src/dashboard/) for the view. That line is where the
 design's most demanding rule lives: **a failed fetch must never blank the
@@ -409,6 +410,13 @@ rendering the failure.
   for the empty state's one-tap tiles. Nothing about it is stored — the API has
   no home for a brand colour or a monogram — so adding a service is an edit to
   one file rather than a migration.
+- **[backup.js](frontend/src/backup.js) reads and diffs an import file** —
+  `.csv` and `.json` both become the body `POST /import` accepts, and the
+  summary dialog's Add / Update / Unchanged ledger is computed from the real
+  records on screen rather than estimated. Both halves are here rather than on
+  the server because the design requires the diff *before* anything is written;
+  a bad row is reported by name and row number, since editing that file is the
+  user's only repair path.
 - **[renewals.js](frontend/src/renewals.js) mirrors the backend's date
   arithmetic**, because `/subscriptions/upcoming` is anchored to today while
   the period picker reaches back to 2025 and forward to 2027. It is a mirror,
@@ -571,8 +579,8 @@ http://localhost:8000/docs (Swagger UI) and http://localhost:8000/redoc.
 | `POST` | `/categories` | Add an empty category. |
 | `PUT` | `/categories/{id}` | Rename, relabelling every subscription using the old name. |
 | `DELETE` | `/categories/{id}` | Delete; needs `reassign_to=<id>` or `detach=true` if still in use. |
-| `GET` | `/export` | The whole account as one JSON document. |
-| `POST` | `/import` | Restore such a document (`?replace=true` for a true restore). |
+| `GET` | `/export` | The whole account as one file — `?format=json` (the backup) or `?format=csv` (the spreadsheet version). |
+| `POST` | `/import` | Read such a document back — `?mode=merge` (the default) or `?mode=replace` for a true restore. |
 
 The two summary routes answer genuinely different questions, which is why they
 are separate endpoints rather than one with a flag: `monthly-total` counts only
@@ -654,33 +662,58 @@ same way.
 
 ## Backup and restore
 
-`GET /export` returns everything in the logged-in account as one JSON
-document — its subscriptions and its category list, including categories
-nothing uses yet:
+`GET /export` returns everything in the logged-in account as one file — its
+subscriptions and its category list, including categories nothing uses yet.
+Both formats carry a `Content-Disposition` filename, so `curl -OJ` lands a
+dated file on disk without naming it:
 
 ```
-curl localhost:8000/export -H "Authorization: Bearer $TOKEN" > backup.json
+curl -OJ localhost:8000/export -H "Authorization: Bearer $TOKEN"
+curl -OJ 'localhost:8000/export?format=csv' -H "Authorization: Bearer $TOKEN"
 ```
 
-`POST /import` reads that file back. It carries no ids, no email and no
-password hash, so a backup restores into a fresh account just as well as the
-one it came from:
+**JSON is the backup and CSV is the interchange format.** A JSON round trip
+reproduces the account exactly. A CSV is one row per subscription, which a
+spreadsheet opens and a person can hand-edit — and which has nowhere to keep a
+category nothing is using, or the file's `version` stamp. Its columns are
+`name,category,status,cycle,cost,next_renewal` (the order the design handoff
+pins) followed by `started_date,cancelled_date,paused_date`: without those
+three, re-importing an export would silently rewrite when each subscription
+started and stopped, and every past month in the spend summary with it.
+
+`POST /import` reads a file back. It takes JSON only — the frontend parses a
+dropped `.csv` into this shape itself, because it has to read the file anyway
+to show the summary before anything is written. The file carries no ids, no
+email and no password hash, so a backup restores into a fresh account just as
+well as the one it came from:
 
 ```
-curl -X POST localhost:8000/import -H "Authorization: Bearer $TOKEN" \
+curl -X POST 'localhost:8000/import?mode=merge' -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -d @backup.json
 ```
 
-By default the file is **merged**: a subscription whose name is already in the
-account is skipped, so importing the same file twice is harmless. Add
-`?replace=true` for a true restore — it deletes the account's existing
+`mode=merge` is the default because it is the one that cannot delete anything.
+A row whose name matches one already in the account (trimmed, case-insensitive)
+**updates** that subscription; a row with no counterpart is added. So importing
+the same file twice is a no-op, and importing an edited file does what it looks
+like it does — which is the whole workflow this exists for: export, edit the
+file, read it back. Two rows of the same name are paired off in order against
+two subscriptions of that name, because a user really can have two Netflix
+accounts.
+
+`mode=replace` is the true restore: it deletes the account's existing
 subscriptions and categories first, so the account ends up matching the file
 exactly. Either way the import is one transaction; a file that fails part way
 through leaves the account untouched. The response says what happened:
 
 ```
-{"mode":"merge","subscriptions_imported":12,"subscriptions_skipped":0,"categories_imported":3}
+{"mode":"merge","subscriptions_imported":1,"subscriptions_updated":1,
+ "subscriptions_unchanged":10,"subscriptions_removed":0,"categories_imported":1}
 ```
+
+`?replace=true` is still accepted as the older spelling of `mode`. Sending both
+is a 422 unless they agree — guessing which half of a contradiction the caller
+meant would empty an account on a coin flip.
 
 The file carries a `version` field. A file whose version this build doesn't
 read is refused with a 400 rather than imported on a guess.
@@ -693,7 +726,7 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-119 tests, no services required: `conftest.py` points the app at a throwaway
+143 tests, no services required: `conftest.py` points the app at a throwaway
 SQLite file, so a clean checkout can run the suite with nothing else started.
 To run the identical suite against real Postgres — the one place the two
 databases differ is `Numeric`, which comes back as a `Decimal` from Postgres
@@ -766,6 +799,7 @@ backend/
   tests/              # see Tests above
   app/
     main.py           # FastAPI app: routes, status codes, CORS, OpenAPI metadata
+    backup_csv.py     # the CSV side of GET /export (JSON is the real backup)
     auth.py           # bcrypt hashing, JWT mint/verify, get_current_user dependency
     schemas.py        # Pydantic: the API contract (validation + serialization)
     crud.py           # every database query, all scoped by user_id
@@ -782,6 +816,7 @@ frontend/
   src/
     App.jsx           # auth gate, data loading, and the page-level error states
     api.js            # the only module that talks to the backend
+    backup.js         # parses an import file and diffs it against the page
     Login.jsx         # register / log in; also the re-auth dialog
     modernist.css     # the design system's tokens and component classes
     dashboard.css     # layout for the dashboard, built from those tokens
@@ -791,7 +826,8 @@ frontend/
     icons.jsx         # the four Lucide glyphs the design uses
     MonoTile.jsx      # the 20px brand square
     dashboard/        # Hero, TrendStrip, KpiBand, CategoryBars, ComingUp,
-                      # TrialBanner, SubscriptionTable, AddForm, dialogs
+                      # TrialBanner, SubscriptionTable, AddForm, ImportExport,
+                      # dialogs
 docker-compose.yml    # db + backend + frontend for local dev
 .env.example          # every variable the stack reads
 .github/workflows/    # CI: build and push images to GHCR

@@ -5,14 +5,14 @@
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app import auth, crud, models, renewals, schemas
+from app import auth, backup_csv, crud, models, renewals, schemas
 from app.database import get_db
 
 # No Base.metadata.create_all() here any more. It used to run at import time
@@ -283,18 +283,49 @@ def delete_category(
 # fresh account, and handing one to someone gives away no credentials.
 
 
-@app.get("/export", response_model=schemas.Backup, tags=["Backup"])
+@app.get(
+    "/export",
+    response_model=schemas.Backup,
+    tags=["Backup"],
+    # The response_model above documents the JSON; this is the only way to
+    # tell /docs that the same route also answers text/csv, since a route has
+    # one response_model and CSV has no Pydantic shape to declare.
+    responses={
+        200: {
+            "content": {
+                "application/json": {},
+                "text/csv": {"schema": {"type": "string"}},
+            }
+        }
+    },
+)
 def export_data(
+    response: Response,
+    format: schemas.BackupFormat = Query(
+        default=schemas.BackupFormat.json,
+        description=(
+            "`json` is the backup and restores exactly; `csv` is the "
+            "spreadsheet-readable version and cannot carry unused categories "
+            "or the file's version stamp."
+        ),
+    ),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    """Everything in the calling user's account, as one JSON document.
+    """Everything in the calling user's account, as one file.
 
     Empty categories are listed in their own right rather than being inferred
     from the subscriptions, so a category set up in advance survives a backup
     and restore even while nothing is using it yet.
+
+    Both formats carry a Content-Disposition filename, so `curl -OJ` lands a
+    dated file on disk without anyone having to name it. Browsers fetch this
+    with an Authorization header rather than by navigating to it, so the
+    frontend builds its own download name from the same rule and never reads
+    the header -- it is here for the command line, which is where a test
+    dataset actually gets made.
     """
-    return schemas.Backup(
+    backup = schemas.Backup(
         version=schemas.BACKUP_VERSION,
         # Timezone-aware and in UTC: a bare local timestamp in a file that may
         # be restored anywhere is ambiguous by the time anyone reads it.
@@ -305,17 +336,37 @@ def export_data(
             for sub in crud.get_subscriptions(db, current_user.id)
         ],
     )
+    filename = f"subscriptions-{date.today().isoformat()}.{format.value}"
+    disposition = f'attachment; filename="{filename}"'
+    if format is schemas.BackupFormat.csv:
+        # Returned as a Response rather than through response_model, which
+        # only knows how to produce the JSON.
+        return Response(
+            content=backup_csv.to_csv(backup),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": disposition},
+        )
+    response.headers["Content-Disposition"] = disposition
+    return backup
 
 
 @app.post("/import", response_model=schemas.ImportResult, tags=["Backup"])
 def import_data(
     backup: schemas.Backup,
-    replace: bool = Query(
-        default=False,
+    mode: schemas.ImportMode | None = Query(
+        default=None,
         description=(
-            "Delete this account's existing subscriptions and categories first, "
-            "so the account ends up matching the file exactly. Off by default: "
-            "the file is merged into what is already there."
+            "`merge` (the default) adds what is missing and updates rows whose "
+            "name matches. `replace` deletes this account's subscriptions and "
+            "categories first, so the account ends up matching the file exactly."
+        ),
+    ),
+    replace: bool | None = Query(
+        default=None,
+        description=(
+            "The older spelling of the same choice: `true` means `mode=replace`. "
+            "Still accepted so callers written against it keep working; sending "
+            "both is a 422 unless they agree."
         ),
     ),
     db: Session = Depends(get_db),
@@ -323,14 +374,22 @@ def import_data(
 ):
     """Restores a file from GET /export into the calling user's account.
 
-    Merging is the default because it is the one that cannot lose data: a
-    subscription whose name is already in the account is skipped, so importing
-    the same file twice is harmless. `replace=true` is the true restore -- it
-    empties the account first, and is the only mode that can delete anything.
+    Merging is the default because it is the one that cannot delete anything.
+    A row whose name is already in the account updates that subscription and a
+    row with no counterpart is added, so importing the same file twice is
+    harmless and importing an *edited* file does what it looks like it does.
+    `replace` is the true restore -- it empties the account first.
 
     The import is one transaction. If any part of it fails, the account is
     left exactly as it was rather than half-restored.
     """
+    try:
+        resolved = schemas.resolve_import_mode(mode, replace)
+    except ValueError as exc:
+        # 422 rather than 400, matching how the same contradiction is answered
+        # when `status` and `active` disagree on a write: it is a malformed
+        # request, and the schemas raise it as one.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if backup.version not in schemas.SUPPORTED_BACKUP_VERSIONS:
         # Refusing beats guessing: a file from a version this build has never
         # seen may name its fields differently, and importing it on hope would
@@ -345,7 +404,9 @@ def import_data(
                 f"this API reads version(s) {readable}"
             ),
         )
-    return crud.import_backup(db, backup, current_user.id, replace=replace)
+    return crud.import_backup(
+        db, backup, current_user.id, replace=resolved is schemas.ImportMode.replace
+    )
 
 
 # --- Subscription routes ---

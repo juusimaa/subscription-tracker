@@ -866,3 +866,178 @@ body { text-wrap: pretty; }
 /* The dialog supplies its own padding and title, so the form does not need
    the full-page rhythm above it. */
 .dialog .login-form { margin-top: 20px; padding-top: 20px; }
+
+/* — import & export (section 12) —
+   The page foot. Deliberately the quietest thing on the page: no accent
+   fills and no primary button outside the confirm dialog, because it is
+   maintenance rather than anything to do with what the subscriptions cost. */
+
+.io-section {
+  padding: 42px 0 98px;
+  border-top: 2px solid var(--color-divider);
+}
+.io-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.io-col > h3 {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 17px;
+  line-height: 24px;
+  margin: 0;
+}
+.io-export { padding: 0 56px 0 0; border-right: 2px solid var(--color-divider); }
+.io-import { padding: 0 0 0 56px; }
+.io-body {
+  font-size: 15px;
+  line-height: 24px;
+  color: color-mix(in srgb, var(--color-text) 78%, transparent);
+  max-width: 46ch;
+  margin: 14px 0 0;
+}
+
+/* Bottom-aligned so the format control and the button sit on one baseline
+   however tall the label above the segmented control makes it. */
+.io-export-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+  margin-top: 28px;
+}
+.io-export-controls .field-label { margin-bottom: 6px; }
+.io-meta {
+  font-size: 13px;
+  line-height: 20px;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  margin: 14px 0 0;
+}
+
+.io-import .field-label { margin-top: 28px; }
+.io-import .seg { width: fit-content; }
+.io-hint {
+  font-size: 13px;
+  line-height: 20px;
+  color: color-mix(in srgb, var(--color-text) 65%, transparent);
+  margin: 12px 0 0;
+  max-width: 46ch;
+}
+
+.io-drop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+  margin-top: 24px;
+  padding: 24px;
+  background: var(--color-surface);
+  border: 2px solid var(--color-divider);
+}
+/* Tinted on drag-over, and the border stays square -- nothing in this system
+   has a rounded corner, least of all a state that lasts half a second. */
+.io-drop.dragging { background: var(--color-accent-100); }
+.io-drop-title { font-size: 15px; line-height: 22px; margin: 0; }
+.io-drop-note {
+  font-size: 13px;
+  line-height: 20px;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  margin: 4px 0 0;
+}
+
+.io-paste-toggle { margin-top: 14px; }
+.io-paste { display: grid; gap: 12px; justify-items: start; margin-top: 12px; }
+.io-paste textarea {
+  width: 100%;
+  font-size: 13px;
+  line-height: 20px;
+  /* Vertical only: a textarea widened past its column breaks the two-column
+     grid it sits in. */
+  resize: vertical;
+}
+
+/* The bad-import message (STATES.md). It lives here, under the controls that
+   produced it, rather than at the top of the page: the user's repair path is
+   the file, and the file is chosen from this box. */
+.io-error {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 0 12px;
+  align-items: center;
+  margin-top: 20px;
+  padding: 14px 16px;
+  background: var(--color-accent-100);
+}
+.io-error p {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--color-accent-900);
+  margin: 0;
+}
+
+/* The empty state's entry point: one line, one button, under the add form. */
+.io-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  margin-top: 42px;
+  padding-top: 24px;
+  border-top: 2px solid var(--color-divider);
+}
+.io-entry > p {
+  font-size: 15px;
+  line-height: 24px;
+  color: color-mix(in srgb, var(--color-text) 78%, transparent);
+  margin: 0;
+}
+.io-entry .io-error { grid-column: 1 / -1; }
+
+/* — the import summary dialog — */
+
+.dialog-import {
+  width: 560px;
+  max-width: calc(100vw - 64px);
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+}
+.ledger { margin-top: 28px; border-top: 2px solid var(--color-divider); }
+.ledger-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  gap: 0 20px;
+  align-items: baseline;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+.ledger-row .kind {
+  font-size: 13px;
+  line-height: 18px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent-700);
+}
+.ledger-row .detail { font-size: 15px; line-height: 22px; }
+.ledger-row .count {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 15px;
+  font-feature-settings: 'tnum' 1;
+}
+.import-warning {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 0 12px;
+  align-items: center;
+  margin-top: 20px;
+  padding: 14px 16px;
+  background: var(--color-accent-100);
+}
+.import-warning p {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--color-accent-900);
+  margin: 0;
+}
+/* Pushed to the far side, like the confirm dialog's destructive action: it is
+   a way back out, not the thing to press. */
+.dialog-actions .another { margin-left: auto; }

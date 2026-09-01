@@ -7,6 +7,7 @@
 # from the verified token, never one supplied by the client.
 
 from datetime import date
+from decimal import Decimal
 
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
@@ -404,6 +405,15 @@ def delete_subscription(db: Session, subscription_id: int, user_id: int) -> bool
 # --- Backup (export / import) ---
 
 
+def _match_key(name: str) -> str:
+    """What "the same subscription" means to an import: the name, trimmed and
+    lowercased. The design says so in as many words (README section 12), and
+    it is the only identity a backup file carries -- ids are deliberately left
+    out so a file can be restored into a different account.
+    """
+    return name.strip().lower()
+
+
 def delete_all_user_data(db: Session, user_id: int) -> None:
     """Wipes one user's subscriptions and categories, and nothing else -- the
     account itself stays. Used by a `replace` import, which has to clear the
@@ -421,35 +431,72 @@ def delete_all_user_data(db: Session, user_id: int) -> None:
     )
 
 
+def _same_stored_value(current, incoming) -> bool:
+    """Whether writing `incoming` over `current` would actually change the row.
+
+    Only the money needs help. SQLite hands a Numeric(10, 2) column back as a
+    float and Postgres as a Decimal, and `Decimal("9.99") == 9.99` is False --
+    the float is not exactly 9.99 -- so a plain comparison would report every
+    row on SQLite as changed and none on Postgres, which is the sort of
+    difference that only shows up in one leg of CI. Going through str() gives
+    both databases the same two-decimal Decimal to compare.
+    """
+    if isinstance(current, Decimal) or isinstance(incoming, Decimal):
+        return Decimal(str(current)) == Decimal(str(incoming))
+    return current == incoming
+
+
 def import_backup(
     db: Session, backup: schemas.Backup, user_id: int, replace: bool = False
 ) -> schemas.ImportResult:
     """Writes a backup file's contents into one user's account.
 
     `replace` empties the account first, so what comes back is exactly what is
-    in the file. Otherwise the file is merged in, and a subscription whose name
-    already exists (in any capitalisation) is skipped rather than added a
-    second time -- re-importing the same file twice should not leave two of
-    everything.
+    in the file. Otherwise the file is merged in: a row whose name is already
+    in the account (in any capitalisation, ignoring surrounding space) updates
+    that subscription, and a row with no counterpart is added.
 
-    Only names already in the account are treated as duplicates: two rows
-    called "Netflix" *within* the file are both imported, because a user really
-    can have two, and silently dropping one would lose data the file says
-    exists.
+    Merge updates rather than skips, which is a change from how this used to
+    behave. Skipping made re-importing an *edited* file do nothing at all --
+    the case this exists for, since editing an export and reading it back is
+    how a test dataset gets built -- and it did so silently. Updating still
+    leaves re-importing an unchanged file a no-op, which is the property the
+    skip was really protecting; it just reports it as `unchanged` instead of
+    pretending there was a conflict.
+
+    Two rows called "Netflix" in one file are still both imported, because a
+    user really can have two (see TODO.md D4). Matching is positional within a
+    name: the file's first Netflix updates the account's first, the second
+    updates the second, and a third with nothing left to match is added. That
+    is what keeps a file with duplicates idempotent -- re-importing it neither
+    multiplies the rows nor collapses them into one.
 
     The whole thing is one transaction. A file that fails part way through
     leaves the account exactly as it was, rather than half-restored.
     """
+    removed = 0
+    # Rows already in the account, grouped by name so a file row can claim
+    # one. A list per name rather than a single row: duplicates are legal, and
+    # popping from the front pairs them off in a stable order instead of
+    # letting one of them win arbitrarily.
+    existing_by_name: dict[str, list[models.Subscription]] = {}
     if replace:
-        delete_all_user_data(db, user_id)
-        existing_names: set[str] = set()
-    else:
-        existing_names = {
-            name.lower()
-            for (name,) in db.query(models.Subscription.name)
+        removed = (
+            db.query(models.Subscription)
             .filter(models.Subscription.user_id == user_id)
+            .count()
+        )
+        delete_all_user_data(db, user_id)
+    else:
+        for db_subscription in (
+            db.query(models.Subscription)
+            .filter(models.Subscription.user_id == user_id)
+            .order_by(models.Subscription.id)
             .all()
-        }
+        ):
+            existing_by_name.setdefault(_match_key(db_subscription.name), []).append(
+                db_subscription
+            )
 
     # Categories are resolved against this dict rather than through
     # ensure_category, which asks the database each time. The session is
@@ -488,28 +535,49 @@ def import_backup(
     for name in backup.categories:
         register_category(name)
 
-    imported = skipped = 0
+    imported = updated = unchanged = 0
     for subscription in backup.subscriptions:
-        if subscription.name.lower() in existing_names:
-            skipped += 1
+        fields = _columns(subscription.model_dump())
+        # Trimmed here rather than by the schema, which stays deliberately
+        # unconstrained so a file cannot fail validation on the way *out*
+        # (TODO.md item 6). Storing "  netflix  " verbatim when _match_key has
+        # already trimmed it to find the row would leave the account holding a
+        # name no search or sort agrees with.
+        fields["name"] = fields["name"].strip()
+        fields["category"] = register_category(fields.get("category"))
+        matches = existing_by_name.get(_match_key(subscription.name))
+        if matches:
+            db_subscription = matches.pop(0)
+            # Compared before anything is written, so "identical" means the
+            # stored row as it was, not as this loop just left it.
+            differs = any(
+                not _same_stored_value(getattr(db_subscription, column), value)
+                for column, value in fields.items()
+            )
+            for column, value in fields.items():
+                setattr(db_subscription, column, value)
+            if differs:
+                updated += 1
+            else:
+                unchanged += 1
             continue
-        db_subscription = models.Subscription(
-            **_columns(subscription.model_dump()), user_id=user_id
-        )
-        db_subscription.category = register_category(db_subscription.category)
-        # Deliberately no started_date default and no _sync_status_dates here,
-        # unlike create_subscription: a restore reproduces what the file says,
-        # including "start unknown". Stamping today's date on a subscription
-        # that has been running for years would quietly rewrite its history in
-        # the spend summary.
-        db.add(db_subscription)
+        db_subscription = models.Subscription(**fields, user_id=user_id)
         imported += 1
+        db.add(db_subscription)
 
+    # Deliberately no started_date default and no _sync_status_dates anywhere
+    # above, unlike create_subscription and update_subscription: a restore
+    # reproduces what the file says, including "start unknown". Stamping
+    # today's date on a subscription that has been running for years would
+    # quietly rewrite its history in the spend summary -- and stamping one on
+    # an *update* would do it to a row that already had the truth in it.
     db.commit()
 
     return schemas.ImportResult(
         mode="replace" if replace else "merge",
         subscriptions_imported=imported,
-        subscriptions_skipped=skipped,
+        subscriptions_updated=updated,
+        subscriptions_unchanged=unchanged,
+        subscriptions_removed=removed,
         categories_imported=categories_added,
     )

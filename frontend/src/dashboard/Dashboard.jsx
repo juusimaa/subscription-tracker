@@ -16,6 +16,7 @@ import ComingUp from "./ComingUp";
 import ConfirmDialog from "./ConfirmDialog";
 import EmptyState from "./EmptyState";
 import Hero from "./Hero";
+import ImportExport from "./ImportExport";
 import KpiBand from "./KpiBand";
 import SubscriptionTable from "./SubscriptionTable";
 import TrendStrip from "./TrendStrip";
@@ -197,6 +198,7 @@ function Dashboard({
           onSubmit={actions.create}
           prefill={prefill}
           onQuickAdd={quickAdd}
+          actions={actions}
         />
       </div>
     );
@@ -272,6 +274,15 @@ function Dashboard({
             prefill={prefill}
           />
         </section>
+
+        {/* Last on the page and quiet, because it is maintenance rather than
+            anything to do with what the subscriptions cost. */}
+        <ImportExport
+          subscriptions={subscriptions}
+          categories={categories}
+          onImport={actions.importBackup}
+          onExport={actions.exportBackup}
+        />
       </div>
 
       {catPanelOpen && (
