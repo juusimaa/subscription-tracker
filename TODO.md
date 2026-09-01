@@ -4,6 +4,10 @@ Gaps found in a review of the backend on 2026-08-31, in roughly the order they
 are worth doing. Five items from that review are already fixed and are
 recorded at the bottom for context, since the notes here refer back to them.
 
+Items D1-D7 came later and from somewhere else -- reading the spending dashboard
+design handoff against the API on 2026-09-01 -- so they carry their own
+numbering and their own priority order.
+
 ## 1. Account management
 
 `/register`, `/token` and `/me` are the entire account surface. Missing:
@@ -63,6 +67,147 @@ already stored (see the fix notes below). A tighter import wants a separate
 constrained schema for the import direction only, so export stays permissive and
 import does not. Low priority -- the file is the user's own data -- but worth
 knowing the asymmetry is there.
+
+## Supporting the spending dashboard design
+
+A second set of gaps, from reading the frontend handoff in
+`../design_handoff_spending_dashboard` (README.md, STATES.md, seed-data.json)
+against the current API on 2026-09-01. These are feature work rather than
+defects: the API is self-consistent, it just cannot answer some of what the
+design asks. Numbered separately because they do not slot into the priority
+order above -- D1 is worth doing before items 4-6 if the dashboard is being
+built, and D7 may never be worth doing at all.
+
+Worth recording first, so nobody re-investigates it: **sorting is already
+covered.** The design specifies all six columns sorted client-side with ties
+broken on name (README §7, *Interactions*), `GET /subscriptions` returns the
+whole unpaginated list, and `crud.get_subscriptions` already sorts by next
+renewal, then lowercased name, then id -- which is exactly the design's default
+sort and tie-break. No query parameters needed.
+
+### D1. Status is a boolean; the design has four states
+
+`models.Subscription` has `active: bool` plus `cancelled_date`. The design needs
+**Active / Trial / Paused / Cancelled**, and trial and paused are both "the row
+exists, it has a renewal date, and it counts toward no total" -- a state the
+current schema cannot express. `active=False` is the only non-active value, and
+`crud._sync_cancellation` stamps `cancelled_date` on it, which is wrong for a
+paused plan: it is not cancelled and its date should not be recorded as such.
+
+This is the largest item because it ripples outward. `_is_charged`,
+`_monthly_cost`, `/subscriptions/summary/monthly-total` and
+`/subscriptions/upcoming` all key off `active`, and each would need to exclude
+trial and paused rows. It needs an enum column and an Alembic revision, and the
+revision is the first one that touches rows rather than just schema -- which
+`test_migrations.py` does not cover, as the migration notes below say outright.
+
+One thing it does *not* need: a trial end date. The design uses the existing
+renewal date as the conversion date and relabels it "trial ends", so the status
+column carries the whole difference.
+
+### D2. `upcoming` cannot be asked about an arbitrary period
+
+`GET /subscriptions/upcoming` is anchored to today: `days` is 1-365 forward, and
+the window always starts now. The design's "Coming up" panel lists the charges in
+the *selected* period, and the period picker spans 2025-01 to 2027-12 -- so past
+months, and months further out than 365 days.
+
+The arithmetic already exists and is general: `renewals.occurrences_between`
+takes an arbitrary start and end. Only the route signature is today-shaped. A
+`from`/`to` pair (or `year`/`month`) alongside the existing `days` would do it,
+keeping `days` working for callers that want the "next 30 days" question.
+
+Note `days_until` stops making sense for a window in the past. It is there so the
+client does not have to redo date arithmetic or disagree with the server about
+what today is, which still holds -- it just goes negative, and the design does
+not display it for past periods anyway.
+
+### D3. No per-category breakdown for a period
+
+The "By category" section needs, per category and for the selected period: an
+amount, a share of the period total, and the names of the subscriptions in it.
+`/subscriptions/summary/spend` takes a `category` filter but returns no grouping,
+so producing that section today is one request per category.
+
+Computing it client-side from `GET /subscriptions` only works for the current
+month. It cannot reproduce the started/cancelled-aware arithmetic
+`_is_charged` and `_last_charged_month` do for past periods -- which is the whole
+reason that logic lives on the server. A grouped response on the existing route
+is the smaller change; a separate route is the cleaner one, since the current
+response shape (`year`, `total`, `months`) has no room for a second axis.
+
+### D4. Duplicate subscription names are accepted
+
+STATES.md specifies a `Duplicate (409)` state -- "You already track Netflix. Edit
+that subscription instead." -- with nothing behind it. There is no uniqueness on
+subscription name, so `POST /subscriptions` creates a second Netflix without
+complaint, and `PUT` will rename one row onto another's name.
+
+The concept already exists in `crud.import_backup`, which skips a row whose
+lowercased name is already in the account. Putting the same rule on the write
+path is mostly a matter of deciding whether it is a database constraint (and so
+subject to item 5's check-then-insert race) or an application check.
+
+Worth a moment's thought first: `import_backup` deliberately allows two rows
+called "Netflix" *within* one file, on the grounds that a user really can have
+two. That reasoning does not disappear because the row arrives over `POST`.
+
+### D5. Validation answers 422 where the design expects 400, with no field map
+
+The design renders validation errors at the field that caused them, and prints
+the status code in the user-visible copy ("400 -- the change wasn't saved").
+The API returns **422** for a non-positive cost, a blank name and the date
+ordering rule -- deliberately, and consistently between schema-level and
+crud-level rejection (see the fix notes below). Either the copy changes or the
+route maps to 400; the status is part of the contract now, so this is a decision
+rather than a bug.
+
+Separately, FastAPI's 422 body is `detail: [{loc, msg}, ...]`, and the frontend
+has to turn that into per-field messages like "Required -- pick a service or type
+a name." Nothing in the API names the field in a form a client can key on
+without parsing `loc`.
+
+There is also a genuine conflict of models hiding in here. The design validates
+**"Renewal date must be in the future."** This API does the opposite on purpose:
+`next_renewal_date` is an *anchor*, a date years in the past is valid and often
+correct, and the response rolls it forward to the renewal that is actually next.
+Adopting the design's rule would break that. Someone has to pick, and the anchor
+model is the one the rest of the system is built on.
+
+### D6. Category deletion counts cancelled plans; the design does not
+
+The design blocks deleting a category only while a **live** subscription uses it,
+and says so in the dialog: "Cancelled plans keep their category on record but
+don't block deletion." `crud.count_subscriptions_in_category` counts every row
+regardless of `active`, so a category used only by cancelled plans returns 409
+where the design shows Delete enabled.
+
+The dialog also wants two things `schemas.Category` cannot supply: a monthly
+total per category ("EUR 41.97/mo"), and a usage string that distinguishes "Only
+cancelled plans" from "Unused". `subscription_count` is a single all-inclusive
+number and cannot tell those apart. Note this interacts with D1 -- once trial and
+paused exist, "live" needs defining for both purposes.
+
+### D7. Presentation fields with no home, probably by design
+
+Recorded so the question is not reopened, not because they need doing:
+
+- **Brand tiles.** The design's record shape carries `mono`, `brandBg`,
+  `brandFg` and `monoSize`. Nothing stores them. A client-side lookup keyed on
+  name is the right call unless they should be per-subscription and editable, in
+  which case they are four nullable columns.
+- **Currency.** Everything in the design is in euros; `cost` is a bare
+  `Numeric(10, 2)` with no currency anywhere in the schema. Hardcoding EUR in the
+  frontend is fine and is what the design assumes, but it is an unstated
+  assumption rather than a decision anyone has made.
+- **Quick-add catalogue.** The empty state offers eight one-tap services, and
+  STATES.md notes the list "should come from a small curated catalogue, ranked by
+  popularity in the user's region". That is an endpoint if it is ever real; a
+  static frontend list is the honest v1.
+- **`POST /:id/archive` and `/:id/restore`**, which the handoff lists as
+  endpoints, are naming rather than a gap: `PUT /subscriptions/{id}` with
+  `active` already does both, and it already has PATCH semantics via
+  `exclude_unset=True`.
 
 ## Minor
 
