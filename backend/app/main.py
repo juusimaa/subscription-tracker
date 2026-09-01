@@ -2,6 +2,8 @@
 # Run directly with `uvicorn app.main:app --reload` (see backend/Dockerfile
 # and docker-compose.yml for how this gets started in containers).
 
+from calendar import monthrange
+from collections.abc import Iterator
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -515,10 +517,10 @@ def upcoming(
 
     Each renewal in the window is listed separately with the full amount due
     on the day, so a monthly plan appears three times in a 90-day window and a
-    yearly plan brings its whole year's cost to the one day it lands on. That
-    is deliberately not what /summary/spend does -- it spreads a yearly cost
-    across the twelve months it covers, because it answers what a period costs
-    rather than what is leaving the account this week.
+    yearly plan brings its whole year's cost to the one day it lands on --
+    which is how /summary/spend counts it too. The difference between the two
+    routes is the direction they look, not the arithmetic: this one lists
+    charges still to come, that one totals up charges already made.
 
     A trial appears **once**, on the day it converts, at a cost of 0. Both
     halves of that are deliberate. Once, because a trial converts one time and
@@ -646,77 +648,66 @@ def delete_subscription(
 def _monthly_cost(subscription: models.Subscription) -> Decimal:
     """One subscription's cost expressed per month. Yearly plans are spread
     across the 12 months they cover rather than landing entirely in their
-    renewal month, which is what makes monthly and yearly figures comparable."""
+    renewal month, which is what makes monthly and yearly figures comparable.
+
+    Only /summary/monthly-total wants this. /summary/spend counts each charge
+    in the month it was actually made (see _charge_dates), because it is
+    reporting money that moved rather than a rate."""
     if subscription.billing_cycle == models.BillingCycle.yearly:
         return subscription.cost / Decimal("12")
     return subscription.cost
 
 
-def _last_charged_month(
-    subscription: models.Subscription, stopped: date
-) -> tuple[int, int]:
-    """The last (year, month) a stopped subscription still cost money.
+def _charge_dates(
+    subscription: models.Subscription, start: date, end: date
+) -> Iterator[date]:
+    """Every day this subscription was actually billed between `start` and
+    `end`, both ends included.
 
-    Monthly plans stop at the end of the month they stopped in. Yearly plans
-    do not: the year has already been paid for, so stopping the day after
-    renewing still leaves eleven months of service that were bought and paid
-    for. Those run to the end of the paid term, which ends the day before
-    next_renewal_date -- the date the *next* payment would have been due.
+    This is the cash view: a yearly plan is billed once, on one day, for the
+    whole amount. It is not spread across the twelve months it covers -- the
+    money left the account in one month, and that is the month the summary
+    puts it in. (`_monthly_cost` still does the spreading for
+    /summary/monthly-total, which asks the different question of what is being
+    paid per month right now.)
 
-    That date is computed from the stop date (see
-    models.Subscription.next_renewal_date), so this is the real end of the
-    real term. It used to be whatever renewal date was stored when the row was
-    created, which for anything more than a year old was in the past -- and a
-    paid term that ends before the stop is not a term at all.
+    What sets the billing days:
 
-    The later of the two dates still wins, which matters at the boundary:
-    stopping exactly on a renewal date makes the derived date that same day,
-    so the month it stopped in would otherwise be dropped.
-
-    `stopped` is passed in rather than read off the subscription because a
-    pause and a cancellation are the same arithmetic on different columns, and
-    the caller has already resolved which one applies.
-    """
-    stopped_month = (stopped.year, stopped.month)
-    if subscription.billing_cycle != models.BillingCycle.yearly:
-        return stopped_month
-    paid_until = subscription.next_renewal_date - timedelta(days=1)
-    return max(stopped_month, (paid_until.year, paid_until.month))
-
-
-def _is_charged(subscription: models.Subscription, year: int, month: int) -> bool:
-    """Was this subscription costing money in the given month?
-
-    A trial never was: it is free until it converts, and converting is what
-    moves it off `trial`, so as long as it carries that status the answer is
-    no for every month including past ones. That is checked before the start
-    date, because it holds regardless of when the trial began.
-
-    Months before it started are never charged. After that, a subscription
-    that is still running counts for every month asked about, including months
-    still in the future -- that is what makes a full-year figure a projection.
-    A stopped one -- cancelled or paused -- counts up to _last_charged_month
-    and no further, which is what keeps a pause from retroactively erasing the
-    months the subscription really did bill in.
-
-    Rows that predate these columns are handled by assuming as little as
-    possible: no started_date means the start is unknown, so it is treated as
-    having always been running (how the summary behaved before the column
-    existed), while a stopped row with no stop date counts for nothing rather
-    than inventing spend that may never have happened.
+    - A trial has none. It is free until it converts, and converting is what
+      moves it off `trial`, so as long as it carries that status the answer is
+      "never billed" for past months as well as future ones.
+    - The schedule is anchored on `started_date` -- the day it began costing
+      money, which is the day of the first charge -- and repeats every
+      `cycle_months` from there. `renewal_anchor_date` is deliberately not the
+      anchor here: it is the *next* renewal the client last told us about, and
+      a plan added with a stale or defaulted one would otherwise have its
+      first year's charge land in the wrong month, or be missed entirely
+      because the schedule it implies begins before the subscription did.
+    - A row with no `started_date` -- only possible for one that predates the
+      column -- falls back to the renewal anchor, extended backwards through
+      it (see renewals.charges_between), which keeps such a row counting for
+      every month asked about as it did before the column existed.
+    - A stopped subscription -- cancelled or paused -- is billed up to and
+      including the day it stopped, and not after. A charge taken on the
+      stopping day itself still happened; the pause did not refund it. A
+      stopped row with no date to stop at counts for nothing rather than
+      inventing charges that may never have been made.
     """
     if subscription.status == models.SubscriptionStatus.trial:
-        return False
+        return iter(())
     if subscription.started_date is not None:
-        started = (subscription.started_date.year, subscription.started_date.month)
-        if (year, month) < started:
-            return False
-    if subscription.active:
-        return True
-    stopped = subscription.stopped_date
-    if stopped is None:
-        return False
-    return (year, month) <= _last_charged_month(subscription, stopped)
+        anchor = subscription.started_date
+        start = max(start, subscription.started_date)
+    else:
+        anchor = subscription.renewal_anchor_date
+    if not subscription.active:
+        stopped = subscription.stopped_date
+        if stopped is None:
+            return iter(())
+        end = min(end, stopped)
+    if start > end:
+        return iter(())
+    return renewals.charges_between(anchor, subscription.cycle_months, start, end)
 
 
 @app.get(
@@ -755,19 +746,25 @@ def spend(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    """What a period actually costs, stopped plans included up to the month
-    they stopped.
+    """What a period actually costs, stopped plans included up to the day they
+    stopped.
 
-    This is the historical/projected view, and it deliberately does not
-    filter by status of its own accord: a monthly subscription cancelled in
-    June contributed six months of cost to that year and is counted for
-    exactly those six, then zero. The same goes for one paused in June -- the
-    pause stops the spend, it does not undo it. A stopped yearly plan keeps
-    counting to the end of the term that was already paid for (see
-    _last_charged_month), a trial counts for nothing at all, and nothing
-    counts before a subscription's started_date. Compare with
-    /summary/monthly-total, which answers the different question of what is
-    being paid *now* and so ignores everything that is not billing.
+    Money is counted in the month it changed hands. A yearly plan is one
+    charge for the full amount in the month it renews in, not a twelfth of it
+    in each of twelve months: a EUR 149.99 plan taken out in October 2025 cost
+    exactly that much in 2025, and the summary says so rather than reporting
+    the three months' worth that an amortized figure would leave in the year.
+    Every billing day is derived from the subscription's own schedule -- see
+    _charge_dates, which is also where trials, unknown start dates and stopped
+    plans are decided.
+
+    This is the historical/projected view, and it deliberately does not filter
+    by status of its own accord: a monthly subscription cancelled in June was
+    billed six times that year and is counted for exactly those six, then
+    zero. The same goes for one paused in June -- the pause stops the spend,
+    it does not undo it. Compare with /summary/monthly-total, which answers
+    the different question of what is being paid *now*, normalized per month,
+    and so ignores everything that is not billing.
 
     The optional `status` filter narrows *which* subscriptions are totalled;
     it does not change any of the above for the ones that remain.
@@ -787,13 +784,17 @@ def spend(
     )
     months = [month] if month is not None else list(range(1, 13))
 
-    breakdown = []
-    for m in months:
-        total = sum(
-            (_monthly_cost(sub) for sub in subscriptions if _is_charged(sub, year, m)),
-            Decimal("0"),
-        )
-        breakdown.append({"month": m, "total": round(total, 2)})
+    # One pass per subscription over the whole window rather than a
+    # containment test per month: the billing days are generated from the
+    # schedule anyway, so the month each charge belongs to comes for free.
+    window_start = date(year, months[0], 1)
+    window_end = date(year, months[-1], monthrange(year, months[-1])[1])
+    charged = dict.fromkeys(months, Decimal("0"))
+    for sub in subscriptions:
+        for charge in _charge_dates(sub, window_start, window_end):
+            charged[charge.month] += sub.cost
+
+    breakdown = [{"month": m, "total": round(charged[m], 2)} for m in months]
 
     return {
         "year": year,

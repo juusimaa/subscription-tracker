@@ -76,10 +76,10 @@ function Dashboard({
   // than a client-side sum that is only right for the current month.
   //
   // Which categories appear is a wider question than "has an active plan":
-  // /summary/spend counts a paused or cancelled plan up to the month it
-  // stopped, and a yearly one to the end of the term already paid for, so a
-  // category can carry a real amount for the period with nothing active in
-  // it. Listing only active ones would print a figure with no rows behind it.
+  // /summary/spend counts a paused or cancelled plan up to the day it
+  // stopped, including a yearly charge taken before that day, so a category
+  // can carry a real amount for the period with nothing active in it. Listing
+  // only active ones would print a figure with no rows behind it.
   // The members line follows the same rule and lists everything still on the
   // books; a plan cancelled long ago can still be inside a past period's
   // figure without being named, which is the one place this under-reports.

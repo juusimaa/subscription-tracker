@@ -17,7 +17,7 @@ function Hero({ view, year, month, total, activeCount, categoryCount, ...periodP
           Across {activeCount} active subscription{activeCount === 1 ? "" : "s"} in {categoryCount}{" "}
           categor{categoryCount === 1 ? "y" : "ies"}.{" "}
           {monthly
-            ? "Yearly plans are shown at their monthly equivalent;"
+            ? "A yearly plan counts in full in the month it renews;"
             : "Monthly plans are shown at twelve times their charge;"}{" "}
           trials, paused and cancelled plans are excluded until they charge.
         </p>

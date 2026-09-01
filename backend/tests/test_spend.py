@@ -1,7 +1,12 @@
-# The spend arithmetic: _monthly_cost, _is_charged and _last_charged_month in
-# main.py. Easy to get wrong, easy to get wrong *again*, and wrong in a way
-# nobody notices -- a total that is quietly a few months short still looks
+# The spend arithmetic: _charge_dates in main.py, and _monthly_cost for the
+# other summary. Easy to get wrong, easy to get wrong *again*, and wrong in a
+# way nobody notices -- a total that is quietly a few months short still looks
 # like a total.
+#
+# /summary/spend counts money in the month it changed hands, so a yearly plan
+# is one charge for the full amount rather than a twelfth of it in each of
+# twelve months. Most of what is pinned down below is what that means at the
+# edges: a plan that starts or stops part way through the year.
 #
 # Every test here uses a year that is fully in the past, so none of them
 # depend on what today happens to be. A suite that starts failing in December
@@ -52,17 +57,62 @@ class TestCancelledMonthlyPlans:
         assert spend(client, auth, LAST_YEAR + 1)["total"] == 0.0
 
 
-class TestCancelledYearlyPlans:
-    def test_cancelled_the_day_after_renewing_still_counts_to_the_end_of_the_term(
-        self, client, auth
-    ):
-        """The year was already paid for on 1 March, so cancelling on the 2nd
-        does not refund the other eleven months.
+class TestYearlyPlansAreOneCharge:
+    def test_a_plan_started_in_october_costs_its_full_price_that_year(self, client, auth):
+        """The bug this was reported as. EUR 149.99 left the account on 20
+        October; the year it left in is the year it cost. Spreading it over
+        the twelve months it covers used to leave three of them -- EUR 37.50
+        -- in the year the money was actually spent."""
+        add_subscription(
+            client,
+            auth,
+            name="Yearly",
+            cost="149.99",
+            billing_cycle="yearly",
+            started_date=f"{LAST_YEAR}-10-20",
+            next_renewal_date=f"{LAST_YEAR + 1}-10-20",
+        )
+        summary = spend(client, auth, LAST_YEAR)
+        assert summary["total"] == 149.99
+        assert [m["total"] for m in summary["months"]] == [0.0] * 9 + [149.99, 0.0, 0.0]
 
-        The anchor here is three years stale, which is the case that used to
-        break: _last_charged_month read the stored date, found a paid term
-        that ended before the cancellation, and fell back to the cancellation
-        month -- counting three months of the year instead of twelve.
+    def test_a_stale_renewal_anchor_does_not_move_the_charge(self, client, auth):
+        """next_renewal_date is whatever the client last said, and the add
+        form defaults it to today -- which for a plan being back-dated to last
+        October is neither the renewal nor the start. The billing schedule
+        comes from started_date for exactly this reason."""
+        add_subscription(
+            client,
+            auth,
+            cost="149.99",
+            billing_cycle="yearly",
+            started_date=f"{LAST_YEAR}-10-20",
+            next_renewal_date=str(date.today()),
+        )
+        assert spend(client, auth, LAST_YEAR)["total"] == 149.99
+
+    def test_it_is_charged_again_a_year_later(self, client, auth):
+        add_subscription(
+            client,
+            auth,
+            cost="149.99",
+            billing_cycle="yearly",
+            started_date=f"{LAST_YEAR - 1}-10-20",
+            next_renewal_date=f"{LAST_YEAR}-10-20",
+        )
+        months = [m["total"] for m in spend(client, auth, LAST_YEAR)["months"]]
+        assert months == [0.0] * 9 + [149.99, 0.0, 0.0]
+
+
+class TestCancelledYearlyPlans:
+    def test_cancelled_the_day_after_renewing_keeps_the_whole_charge(self, client, auth):
+        """The year was paid for in one go on 1 March, so cancelling on the
+        2nd does not refund it -- and does not move it, either: it stays in
+        March, where the money actually left.
+
+        The anchor here is three years stale, which is the case that has
+        always been easiest to get wrong -- the stored date is in the past and
+        is not the term that was running when the cancellation happened.
         """
         add_subscription(
             client,
@@ -75,20 +125,18 @@ class TestCancelledYearlyPlans:
             active=False,
             cancelled_date=f"{LAST_YEAR}-03-02",
         )
-        # 120 a year is 10 a month, charged for every month of the year it was
-        # cancelled in...
-        assert [m["total"] for m in spend(client, auth, LAST_YEAR)["months"]] == [10.0] * 12
-        # ...and on into the following year until the term actually ends.
-        assert [m["total"] for m in spend(client, auth, LAST_YEAR + 1)["months"]] == [
-            10.0,
-            10.0,
-        ] + [0.0] * 10
+        assert [m["total"] for m in spend(client, auth, LAST_YEAR)["months"]] == [
+            0.0,
+            0.0,
+            120.0,
+        ] + [0.0] * 9
+        # Nothing further is ever billed: the next renewal never happened.
+        assert spend(client, auth, LAST_YEAR + 1)["total"] == 0.0
 
-    def test_cancelled_on_the_renewal_date_still_counts_that_month(self, client, auth):
-        """The boundary case _last_charged_month keeps its max() for: the
-        derived renewal is the cancellation day itself, so the paid term ends
-        the day before -- and the month of cancellation would drop out
-        entirely without it."""
+    def test_cancelled_on_the_renewal_date_still_counts_that_charge(self, client, auth):
+        """The boundary. The renewal fell on the day it was cancelled, so the
+        money went out before anyone stopped it -- `end` is inclusive of the
+        stop date for precisely this."""
         add_subscription(
             client,
             auth,
@@ -100,8 +148,8 @@ class TestCancelledYearlyPlans:
             cancelled_date=f"{LAST_YEAR}-06-01",
         )
         months = [m["total"] for m in spend(client, auth, LAST_YEAR)["months"]]
-        assert months[5] == 10.0, "June, the month it was cancelled in, must still count"
-        assert months[6] == 0.0, "July must not"
+        assert months[5] == 120.0, "June, the month it was cancelled in, was still charged"
+        assert months[6] == 0.0, "July was not"
 
 
 class TestRowsWithMissingDates:

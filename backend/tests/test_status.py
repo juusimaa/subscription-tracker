@@ -183,9 +183,10 @@ class TestWhatCountsTowardTotals:
         assert [m["total"] for m in summary["months"]] == [10.0] * 6 + [0.0] * 6
         assert summary["total"] == 60.0
 
-    def test_a_paused_yearly_plan_counts_to_the_end_of_the_paid_term(self, client, auth):
+    def test_a_paused_yearly_plan_keeps_the_year_it_had_already_paid_for(self, client, auth):
         """The year was already paid for; pausing in March does not refund it,
-        exactly as cancelling in March does not."""
+        exactly as cancelling in March does not. The whole charge sits in
+        March, the month it was actually taken."""
         add_subscription(
             client,
             auth,
@@ -196,7 +197,9 @@ class TestWhatCountsTowardTotals:
             status="paused",
             paused_date=f"{LAST_YEAR}-03-02",
         )
-        assert spend(client, auth, LAST_YEAR)["total"] == 100.0
+        summary = spend(client, auth, LAST_YEAR)
+        assert summary["total"] == 120.0
+        assert [m["total"] for m in summary["months"]] == [0.0, 0.0, 120.0] + [0.0] * 9
 
     def test_a_trial_counts_for_nothing_in_any_month(self, client, auth):
         """Free until it converts, and converting is what moves it off the
