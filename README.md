@@ -574,7 +574,7 @@ http://localhost:8000/docs (Swagger UI) and http://localhost:8000/redoc.
 | `PUT` | `/subscriptions/{id}` | Partial update — send only the fields that change. |
 | `DELETE` | `/subscriptions/{id}` | Delete one. |
 | `GET` | `/subscriptions/summary/monthly-total` | What is being paid *now*: active subscriptions normalised to a monthly figure, plus the yearly equivalent. |
-| `GET` | `/subscriptions/summary/spend` | What a period *cost*: month-by-month breakdown for a year, stopped plans included up to the month they stopped costing money. |
+| `GET` | `/subscriptions/summary/spend` | What a period *cost*: month-by-month breakdown for a year, each charge counted in the month it was taken, stopped plans included up to the day they stopped. |
 | `GET` | `/categories` | Categories with a count of the subscriptions using each. |
 | `POST` | `/categories` | Add an empty category. |
 | `PUT` | `/categories/{id}` | Rename, relabelling every subscription using the old name. |
@@ -584,15 +584,17 @@ http://localhost:8000/docs (Swagger UI) and http://localhost:8000/redoc.
 
 The two summary routes answer genuinely different questions, which is why they
 are separate endpoints rather than one with a flag: `monthly-total` counts only
-what is billing right now, while `spend` counts a stopped monthly plan for
-exactly the months it ran — and keeps counting a stopped *yearly* plan to the
-end of the term already paid for.
+what is billing right now, expressed as a rate, so a yearly plan is shown at a
+twelfth of its price. `spend` counts money that actually moved, in the month it
+moved: a yearly plan is one charge for its full price in the month it renews,
+and a plan cancelled or paused in June keeps every charge taken up to that day.
+A €149.99 yearly plan taken out in October 2025 therefore reads as €149.99 in
+2025, not the €37.50 an amortized figure would leave in the year.
 
-`upcoming` is a third question again, and the money in it is not the same money:
-the summaries spread a yearly plan across the twelve months it covers, while
-`upcoming` reports the whole year's cost on the single day it is actually taken.
-A monthly plan appears once per renewal, so it is listed three times in
-`?days=90`.
+`upcoming` is a third question again — the same arithmetic as `spend`, pointed
+forwards: it lists the charges still to come rather than totalling up the ones
+already made. A monthly plan appears once per renewal, so it is listed three
+times in `?days=90`.
 
 ### Subscription statuses
 
