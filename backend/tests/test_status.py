@@ -302,6 +302,64 @@ class TestTrialRenewalDates:
         assert get(client, auth, created["id"])["next_renewal_date"] >= str(TODAY)
 
 
+class TestStoppedRenewalDates:
+    """What `next_renewal_date` means once a plan has stopped.
+
+    Every plan here bills upfront, so a cancellation is never followed by
+    another charge. The date a stopped row reports is therefore not a charge
+    still to come but the day the term already paid for runs out -- and the
+    frontend labels it "access ends" on that understanding.
+    """
+
+    def test_a_cancelled_plan_reports_the_end_of_the_term_it_paid_for(self, client, auth):
+        created = add_subscription(
+            client,
+            auth,
+            started_date=f"{LAST_YEAR}-01-10",
+            next_renewal_date=f"{LAST_YEAR}-01-10",
+        )
+        put(client, auth, created["id"], status="cancelled", cancelled_date=f"{LAST_YEAR}-06-20")
+        # Paid on the 10th of June, so June the 10th bought cover to July the
+        # 10th and nothing is charged after that.
+        assert get(client, auth, created["id"])["next_renewal_date"] == f"{LAST_YEAR}-07-10"
+
+    def test_cancelling_on_a_renewal_day_still_gets_the_period_just_paid_for(self, client, auth):
+        """The regression this class is really about. Cancelling the moment
+        the money leaves the account used to report the term as running out
+        that same morning, because the day it stopped is itself a renewal day
+        -- but that day's charge was taken (the spend summary counts it) and
+        it bought another whole month."""
+        created = add_subscription(
+            client,
+            auth,
+            started_date=f"{LAST_YEAR}-01-10",
+            next_renewal_date=f"{LAST_YEAR}-01-10",
+        )
+        put(client, auth, created["id"], status="cancelled", cancelled_date=f"{LAST_YEAR}-06-10")
+        assert get(client, auth, created["id"])["next_renewal_date"] == f"{LAST_YEAR}-07-10"
+
+    def test_a_cancelled_yearly_plan_keeps_the_rest_of_the_year(self, client, auth):
+        created = add_subscription(
+            client,
+            auth,
+            billing_cycle="yearly",
+            started_date=f"{LAST_YEAR}-03-01",
+            next_renewal_date=f"{LAST_YEAR}-03-01",
+        )
+        put(client, auth, created["id"], status="cancelled", cancelled_date=f"{LAST_YEAR}-03-02")
+        assert get(client, auth, created["id"])["next_renewal_date"] == f"{LAST_YEAR + 1}-03-01"
+
+    def test_a_paused_plan_reports_when_it_would_charge_again(self, client, auth):
+        created = add_subscription(
+            client,
+            auth,
+            started_date=f"{LAST_YEAR}-01-10",
+            next_renewal_date=f"{LAST_YEAR}-01-10",
+        )
+        put(client, auth, created["id"], status="paused", paused_date=f"{LAST_YEAR}-06-20")
+        assert get(client, auth, created["id"])["next_renewal_date"] == f"{LAST_YEAR}-07-10"
+
+
 class TestFiltering:
     def setup_account(self, client, auth):
         for status in ("active", "trial", "paused", "cancelled"):

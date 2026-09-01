@@ -377,14 +377,28 @@ function SubscriptionTable({
                   {subscription.started_date ? longDate(subscription.started_date) : "—"}
                 </td>
                 <td className="tnum">
-                  <span>{longDate(subscription.next_renewal_date)}</span>
+                  {/* A cancelled plan is never charged again -- billing is
+                      upfront, so the date is when the term already paid for
+                      runs out, not a charge still to come. Without a
+                      cancellation date (a version 1 backup restores into
+                      exactly that) the server has nothing to measure from and
+                      rolls the anchor off today, which would show a renewal
+                      that is never going to happen; an em dash is the honest
+                      answer there. */}
+                  <span>
+                    {cancelled && !subscription.cancelled_date
+                      ? "—"
+                      : longDate(subscription.next_renewal_date)}
+                  </span>
                   <span className="sub-note">
                     {trial
                       ? "trial ends"
                       : subscription.status === "paused"
                         ? "resumes when unpaused"
                         : cancelled
-                          ? "last charge"
+                          ? subscription.cancelled_date
+                            ? "access ends"
+                            : ""
                           : ""}
                   </span>
                 </td>

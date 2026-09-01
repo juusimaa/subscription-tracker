@@ -643,7 +643,11 @@ Two consequences worth knowing:
 A cancelled subscription is measured from the day it was cancelled rather than
 from today, so it reports the renewal that *would* have come next — the day the
 term already paid for runs out, which is what lets `spend` count a cancelled
-yearly plan to the end of that term.
+yearly plan to the end of that term. It is never a charge still to come:
+billing is upfront, and cancelling stops it. Measurement starts the day *after*
+the plan stopped, because a charge taken on the stopping day itself was still
+taken — cancelling the moment the money leaves the account buys the whole
+period it just paid for, not nothing.
 
 ## Accounts
 

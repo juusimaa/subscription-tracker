@@ -4,7 +4,7 @@
 # the single source of truth for what the schema *means*.
 
 import enum
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import (
     Column,
@@ -203,5 +203,10 @@ class Subscription(Base):
         if self.status == SubscriptionStatus.trial:
             return self.renewal_anchor_date
         stopped = self.stopped_date
-        reference = stopped if stopped is not None else date.today()
+        # The day *after* it stopped, not the day itself. A charge taken on
+        # the stopping day still happened -- _charge_dates counts it -- and
+        # every plan here bills upfront, so that charge bought one more whole
+        # period. Measuring from the stopping day would return that day back
+        # and report the term as running out on the morning it was paid for.
+        reference = stopped + timedelta(days=1) if stopped is not None else date.today()
         return renewals.next_occurrence(self.renewal_anchor_date, self.cycle_months, reference)
