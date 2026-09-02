@@ -4,7 +4,8 @@ Gaps found in a review of the backend on 2026-08-31, in roughly the order they
 are worth doing. Six items from that review are already fixed and are
 recorded at the bottom for context, since the notes here refer back to them.
 Item 3 is the most recent of them, and the numbering of what is left is not
-closed up, for the same reason the D-items keep theirs.
+closed up, for the same reason the D-items keep theirs. Items 7 and 8 are
+fixed too, as of 2026-09-02, and are written up at the bottom with the rest.
 
 Items D1-D7 came later and from somewhere else -- reading the spending dashboard
 design handoff against the API on 2026-09-01 -- so they carry their own
@@ -78,196 +79,6 @@ Note the one field where import *is* now stricter than the schema:
 `crud.import_backup` trims `name`, because `_match_key` already trims to find
 the row and storing the untrimmed spelling would leave the account holding a
 name no sort or search agrees with.
-
-## 7. Archive old subscriptions
-
-User should be able to archive old subscriptions so that main view stays
-clean. 'Archived' is not a state like 'Active' or 'Cancelled'. It is just for
-UI but still needs to be stored within subscription item.
-
-**Independent of item 8, and much cheaper -- do it first.** Item 8 originally
-said this had to wait for it; that was on the assumption that archiving would
-otherwise leave two "Netflix" rows to hide separately, which is a grouping
-question in the UI rather than a dependency. Nothing here reads or writes a
-period, and none of the spend arithmetic changes.
-
-**Updated 2026-09-02 against the refreshed design handoff**
-(`../design_handoff_spending_dashboard`, re-read today -- it specifies the
-archive flow in far more detail than the 2026-09-01 read D1-D7 came from, and
-settles most of what was open below). One line from the first draft of this
-item was flatly wrong and is struck: archived items are **not** "accounted
-when calculating total cost" -- see the first bullet.
-
-- **Archiving only ever happens to a cancelled row, and an archived row keeps
-  `status: cancelled`.** This reverses the "orthogonal to `status`" call made
-  originally. The design's record shape says it directly -- "`archived` is a
-  flag, not a status: an archived record keeps `status: 'cancelled'`"
-  (README.md:391, and seed-data.json:294 agrees) -- and the UI never offers
-  the Archive action except on a cancelled row (README.md:154-156). The flow
-  is **Cancel -> Archive -> Delete**, each strictly after the one before
-  (README.md:317-321). Consequences:
-  - A nullable `archived_date` is still the right column (unchanged from the
-    original decision below), but it should only ever be set on a row whose
-    `status` is `cancelled` -- worth enforcing the same way a `status`/`active`
-    contradiction is already rejected with a 422 (D1), rather than trusting
-    the frontend never to send it on an active row.
-  - The original item's "accounted when calculating total cost" is now moot
-    rather than a design decision: only a cancelled row can ever be archived,
-    and a cancelled row already drops out of `monthly-total` and counts in
-    `/summary/spend` only for the months it actually billed (D1). Archiving
-    changes nothing about either total -- it is visibility only, which was
-    the actual intent, just misstated the first time around.
-- **"Restore is already taken" is resolved -- not by renaming, but by giving
-  the two actions different destinations.** *Reactivate* (on a cancelled row)
-  returns to Active with the renewal date unchanged, unrelated to archiving.
-  *Restore to list* (on an archived row) returns to Cancelled, not Active --
-  un-archiving and un-cancelling are separate steps, matching Cancel and
-  Archive being separate steps forward (README.md:204-223). No naming
-  decision left here; the design made one.
-- **`GET /subscriptions` keeps returning everything** -- unchanged from the
-  original call, and the design agrees: the live/cancelled/archived
-  breakdown shown in the export summary ("10 live, 2 cancelled, 2 archived",
-  README.md:251) is computed from the full list client-side, the same way
-  the existing `showCancelled` toggle already works. No new query parameter
-  needed.
-- **The backup file** still gets a version bump and a column after the three
-  date columns already appended (unchanged from the original decision). Worth
-  knowing the design's own CSV spec disagrees with itself here: README.md:298
-  adds an `archived` column to the six it names, but seed-data.json's
-  `exportFormat.csv` block only lists the original six and calls `archived` a
-  fourth *status* value in its notes -- which contradicts the README text a
-  few hundred lines earlier. Not a backend decision, just don't take
-  seed-data.json's CSV notes as authoritative over the README on this point.
-
-**Two decisions the refreshed design raises that are genuinely new, and are
-backend's to make -- flagging rather than deciding:**
-
-1. **Dedicated action routes, or keep the generic `PUT`?** The design's
-   data-fetching list asks for `POST /subscriptions/:id/cancel`,
-   `/reactivate`, `/archive`, `/unarchive`, alongside `PATCH
-   /subscriptions/:id` and the existing `DELETE` (README.md:376-378). Today,
-   cancelling and reactivating already go through the one generic `PUT
-   /subscriptions/{id}` with field updates, and D7 closed the archive/restore
-   version of this same question as "naming rather than a gap" -- on the
-   assumption `archived` was a free-standing boolean a plain `PUT` could set.
-   That assumption no longer holds: archiving now carries a real invariant
-   (must already be cancelled) that a dedicated route can enforce in one
-   place, where a generic `PUT` would have to re-derive it from whatever
-   combination of `status` and `archived_date` the request happens to send --
-   the same shape of problem D1 solved for `status`/`active` by rejecting
-   contradictions rather than guessing. Worth deciding before this is built,
-   since it reopens D7 rather than just extending it.
-2. **`PATCH` vs `PUT`.** The design asks for `PATCH /subscriptions/:id`; the
-   route is `PUT` today and already behaves like a partial update
-   (`exclude_unset=True`, per D7). Same shape as D5's 422-vs-400 question -- a
-   contract decision, not a bug -- and much lower stakes than #1.
-
-Migration is one nullable column and no row migration.
-
-## 8. One subscription, several runs -- link the rows, do not nest them
-
-A subscription can be taken out, cancelled, and taken out again. Netflix runs
-1.4.2025-1.4.2026, is cancelled, and is subscribed to again from 1.8.2026.
-There is only one Netflix, and the app should say so: one entry in the list,
-one history, and a **Restore** action on a cancelled row that starts a new run
-rather than making the user retype the whole thing. The new run's start date
-defaults to the day it was restored, and is editable.
-
-**The shape this takes is a link between rows, not a list of periods inside
-one row.** The first draft of this item asked for the second -- each
-subscription owning a list of start/end times, one period belonging to one
-subscription -- and that is the more obvious modelling of the sentence. It is
-the wrong one here, for a reason that only shows up when you ask what else
-would have to move into the period.
-
-### Why not a periods table
-
-Three columns are per-*run*, not per-subscription, and the item only named one
-of them:
-
-- **`cost`.** The gap between two runs is exactly when a price changes. Today,
-  re-subscribing produces a second row with its own cost, so `/summary/spend`
-  totals 2025 at the old price and 2026 at the new one -- correct, and free.
-  Collapse the runs into one row with one `cost` column and every past month
-  is retroactively recomputed at today's price. That is a *regression* in the
-  historical numbers, bought in exchange for a tidier list.
-- **`billing_cycle`.** Coming back on a yearly plan having left a monthly one
-  is ordinary. `_charge_dates` reads `cycle_months` off the row.
-- **`renewal_anchor_date`.** A plan restarted on 2.8.2026 bills on the 2nd,
-  not on the 15th it billed on before. One anchor cannot describe both
-  schedules, and everything derived -- `next_renewal_date`, `/upcoming`,
-  `_charge_dates` -- reads it.
-
-So a periods table is not "the dates move to a child row". It is cost, cycle
-and anchor moving too -- which is to say the child row becomes the
-subscription, and the parent becomes a name with a category attached. That is
-a rewrite of the spend arithmetic, the backup format, the legacy-field
-reconciliation and the frontend's mirror of the renewal walk, and it lands on
-top of two reconciliation layers (`status`/`active`, `mode`/`replace`) rather
-than replacing either.
-
-### What to do instead
-
-Keep one row per run -- which is what already exists -- and add a link saying
-which rows are the same service.
-
-- **A nullable group id on `subscriptions`.** NULL means a group of one, so
-  every existing row is already correct and there is no row migration.
-- **Restore creates a new row in the group.** It copies name, category, cost
-  and cycle from the row being restored, sets `started_date` and the renewal
-  anchor to today (editable, per the original item), and leaves the old row
-  cancelled with its dates intact.
-- **Nothing in the arithmetic changes.** `_charge_dates`, `/summary/spend`, `/summary/monthly-total` and `/upcoming` all keep working
-  on rows and are correct across a gap for free, because each run really does
-  carry its own cost, cycle, anchor and start/stop dates.
-- **D4 already settled the premise.** Two rows may legitimately share a name,
-  so several Netflix rows are not an anomaly this has to work around -- they
-  are the documented normal case, and this only adds the fact that these
-  particular ones are the same service.
-
-What is given up, and it is worth being explicit about it: editing "the
-subscription" edits *one run*, and a per-service total needs a group-by
-wherever it is displayed. Both are frontend work. The trade is that the data
-stays true.
-
-### Open decisions
-
-- **Where the group id points.** A self-referencing FK to `subscriptions.id`
-  (the first row of the lineage) needs no new table, but deleting that row
-  scatters the group -- `ON DELETE SET NULL` breaks the link and a plain
-  delete would orphan it. A one-column `subscription_groups` table (id,
-  user_id) costs a table and makes deleting any single run harmless, which is
-  an ordinary thing to do. **Recommend the table.**
-- **The backup cannot carry the id.** A file deliberately holds no ids so it
-  can be restored into a different account (see the note above
-  `schemas.Backup`), and a group id is exactly the kind of account-local
-  integer that rule exists to keep out. Group membership therefore has to
-  travel as something file-local -- an ordinal or a label per group, remapped
-  to real ids on import. This is the one place the design is not free, and it
-  needs deciding before the version bump. Merge mode has a second question
-  behind it: name matching is per row and positional within a name
-  (`import_backup`), so two runs of Netflix pair off correctly, but nothing
-  currently makes them land in the same group afterwards.
-- **A `POST /subscriptions/{id}/restore` route, or a plain POST from the
-  client.** The copy-and-default-to-today rule should live in one place, and
-  the client already has to do a second call to set the group either way.
-  Leaning towards the route.
-- **Whether the group has a name of its own.** It does not need one: the
-  newest run's name is the current name, which is the right answer when a
-  service is renamed. Recorded so it is not reopened.
-
-### Sequencing
-
-Do **D2 and D3 first.** `frontend/src/renewals.js` re-implements the renewal
-walk in the browser only because `/upcoming` cannot be asked about an
-arbitrary period, and it already documents a drift of up to three days at
-month ends because it receives the derived `next_renewal_date` rather than the
-anchor. Any change to how runs are stored has to be made in that file too, in
-a form it cannot fully reconstruct. Finishing D2 and D3 lets it be deleted
-instead, so this gets implemented once rather than twice.
-
-Item 7 is independent of all of this and is a fraction of the work; it does
-not need to wait.
 
 ## Supporting the spending dashboard design
 
@@ -370,10 +181,12 @@ Recorded so the question is not reopened, not because they need doing:
   STATES.md notes the list "should come from a small curated catalogue, ranked by
   popularity in the user's region". That is an endpoint if it is ever real; a
   static frontend list is the honest v1.
-- **`POST /:id/archive` and `/:id/restore`**, which the handoff lists as
-  endpoints, are naming rather than a gap: `PUT /subscriptions/{id}` with
-  `active` already does both, and it already has PATCH semantics via
-  `exclude_unset=True`.
+
+(The `POST /:id/archive` and `/:id/restore` bullet that used to live here is
+gone rather than struck: item 7's 2026-09-02 refresh reopened the question --
+archiving turned out to carry a real invariant a generic `PUT` couldn't
+enforce in one place -- and both now exist as dedicated routes. See the fix
+notes at the bottom.)
 
 ## Minor
 
@@ -391,6 +204,94 @@ Recorded so the question is not reopened, not because they need doing:
   `lower(category)` is the fix if it ever does.
 
 ---
+
+## Fixed on 2026-09-02
+
+**7. Archive old subscriptions, and 8. One subscription, several runs.** Built
+together in one pass, since 8 was gated on decisions 7's refresh settled and
+the two turned out to share one migration -- one nullable column
+(`archived_date`) plus one new table (`subscription_groups`) and one nullable
+FK (`group_id`), no row migration for either.
+
+Archiving:
+
+- `archived_date` (models.py) is only ever set on a cancelled row, enforced by
+  `schemas.check_archived` -- called from `SubscriptionCreate._validate`
+  (sees the whole row) and re-checked on the *merged* row in
+  `crud.update_subscription`, the same shape as `check_dates`, because a
+  partial `PUT` can't be checked until it's merged with what's stored.
+- `POST /subscriptions/{id}/archive`, `/unarchive` and `/restore`
+  (main.py) resolve the two questions the refreshed item 7 flagged as
+  "backend's to make": dedicated routes over the generic `PUT`, decided this
+  build, because archiving's invariant (must already be cancelled) needs
+  enforcing in one place rather than re-derived from whatever a `PUT` happens
+  to send; `PATCH` vs `PUT` was the lower-stakes of the two and stayed `PUT`,
+  untouched.
+- **409, not 422**, for "can't do this from here" -- already cancelled to
+  archive, already archived to unarchive, already cancelled to restore.
+  Matches the existing precedent (`create_category`'s duplicate,
+  `update_category`'s name clash) for a well-formed request blocked by
+  current state, keeping 422 for malformed request data only.
+- **Reactivate un-archives as a side effect, but only when the request itself
+  didn't ask to archive.** `PUT {status: "active"}` on an archived row clears
+  `archived_date` along with it -- no separate unarchive call needed. The one
+  subtlety, in `crud.update_subscription`: this auto-clear is skipped when
+  `archived_date` is itself a field the request sent, so an explicit
+  `archived_date` that turns out to disagree with the row's resulting status
+  still hits `check_archived` as a 422, instead of being silently laundered
+  into a no-op by the same code that makes Reactivate convenient.
+- Backup version bumped to 3; `archived_date` appended to JSON and to the CSV
+  columns (after `paused_date`) -- round-trips exactly like `cancelled_date`
+  and `paused_date` already did.
+
+One subscription, several runs:
+
+- `subscription_groups` (id, user_id) -- the item's own recommendation over a
+  self-referencing FK, so deleting any one run never scatters the rest.
+- `POST /subscriptions/{id}/restore` (the route was "leaning towards" in the
+  item's open decisions; decided) copies name/category/cost/cycle onto a new
+  row, defaults `started_date` and the renewal anchor to today -- both
+  overridable in the request body, per "editable" in the original ask --
+  and links `group_id`: creating the group on the row's first restore if it
+  didn't have one yet, reusing it on every restore after. The row being
+  restored is left exactly as it was.
+- **The backup's "cannot carry the id" question was resolved by not solving
+  it.** `group_id` lives only on the response `Subscription` schema, never on
+  `SubscriptionBase`, so it is absent from both JSON and CSV. A restored file
+  always comes back as groups of one; nothing detects or reports the
+  difference, it is simply the file format's limit, unchanged from what the
+  item's own open-decisions list already said. The file-local ordinal/label
+  scheme it also raised was not built -- there was nothing to remap, since no
+  id ever leaves in the first place.
+- The item's sequencing note -- do D2 and D3 first so `frontend/src/renewals.js`
+  is not rewritten twice -- turned out not to bind here: nothing about how a
+  run is stored changed the renewal walk, only which rows exist, so this
+  shipped without waiting on either.
+- Whether the group has a name of its own: still no, as the item recorded --
+  the newest run's name is the current name.
+
+Frontend:
+
+- `SubscriptionTable.jsx`: a cancelled row now shows Reactivate / Restore, plus
+  either Archive or (once archived) Restore to list + Delete. Reactivate is
+  the old "Restore" button relabelled -- the design's naming resolution
+  (Reactivate vs Restore to list vs Restore) carried over word for word.
+- Archived rows stay hidden even with "Show cancelled" on. A second toggle,
+  "Show archived -- N", appears only once cancelled rows are shown, mirroring
+  the existing `showCancelled` pattern.
+- `RestoreDialog.jsx` (new): the two editable dates the item asked for
+  (start, renewal), both defaulting to today.
+
+Tests: `test_archive.py` and `test_restore.py` (new), plus the hardcoded
+backup-version assertions in `test_backup.py` and `test_status.py` updated for
+the bump to 3.
+
+Verified against the actual local Compose Postgres volume, not just the
+suite: `alembic upgrade head` ran 0002 -> 0003 against it, then the full
+flow was driven through a real browser against the running stack --
+cancel, archive (row disappears, "Show archived" reveals it), unarchive,
+restore (new linked row, old one untouched, totals recompute) -- with no
+console errors at any step.
 
 ## Fixed on 2026-09-01
 
