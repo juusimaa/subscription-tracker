@@ -85,47 +85,82 @@ User should be able to archive old subscriptions so that main view stays
 clean. 'Archived' is not a state like 'Active' or 'Cancelled'. It is just for
 UI but still needs to be stored within subscription item.
 
-Archived items are accounted when calculating total cost but they are just not
-visible. There should also be a possibility to view archived items and restore
-them.
-
 **Independent of item 8, and much cheaper -- do it first.** Item 8 originally
 said this had to wait for it; that was on the assumption that archiving would
 otherwise leave two "Netflix" rows to hide separately, which is a grouping
 question in the UI rather than a dependency. Nothing here reads or writes a
 period, and none of the spend arithmetic changes.
 
-The decisions this needs, all small:
+**Updated 2026-09-02 against the refreshed design handoff**
+(`../design_handoff_spending_dashboard`, re-read today -- it specifies the
+archive flow in far more detail than the 2026-09-01 read D1-D7 came from, and
+settles most of what was open below). One line from the first draft of this
+item was flatly wrong and is struck: archived items are **not** "accounted
+when calculating total cost" -- see the first bullet.
 
-- **A nullable `archived_date`, not an `archived` boolean.** One column either
-  way, and NULL already means "not archived"; a date also answers *when*,
-  which is what `cancelled_date` and `paused_date` are there for. The habit is
-  worth keeping.
-- **Orthogonal to `status`, deliberately.** Archiving is a view preference and
-  a status is a fact about billing, so nothing stops an `active` row being
-  archived -- and it stays in `monthly-total` if it is, because it is still
-  being charged. The UI only needs to *offer* the action on cancelled rows;
-  the column does not need to enforce that.
-- **`GET /subscriptions` keeps returning everything.** An `archived` filter
-  goes on alongside `status` and `active`, defaulting to None/unfiltered, the
-  same way those two do. Hiding by default would be a silent change to what
-  the route has always returned, and the frontend already hides cancelled rows
-  itself behind a `showCancelled` toggle (`SubscriptionTable.jsx`) -- the same
-  mechanism covers this with a second toggle and no contract change.
-- **Neither summary route filters on it.** "Accounted when calculating total
-  cost" is the whole point: `/summary/spend` counts what was billed and
-  `/summary/monthly-total` counts what bills now, and being hidden from a list
-  is not a fact about either.
-- **It reaches the backup file**, so the version goes up and a column joins
-  the CSV after the three date columns already appended there. A file that
-  does not carry it restores as not-archived, which is the honest reading.
-- **"Restore" is already taken.** `SubscriptionTable.jsx` puts a Restore
-  button on cancelled rows, and it means "start billing again" -- which item 8
-  turns into starting a new run. Un-archiving is a different action on a
-  different axis and needs a different word in the UI (*Unarchive*, or a
-  Show/Hide archived toggle with no per-row verb at all), or the two will be
-  confused in exactly the case where both are offered: an archived cancelled
-  row.
+- **Archiving only ever happens to a cancelled row, and an archived row keeps
+  `status: cancelled`.** This reverses the "orthogonal to `status`" call made
+  originally. The design's record shape says it directly -- "`archived` is a
+  flag, not a status: an archived record keeps `status: 'cancelled'`"
+  (README.md:391, and seed-data.json:294 agrees) -- and the UI never offers
+  the Archive action except on a cancelled row (README.md:154-156). The flow
+  is **Cancel -> Archive -> Delete**, each strictly after the one before
+  (README.md:317-321). Consequences:
+  - A nullable `archived_date` is still the right column (unchanged from the
+    original decision below), but it should only ever be set on a row whose
+    `status` is `cancelled` -- worth enforcing the same way a `status`/`active`
+    contradiction is already rejected with a 422 (D1), rather than trusting
+    the frontend never to send it on an active row.
+  - The original item's "accounted when calculating total cost" is now moot
+    rather than a design decision: only a cancelled row can ever be archived,
+    and a cancelled row already drops out of `monthly-total` and counts in
+    `/summary/spend` only for the months it actually billed (D1). Archiving
+    changes nothing about either total -- it is visibility only, which was
+    the actual intent, just misstated the first time around.
+- **"Restore is already taken" is resolved -- not by renaming, but by giving
+  the two actions different destinations.** *Reactivate* (on a cancelled row)
+  returns to Active with the renewal date unchanged, unrelated to archiving.
+  *Restore to list* (on an archived row) returns to Cancelled, not Active --
+  un-archiving and un-cancelling are separate steps, matching Cancel and
+  Archive being separate steps forward (README.md:204-223). No naming
+  decision left here; the design made one.
+- **`GET /subscriptions` keeps returning everything** -- unchanged from the
+  original call, and the design agrees: the live/cancelled/archived
+  breakdown shown in the export summary ("10 live, 2 cancelled, 2 archived",
+  README.md:251) is computed from the full list client-side, the same way
+  the existing `showCancelled` toggle already works. No new query parameter
+  needed.
+- **The backup file** still gets a version bump and a column after the three
+  date columns already appended (unchanged from the original decision). Worth
+  knowing the design's own CSV spec disagrees with itself here: README.md:298
+  adds an `archived` column to the six it names, but seed-data.json's
+  `exportFormat.csv` block only lists the original six and calls `archived` a
+  fourth *status* value in its notes -- which contradicts the README text a
+  few hundred lines earlier. Not a backend decision, just don't take
+  seed-data.json's CSV notes as authoritative over the README on this point.
+
+**Two decisions the refreshed design raises that are genuinely new, and are
+backend's to make -- flagging rather than deciding:**
+
+1. **Dedicated action routes, or keep the generic `PUT`?** The design's
+   data-fetching list asks for `POST /subscriptions/:id/cancel`,
+   `/reactivate`, `/archive`, `/unarchive`, alongside `PATCH
+   /subscriptions/:id` and the existing `DELETE` (README.md:376-378). Today,
+   cancelling and reactivating already go through the one generic `PUT
+   /subscriptions/{id}` with field updates, and D7 closed the archive/restore
+   version of this same question as "naming rather than a gap" -- on the
+   assumption `archived` was a free-standing boolean a plain `PUT` could set.
+   That assumption no longer holds: archiving now carries a real invariant
+   (must already be cancelled) that a dedicated route can enforce in one
+   place, where a generic `PUT` would have to re-derive it from whatever
+   combination of `status` and `archived_date` the request happens to send --
+   the same shape of problem D1 solved for `status`/`active` by rejecting
+   contradictions rather than guessing. Worth deciding before this is built,
+   since it reopens D7 rather than just extending it.
+2. **`PATCH` vs `PUT`.** The design asks for `PATCH /subscriptions/:id`; the
+   route is `PUT` today and already behaves like a partial update
+   (`exclude_unset=True`, per D7). Same shape as D5's 422-vs-400 question -- a
+   contract decision, not a bug -- and much lower stakes than #1.
 
 Migration is one nullable column and no row migration.
 
