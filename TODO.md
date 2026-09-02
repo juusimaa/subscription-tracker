@@ -79,6 +79,161 @@ Note the one field where import *is* now stricter than the schema:
 the row and storing the untrimmed spelling would leave the account holding a
 name no sort or search agrees with.
 
+## 7. Archive old subscriptions
+
+User should be able to archive old subscriptions so that main view stays
+clean. 'Archived' is not a state like 'Active' or 'Cancelled'. It is just for
+UI but still needs to be stored within subscription item.
+
+Archived items are accounted when calculating total cost but they are just not
+visible. There should also be a possibility to view archived items and restore
+them.
+
+**Independent of item 8, and much cheaper -- do it first.** Item 8 originally
+said this had to wait for it; that was on the assumption that archiving would
+otherwise leave two "Netflix" rows to hide separately, which is a grouping
+question in the UI rather than a dependency. Nothing here reads or writes a
+period, and none of the spend arithmetic changes.
+
+The decisions this needs, all small:
+
+- **A nullable `archived_date`, not an `archived` boolean.** One column either
+  way, and NULL already means "not archived"; a date also answers *when*,
+  which is what `cancelled_date` and `paused_date` are there for. The habit is
+  worth keeping.
+- **Orthogonal to `status`, deliberately.** Archiving is a view preference and
+  a status is a fact about billing, so nothing stops an `active` row being
+  archived -- and it stays in `monthly-total` if it is, because it is still
+  being charged. The UI only needs to *offer* the action on cancelled rows;
+  the column does not need to enforce that.
+- **`GET /subscriptions` keeps returning everything.** An `archived` filter
+  goes on alongside `status` and `active`, defaulting to None/unfiltered, the
+  same way those two do. Hiding by default would be a silent change to what
+  the route has always returned, and the frontend already hides cancelled rows
+  itself behind a `showCancelled` toggle (`SubscriptionTable.jsx`) -- the same
+  mechanism covers this with a second toggle and no contract change.
+- **Neither summary route filters on it.** "Accounted when calculating total
+  cost" is the whole point: `/summary/spend` counts what was billed and
+  `/summary/monthly-total` counts what bills now, and being hidden from a list
+  is not a fact about either.
+- **It reaches the backup file**, so the version goes up and a column joins
+  the CSV after the three date columns already appended there. A file that
+  does not carry it restores as not-archived, which is the honest reading.
+- **"Restore" is already taken.** `SubscriptionTable.jsx` puts a Restore
+  button on cancelled rows, and it means "start billing again" -- which item 8
+  turns into starting a new run. Un-archiving is a different action on a
+  different axis and needs a different word in the UI (*Unarchive*, or a
+  Show/Hide archived toggle with no per-row verb at all), or the two will be
+  confused in exactly the case where both are offered: an archived cancelled
+  row.
+
+Migration is one nullable column and no row migration.
+
+## 8. One subscription, several runs -- link the rows, do not nest them
+
+A subscription can be taken out, cancelled, and taken out again. Netflix runs
+1.4.2025-1.4.2026, is cancelled, and is subscribed to again from 1.8.2026.
+There is only one Netflix, and the app should say so: one entry in the list,
+one history, and a **Restore** action on a cancelled row that starts a new run
+rather than making the user retype the whole thing. The new run's start date
+defaults to the day it was restored, and is editable.
+
+**The shape this takes is a link between rows, not a list of periods inside
+one row.** The first draft of this item asked for the second -- each
+subscription owning a list of start/end times, one period belonging to one
+subscription -- and that is the more obvious modelling of the sentence. It is
+the wrong one here, for a reason that only shows up when you ask what else
+would have to move into the period.
+
+### Why not a periods table
+
+Three columns are per-*run*, not per-subscription, and the item only named one
+of them:
+
+- **`cost`.** The gap between two runs is exactly when a price changes. Today,
+  re-subscribing produces a second row with its own cost, so `/summary/spend`
+  totals 2025 at the old price and 2026 at the new one -- correct, and free.
+  Collapse the runs into one row with one `cost` column and every past month
+  is retroactively recomputed at today's price. That is a *regression* in the
+  historical numbers, bought in exchange for a tidier list.
+- **`billing_cycle`.** Coming back on a yearly plan having left a monthly one
+  is ordinary. `_charge_dates` reads `cycle_months` off the row.
+- **`renewal_anchor_date`.** A plan restarted on 2.8.2026 bills on the 2nd,
+  not on the 15th it billed on before. One anchor cannot describe both
+  schedules, and everything derived -- `next_renewal_date`, `/upcoming`,
+  `_charge_dates` -- reads it.
+
+So a periods table is not "the dates move to a child row". It is cost, cycle
+and anchor moving too -- which is to say the child row becomes the
+subscription, and the parent becomes a name with a category attached. That is
+a rewrite of the spend arithmetic, the backup format, the legacy-field
+reconciliation and the frontend's mirror of the renewal walk, and it lands on
+top of two reconciliation layers (`status`/`active`, `mode`/`replace`) rather
+than replacing either.
+
+### What to do instead
+
+Keep one row per run -- which is what already exists -- and add a link saying
+which rows are the same service.
+
+- **A nullable group id on `subscriptions`.** NULL means a group of one, so
+  every existing row is already correct and there is no row migration.
+- **Restore creates a new row in the group.** It copies name, category, cost
+  and cycle from the row being restored, sets `started_date` and the renewal
+  anchor to today (editable, per the original item), and leaves the old row
+  cancelled with its dates intact.
+- **Nothing in the arithmetic changes.** `_charge_dates`, `/summary/spend`, `/summary/monthly-total` and `/upcoming` all keep working
+  on rows and are correct across a gap for free, because each run really does
+  carry its own cost, cycle, anchor and start/stop dates.
+- **D4 already settled the premise.** Two rows may legitimately share a name,
+  so several Netflix rows are not an anomaly this has to work around -- they
+  are the documented normal case, and this only adds the fact that these
+  particular ones are the same service.
+
+What is given up, and it is worth being explicit about it: editing "the
+subscription" edits *one run*, and a per-service total needs a group-by
+wherever it is displayed. Both are frontend work. The trade is that the data
+stays true.
+
+### Open decisions
+
+- **Where the group id points.** A self-referencing FK to `subscriptions.id`
+  (the first row of the lineage) needs no new table, but deleting that row
+  scatters the group -- `ON DELETE SET NULL` breaks the link and a plain
+  delete would orphan it. A one-column `subscription_groups` table (id,
+  user_id) costs a table and makes deleting any single run harmless, which is
+  an ordinary thing to do. **Recommend the table.**
+- **The backup cannot carry the id.** A file deliberately holds no ids so it
+  can be restored into a different account (see the note above
+  `schemas.Backup`), and a group id is exactly the kind of account-local
+  integer that rule exists to keep out. Group membership therefore has to
+  travel as something file-local -- an ordinal or a label per group, remapped
+  to real ids on import. This is the one place the design is not free, and it
+  needs deciding before the version bump. Merge mode has a second question
+  behind it: name matching is per row and positional within a name
+  (`import_backup`), so two runs of Netflix pair off correctly, but nothing
+  currently makes them land in the same group afterwards.
+- **A `POST /subscriptions/{id}/restore` route, or a plain POST from the
+  client.** The copy-and-default-to-today rule should live in one place, and
+  the client already has to do a second call to set the group either way.
+  Leaning towards the route.
+- **Whether the group has a name of its own.** It does not need one: the
+  newest run's name is the current name, which is the right answer when a
+  service is renamed. Recorded so it is not reopened.
+
+### Sequencing
+
+Do **D2 and D3 first.** `frontend/src/renewals.js` re-implements the renewal
+walk in the browser only because `/upcoming` cannot be asked about an
+arbitrary period, and it already documents a drift of up to three days at
+month ends because it receives the derived `next_renewal_date` rather than the
+anchor. Any change to how runs are stored has to be made in that file too, in
+a form it cannot fully reconstruct. Finishing D2 and D3 lets it be deleted
+instead, so this gets implemented once rather than twice.
+
+Item 7 is independent of all of this and is a fraction of the work; it does
+not need to wait.
+
 ## Supporting the spending dashboard design
 
 A second set of gaps, from reading the frontend handoff in
