@@ -635,6 +635,82 @@ def update_subscription(
     return db_subscription
 
 
+@app.post(
+    "/subscriptions/{subscription_id}/archive",
+    response_model=schemas.Subscription,
+    tags=["Subscriptions"],
+)
+def archive_subscription(
+    subscription_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Hides a cancelled subscription from the main view. Visibility only --
+    see models.Subscription.archived_date -- and only ever available on a
+    row that is already cancelled, matching the Cancel -> Archive -> Delete
+    flow the design specifies (TODO.md item 7)."""
+    db_subscription = crud.get_subscription(db, subscription_id, current_user.id)
+    if db_subscription is None:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    if db_subscription.status != models.SubscriptionStatus.cancelled:
+        raise HTTPException(
+            status_code=409, detail="Only a cancelled subscription can be archived"
+        )
+    if db_subscription.archived_date is not None:
+        raise HTTPException(status_code=409, detail="Subscription is already archived")
+    return crud.set_archived(db, db_subscription, True)
+
+
+@app.post(
+    "/subscriptions/{subscription_id}/unarchive",
+    response_model=schemas.Subscription,
+    tags=["Subscriptions"],
+)
+def unarchive_subscription(
+    subscription_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """"Restore to list": un-archives a row without un-cancelling it. It goes
+    back to being a visible cancelled row, not an active one -- un-archiving
+    and un-cancelling are separate steps here, matching Cancel and Archive
+    being separate steps forward (TODO.md item 7)."""
+    db_subscription = crud.get_subscription(db, subscription_id, current_user.id)
+    if db_subscription is None:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    if db_subscription.archived_date is None:
+        raise HTTPException(status_code=409, detail="Subscription is not archived")
+    return crud.set_archived(db, db_subscription, False)
+
+
+@app.post(
+    "/subscriptions/{subscription_id}/restore",
+    response_model=schemas.Subscription,
+    status_code=201,
+    tags=["Subscriptions"],
+)
+def restore_subscription(
+    subscription_id: int,
+    payload: schemas.SubscriptionRestore | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Starts a new run of a cancelled subscription: a new active row that
+    copies name/category/cost/cycle from this one, linked to it by a group so
+    the app can say "one Netflix" rather than two unrelated rows (TODO.md
+    item 8). started_date and the renewal anchor default to today and can be
+    overridden in the body. The row being restored is untouched -- it stays
+    cancelled, with its own history intact."""
+    db_subscription = crud.get_subscription(db, subscription_id, current_user.id)
+    if db_subscription is None:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    if db_subscription.status != models.SubscriptionStatus.cancelled:
+        raise HTTPException(
+            status_code=409, detail="Only a cancelled subscription can be restored"
+        )
+    return crud.restore_subscription(db, db_subscription, current_user.id, payload)
+
+
 @app.delete("/subscriptions/{subscription_id}", status_code=204, tags=["Subscriptions"])
 def delete_subscription(
     subscription_id: int,

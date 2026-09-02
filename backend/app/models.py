@@ -68,6 +68,23 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
 
 
+class SubscriptionGroup(Base):
+    """Links several `Subscription` rows that are really the same service
+    taken out more than once -- Netflix cancelled and later restored, say.
+
+    Deliberately just an id and an owner, with no name of its own: the
+    newest run's name is the current name, which is the right answer when a
+    service is renamed between runs (see TODO.md item 8). A subscription
+    points at this table rather than at another subscription row, so
+    deleting any one run leaves the rest of the group intact.
+    """
+
+    __tablename__ = "subscription_groups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+
 class Category(Base):
     """A user's own list of categories, so they can be managed (added,
     renamed, deleted) as things in their own right rather than only existing
@@ -132,6 +149,26 @@ class Subscription(Base):
     # anything, retroactively erasing every month it really did bill -- the
     # bug _last_charged_month was written to prevent for cancellations.
     paused_date = Column(Date, nullable=True)
+    # When this row was archived -- visibility only, never arithmetic. Only
+    # ever set while status is cancelled (schemas.check_archived enforces it
+    # on every write), and crud.update_subscription clears it as a side
+    # effect of a status change that moves the row off cancelled, so
+    # "archived but not cancelled" can never be a stored state reached
+    # through a normal edit.
+    archived_date = Column(Date, nullable=True)
+    # Which SubscriptionGroup this run belongs to, if any. NULL means a group
+    # of one -- every row that predates grouping, and every row that has
+    # never been restored -- so this needed no backfill when it was added.
+    # Named explicitly (unlike the other foreign keys here) because SQLite's
+    # batch-mode ALTER, used to add this column in migration 0003, requires a
+    # named constraint to rebuild the table; the migration names it the same
+    # way so the two describe one schema, not two.
+    group_id = Column(
+        Integer,
+        ForeignKey("subscription_groups.id", name="fk_subscriptions_group_id_subscription_groups"),
+        nullable=True,
+        index=True,
+    )
     # The owner of this row. nullable=False so a subscription can never end up
     # orphaned and visible to everyone; indexed because every single query in
     # crud.py filters on it.

@@ -44,6 +44,22 @@ def check_dates(
             raise ValueError(f"{field} cannot be earlier than started_date")
 
 
+def check_archived(status: SubscriptionStatus, archived_date: date | None) -> None:
+    """`archived` is a flag, not a status: an archived record keeps
+    `status: cancelled` (TODO.md item 7). A row that is archived but not
+    cancelled would mean something no UI action can produce and no reader
+    can interpret, so it is rejected the same way a `status`/`active`
+    contradiction is.
+
+    Like check_dates, this only catches what one request can see whole.
+    SubscriptionUpdate is a partial update and cannot know the stored status,
+    so the merged-row re-check in crud.update_subscription is what actually
+    enforces this for PUT.
+    """
+    if archived_date is not None and status != SubscriptionStatus.cancelled:
+        raise ValueError("archived_date can only be set on a cancelled subscription")
+
+
 def resolve_status(
     status: SubscriptionStatus | None, active: bool | None
 ) -> SubscriptionStatus | None:
@@ -128,6 +144,11 @@ class SubscriptionBase(BaseModel):
     # `paused`; what the spend summary reads to know which months a paused
     # subscription really did bill in.
     paused_date: date | None = None
+    # Visibility only -- never read by any total. Normally set and cleared by
+    # POST .../archive and .../unarchive; settable here too, the same way
+    # cancelled_date is, so a restored backup can carry it. Only valid on a
+    # cancelled row (see check_archived).
+    archived_date: date | None = None
 
 
 class SubscriptionCreate(SubscriptionBase):
@@ -157,6 +178,7 @@ class SubscriptionCreate(SubscriptionBase):
         # It still is not the last word: crud.create_subscription fills in a
         # missing started_date afterwards and re-checks what it ends up with.
         check_dates(self.started_date, self.cancelled_date, self.paused_date)
+        check_archived(self.status, self.archived_date)
         return self
 
 
@@ -178,6 +200,7 @@ class SubscriptionUpdate(BaseModel):
     active: bool | None = None
     cancelled_date: date | None = None
     paused_date: date | None = None
+    archived_date: date | None = None
 
     @model_validator(mode="after")
     def _validate(self):
@@ -185,6 +208,9 @@ class SubscriptionUpdate(BaseModel):
         # back would mark the field as set, and exclude_unset is what stops a
         # partial update from overwriting everything it did not mention.
         resolve_status(self.status, self.active)
+        # check_archived is deliberately not called here -- a partial update
+        # carrying only archived_date can't be checked against a status it
+        # never mentioned. crud.update_subscription re-checks the merged row.
         # Only catches a request that sets both dates at once. A partial update
         # cannot be checked against the stored row from here, which is exactly
         # why crud.update_subscription checks the merged row as well -- sending
@@ -206,6 +232,22 @@ class Subscription(SubscriptionBase):
     """
 
     id: int
+    # Which SubscriptionGroup this run belongs to, or None for a group of
+    # one. Read-only and deliberately absent from SubscriptionBase: a client
+    # never sets this directly, only POST .../restore does (see
+    # crud.restore_subscription). Also absent from the backup format -- see
+    # the note on BackupSubscription.
+    group_id: int | None = None
+
+
+class SubscriptionRestore(BaseModel):
+    """What POST /subscriptions/{id}/restore accepts. Both fields default to
+    today in crud.restore_subscription when omitted -- "starts today" is the
+    common case, and TODO.md item 8 asks for it to stay editable rather than
+    forcing a second call to move the date."""
+
+    started_date: date | None = None
+    next_renewal_date: date | None = None
 
 
 # --- Spend summaries ---
@@ -370,10 +412,10 @@ class Token(BaseModel):
 # nothing there.
 
 
-# Bumped to 2 when subscriptions gained a status. Version 1 files are still
-# read -- see SUPPORTED_BACKUP_VERSIONS -- so every backup taken before this
-# change restores exactly as it did.
-BACKUP_VERSION = 2
+# Bumped to 3 when subscriptions gained archived_date. Version 1 and 2 files
+# are still read -- see SUPPORTED_BACKUP_VERSIONS -- so every backup taken
+# before this change restores exactly as it did.
+BACKUP_VERSION = 3
 
 # What POST /import accepts. A version 1 file carries `active` and no
 # `status`, which BackupSubscription resolves the same way it resolves a
@@ -381,14 +423,23 @@ BACKUP_VERSION = 2
 # permission to try. This is the migration the `version` field was put there
 # to make possible: refusing a file this build genuinely cannot read stays the
 # behaviour for anything outside this set.
-SUPPORTED_BACKUP_VERSIONS = frozenset({1, 2})
+SUPPORTED_BACKUP_VERSIONS = frozenset({1, 2, 3})
 
 
 class BackupSubscription(SubscriptionBase):
     """One subscription as it appears in a backup file. Identical to what the
-    API returns, except the database-assigned id is left out.
+    API returns, except the database-assigned id -- and group_id -- are left
+    out.
 
-    Both fields are optional for the same reason they are on
+    group_id is account-local (see the note above schemas.Backup on why a
+    file carries no ids), and grouping several runs of one service is not
+    yet solved for the file format (TODO.md item 8 flags it as needing a
+    file-local ordinal or label, not an integer id). A restored backup
+    therefore always comes back as groups of one; nothing about that is
+    detected or reported, it is simply the information a file cannot carry
+    yet.
+
+    Both `status` and `active` are optional for the same reason they are on
     SubscriptionCreate: this schema reads version 1 files, which say `active`
     and have never heard of `status`. Export always writes both.
     """

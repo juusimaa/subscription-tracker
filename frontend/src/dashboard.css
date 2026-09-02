@@ -773,6 +773,13 @@ body { text-wrap: pretty; }
    pushed to the far side of the row so it is never the button under the cursor. */
 .dialog-actions .destructive { margin-left: auto; font-size: 13px; }
 
+.restore-dates {
+  display: flex;
+  gap: 16px;
+  margin: 20px 0 0;
+}
+.restore-dates .field { flex: 1; }
+
 .cat-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 130px 96px auto;

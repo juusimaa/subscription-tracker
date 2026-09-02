@@ -47,6 +47,7 @@ COLUMNS = [
     "started_date",
     "cancelled_date",
     "paused_date",
+    "archived_date",
 ]
 
 
@@ -86,6 +87,7 @@ def to_csv(backup: schemas.Backup) -> str:
                 _cell(subscription.started_date),
                 _cell(subscription.cancelled_date),
                 _cell(subscription.paused_date),
+                _cell(subscription.archived_date),
             ]
         )
     return buffer.getvalue()

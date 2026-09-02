@@ -18,6 +18,7 @@ import EmptyState from "./EmptyState";
 import Hero from "./Hero";
 import ImportExport from "./ImportExport";
 import KpiBand from "./KpiBand";
+import RestoreDialog from "./RestoreDialog";
 import SubscriptionTable from "./SubscriptionTable";
 import TrendStrip from "./TrendStrip";
 import TrialBanner from "./TrialBanner";
@@ -37,7 +38,10 @@ function Dashboard({
   const [sort, setSort] = useState({ key: "renewal", dir: "asc" });
   const [editingId, setEditingId] = useState(null);
   const [showCancelled, setShowCancelled] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [cancelTarget, setCancelTarget] = useState(null);
+  const [restoreTarget, setRestoreTarget] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [catPanelOpen, setCatPanelOpen] = useState(false);
   const [prefill, setPrefill] = useState(null);
 
@@ -254,11 +258,17 @@ function Dashboard({
           setSort={setSort}
           showCancelled={showCancelled}
           setShowCancelled={setShowCancelled}
+          showArchived={showArchived}
+          setShowArchived={setShowArchived}
           editingId={editingId}
           setEditingId={setEditingId}
           onSave={actions.update}
           onCancelPlan={setCancelTarget}
-          onRestore={(subscription) => actions.update(subscription.id, { status: "active" })}
+          onReactivate={(subscription) => actions.update(subscription.id, { status: "active" })}
+          onRestore={setRestoreTarget}
+          onArchive={(subscription) => actions.archive(subscription.id)}
+          onUnarchive={(subscription) => actions.unarchive(subscription.id)}
+          onDeleteArchived={setDeleteTarget}
           onAdd={focusAddForm}
           staleId={staleId}
           onRefreshStale={actions.refresh}
@@ -315,6 +325,32 @@ function Dashboard({
               await actions.remove(target.id).catch(() => {});
             },
           }}
+        />
+      )}
+
+      {restoreTarget && (
+        <RestoreDialog
+          subscription={restoreTarget}
+          onConfirm={async (payload) => {
+            const target = restoreTarget;
+            await actions.restore(target.id, payload).catch(() => {});
+            setRestoreTarget(null);
+          }}
+          onClose={() => setRestoreTarget(null)}
+        />
+      )}
+
+      {deleteTarget && (
+        <ConfirmDialog
+          title={`Delete ${deleteTarget.name} permanently?`}
+          body="This removes the archived record and its past charges for good. There is no undoing this from here."
+          confirmLabel="Delete permanently"
+          onConfirm={async () => {
+            const target = deleteTarget;
+            setDeleteTarget(null);
+            await actions.remove(target.id).catch(() => {});
+          }}
+          onClose={() => setDeleteTarget(null)}
         />
       )}
     </>

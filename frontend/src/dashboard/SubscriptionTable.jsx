@@ -59,11 +59,17 @@ function SubscriptionTable({
   setSort,
   showCancelled,
   setShowCancelled,
+  showArchived,
+  setShowArchived,
   editingId,
   setEditingId,
   onSave,
   onCancelPlan,
+  onReactivate,
   onRestore,
+  onArchive,
+  onUnarchive,
+  onDeleteArchived,
   onAdd,
   staleId,
   onRefreshStale,
@@ -96,9 +102,19 @@ function SubscriptionTable({
     setRowError(null);
   }
 
-  const cancelledCount = subscriptions.filter((s) => s.status === "cancelled").length;
+  // Archived is a flag on top of cancelled (TODO.md item 7), not a status of
+  // its own, so it gets its own count and its own toggle -- one that only
+  // matters, and only appears, once cancelled rows are visible at all.
+  const cancelledCount = subscriptions.filter(
+    (s) => s.status === "cancelled" && !s.archived_date,
+  ).length;
+  const archivedCount = subscriptions.filter((s) => s.archived_date).length;
   const visible = subscriptions
-    .filter((s) => showCancelled || s.status !== "cancelled")
+    .filter((s) => {
+      if (s.status !== "cancelled") return true;
+      if (s.archived_date) return showCancelled && showArchived;
+      return showCancelled;
+    })
     .slice()
     .sort((a, b) => {
       const direction = sort.dir === "desc" ? -1 : 1;
@@ -167,6 +183,15 @@ function SubscriptionTable({
       <div className="section-head">
         <span className="eyebrow">All subscriptions — {visible.length}</span>
         <span className="table-actions">
+          {showCancelled && archivedCount > 0 && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-small"
+              onClick={() => { setShowArchived(!showArchived); closeEditor(); }}
+            >
+              {showArchived ? "Hide archived" : `Show archived — ${archivedCount}`}
+            </button>
+          )}
           <button
             type="button"
             className="btn btn-ghost btn-small"
@@ -347,6 +372,7 @@ function SubscriptionTable({
             }
 
             const cancelled = subscription.status === "cancelled";
+            const archived = Boolean(subscription.archived_date);
             const trial = subscription.status === "trial";
             const status = STATUS[subscription.status];
             return (
@@ -358,7 +384,13 @@ function SubscriptionTable({
                   </span>
                 </td>
                 <td>{subscription.category}</td>
-                <td><span className={status.tag}>{status.label}</span></td>
+                <td>
+                  {/* Archived is a flag on top of cancelled, not a status of
+                      its own (TODO.md item 7), so it rides along as a second
+                      tag rather than replacing "Cancelled". */}
+                  <span className={status.tag}>{status.label}</span>
+                  {archived && <span className="tag tag-outline">Archived</span>}
+                </td>
                 <td className="tnum">
                   <span>{trial ? money(0) : money(subscription.cost)}</span>
                   <span className="sub-note">
@@ -404,9 +436,40 @@ function SubscriptionTable({
                 </td>
                 <td className="row-actions">
                   {cancelled ? (
-                    <button type="button" className="btn btn-ghost" onClick={() => onRestore(subscription)}>
-                      Restore
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => onReactivate(subscription)}
+                      >
+                        Reactivate
+                      </button>
+                      <button type="button" className="btn btn-ghost" onClick={() => onRestore(subscription)}>
+                        Restore
+                      </button>
+                      {archived ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => onUnarchive(subscription)}
+                          >
+                            Restore to list
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => onDeleteArchived(subscription)}
+                          >
+                            Delete
+                          </button>
+                        </>
+                      ) : (
+                        <button type="button" className="btn btn-ghost" onClick={() => onArchive(subscription)}>
+                          Archive
+                        </button>
+                      )}
+                    </>
                   ) : (
                     <>
                       <button type="button" className="btn btn-ghost" onClick={() => setEditingId(subscription.id)}>

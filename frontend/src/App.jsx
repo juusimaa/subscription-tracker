@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
+  archiveSubscription,
   createCategory,
   createSubscription,
   deleteCategory,
@@ -25,6 +26,8 @@ import {
   logout,
   onAuthExpired,
   renameCategory,
+  restoreSubscription,
+  unarchiveSubscription,
   updateSubscription,
 } from "./api";
 import Dashboard from "./dashboard/Dashboard";
@@ -190,6 +193,9 @@ function App() {
       create: (payload) => perform(() => createSubscription(payload)),
       update: (id, patch) => perform(() => updateSubscription(id, patch), id),
       remove: (id) => perform(() => deleteSubscription(id), id),
+      archive: (id) => perform(() => archiveSubscription(id), id),
+      unarchive: (id) => perform(() => unarchiveSubscription(id), id),
+      restore: (id, payload) => perform(() => restoreSubscription(id, payload), id),
       createCategory: (name) => perform(() => createCategory(name)),
       renameCategory: (id, name) => perform(() => renameCategory(id, name)),
       deleteCategory: (id) => perform(() => deleteCategory(id)),

@@ -41,6 +41,7 @@ class TestCsvExport:
             "started_date",
             "cancelled_date",
             "paused_date",
+            "archived_date",
         ]
 
     def test_a_row_says_what_the_json_says(self, client, auth):
@@ -95,6 +96,35 @@ class TestCsvExport:
 
     def test_an_unknown_format_is_refused_rather_than_guessed(self, client, auth):
         assert client.get("/export", headers=auth, params={"format": "xlsx"}).status_code == 422
+
+
+class TestArchivedAndGroupsInBackup:
+    def test_archived_date_round_trips_through_json(self, client, auth, other_auth):
+        sub = add_subscription(client, auth)
+        client.put(f"/subscriptions/{sub['id']}", json={"status": "cancelled"}, headers=auth)
+        client.post(f"/subscriptions/{sub['id']}/archive", headers=auth)
+
+        file = export(client, auth).json()
+        [json_row] = file["subscriptions"]
+        assert json_row["archived_date"] == str(TODAY)
+
+        # A fresh account, restored from that file, ends up archived too --
+        # the whole point of it being in the backup at all.
+        client.post("/import", json=file, headers=other_auth)
+        [restored] = client.get("/subscriptions", headers=other_auth).json()
+        assert restored["archived_date"] == str(TODAY)
+
+    def test_group_id_is_not_in_the_backup(self, client, auth):
+        sub = add_subscription(client, auth)
+        client.put(f"/subscriptions/{sub['id']}", json={"status": "cancelled"}, headers=auth)
+        client.post(f"/subscriptions/{sub['id']}/restore", headers=auth)
+
+        rows_out = export(client, auth).json()["subscriptions"]
+        assert all("group_id" not in row for row in rows_out)
+        # The live API still reports it, so the omission is the backup
+        # format's limit, not a dropped field everywhere.
+        live = client.get("/subscriptions", headers=auth).json()
+        assert any(row["group_id"] is not None for row in live)
 
 
 class TestImportMode:

@@ -11,6 +11,7 @@
 
 from datetime import date, timedelta
 
+from app import schemas
 from conftest import add_subscription
 
 TODAY = date.today()
@@ -452,7 +453,7 @@ class TestBackups:
         add_subscription(client, auth, name="Paused", status="paused")
 
         exported = client.get("/export", headers=auth).json()
-        assert exported["version"] == 2
+        assert exported["version"] == schemas.BACKUP_VERSION
 
         assert client.post("/import", json=exported, headers=other_auth).status_code == 200
         statuses = {

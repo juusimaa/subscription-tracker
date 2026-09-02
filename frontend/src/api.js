@@ -154,12 +154,25 @@ export const createSubscription = (data) =>
   request("/subscriptions", { method: "POST", body: JSON.stringify(data) });
 // PUT rather than PATCH, and that is all the difference is: the route already
 // has PATCH semantics via exclude_unset=True, so sending one field changes one
-// field. The design's POST /:id/archive and /:id/restore are this same call
-// with { status: "cancelled" } and { status: "active" } (TODO.md D7).
+// field. Cancelling and reactivating go through this same call, with
+// { status: "cancelled" } and { status: "active" }; archiving, unarchiving
+// and starting a new run each have their own dedicated route below, because
+// each carries an invariant the server enforces (TODO.md items 7 and 8).
 export const updateSubscription = (id, data) =>
   request(`/subscriptions/${id}`, { method: "PUT", body: JSON.stringify(data) });
 export const deleteSubscription = (id) =>
   request(`/subscriptions/${id}`, { method: "DELETE" });
+
+// Archive/unarchive are visibility only and only ever act on a cancelled row
+// (the server 409s otherwise); restore starts a brand new active run linked
+// to this one, so it's the one of the three that returns a different
+// subscription than the id it was called with.
+export const archiveSubscription = (id) =>
+  request(`/subscriptions/${id}/archive`, { method: "POST" });
+export const unarchiveSubscription = (id) =>
+  request(`/subscriptions/${id}/unarchive`, { method: "POST" });
+export const restoreSubscription = (id, payload) =>
+  request(`/subscriptions/${id}/restore`, { method: "POST", body: JSON.stringify(payload) });
 
 // What a period actually cost, month by month, with cancelled and paused
 // plans counted up to the month they stopped. This is the route behind the

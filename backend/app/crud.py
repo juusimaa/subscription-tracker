@@ -346,6 +346,7 @@ def create_subscription(
         db_subscription.cancelled_date,
         db_subscription.paused_date,
     )
+    schemas.check_archived(db_subscription.status, db_subscription.archived_date)
     db.add(db_subscription)
     db.commit()
     # refresh() reloads the row from Postgres so db_subscription.id (assigned
@@ -370,6 +371,16 @@ def update_subscription(
     if "category" in fields:
         db_subscription.category = ensure_category(db, db_subscription.category, user_id)
     _sync_status_dates(db_subscription)
+    # A status change that moves the row off cancelled un-archives it as a
+    # side effect -- this is what lets Reactivate work on an archived row
+    # with a plain `PUT {status: "active"}`, no separate unarchive call
+    # needed. Skipped when the request itself set archived_date: that is a
+    # client asking to archive a row that (after the rest of this update)
+    # turns out not to be cancelled, which is exactly what check_archived
+    # below is for -- silently clearing it here would launder that into a
+    # silent no-op instead of the 422 it should be.
+    if "archived_date" not in fields and db_subscription.status != models.SubscriptionStatus.cancelled:
+        db_subscription.archived_date = None
     # The merged row, not the request. SubscriptionUpdate can only compare the
     # fields one request happened to carry, so a PUT sending cancelled_date on
     # its own was checked against nothing and committed -- leaving a stored row
@@ -385,12 +396,67 @@ def update_subscription(
             db_subscription.cancelled_date,
             db_subscription.paused_date,
         )
+        schemas.check_archived(db_subscription.status, db_subscription.archived_date)
     except ValueError:
         db.rollback()
         raise
     db.commit()
     db.refresh(db_subscription)
     return db_subscription
+
+
+def set_archived(db: Session, db_subscription: models.Subscription, archived: bool) -> models.Subscription:
+    """Sets or clears archived_date. Whether this is currently allowed --
+    already cancelled to archive, already archived to unarchive -- is the
+    route's call, the same way a category name clash is checked in the route
+    rather than here; this function just does the write.
+    """
+    db_subscription.archived_date = date.today() if archived else None
+    db.commit()
+    db.refresh(db_subscription)
+    return db_subscription
+
+
+def restore_subscription(
+    db: Session,
+    db_subscription: models.Subscription,
+    user_id: int,
+    payload: schemas.SubscriptionRestore | None,
+) -> models.Subscription:
+    """Starts a new run of the same service: a fresh, active row copying
+    name/category/cost/cycle from `db_subscription`, linked to it by a
+    SubscriptionGroup. The old row is left exactly as it was -- still
+    cancelled, its own dates intact -- which is what keeps its history (what
+    it cost, when it stopped) correct in the spend summary (TODO.md item 8).
+    """
+    today = date.today()
+    started = (payload.started_date if payload else None) or today
+    anchor = (payload.next_renewal_date if payload else None) or today
+
+    if db_subscription.group_id is None:
+        # The old row has never been restored before, so it isn't in a group
+        # yet -- create one and link it in retroactively, alongside the new
+        # row below.
+        group = models.SubscriptionGroup(user_id=user_id)
+        db.add(group)
+        db.flush()  # assigns group.id without ending the transaction
+        db_subscription.group_id = group.id
+
+    new_subscription = models.Subscription(
+        name=db_subscription.name,
+        cost=db_subscription.cost,
+        billing_cycle=db_subscription.billing_cycle,
+        renewal_anchor_date=anchor,
+        started_date=started,
+        category=db_subscription.category,
+        status=models.SubscriptionStatus.active,
+        group_id=db_subscription.group_id,
+        user_id=user_id,
+    )
+    db.add(new_subscription)
+    db.commit()
+    db.refresh(new_subscription)
+    return new_subscription
 
 
 def delete_subscription(db: Session, subscription_id: int, user_id: int) -> bool:
