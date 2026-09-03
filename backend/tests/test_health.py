@@ -1,6 +1,8 @@
 # /health is the one route Docker calls, and the only one whose *failure* is
 # the interesting case: a healthcheck that cannot go red is decoration.
 
+import logging
+
 import pytest
 from sqlalchemy.exc import OperationalError
 
@@ -57,3 +59,19 @@ class TestHealth:
         assert "connection refused" not in body
         assert "postgresql" not in body
         assert "OperationalError" not in body
+
+    def test_the_failure_is_logged_for_whoever_reads_the_container_output(
+        self, client, unreachable_database, caplog
+    ):
+        # This is the case the comment in main.py calls out specifically: the
+        # route converts the SQLAlchemyError into a clean HTTPException, so it
+        # never reaches log_requests' except branch as an "unhandled"
+        # exception. Without the explicit request_logger.exception call in
+        # health() itself, the real cause would appear nowhere -- not in the
+        # response (deliberately), and not in any log either.
+        with caplog.at_level(logging.ERROR, logger="app.request"):
+            client.get("/health")
+        assert any(
+            record.levelname == "ERROR" and "database unreachable" in record.getMessage()
+            for record in caplog.records
+        )

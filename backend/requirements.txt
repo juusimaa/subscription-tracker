@@ -18,3 +18,7 @@ python-multipart==0.0.12
 # if Redis is unreachable, which is also what happens when running the test
 # suite without a Redis container up.
 redis==5.2.1
+# Rate limiting on /register and /token (see app/main.py). In-memory storage
+# by default -- fine for local Compose's single backend container, not for
+# multiple replicas behind a load balancer (a milestone 7 decision).
+slowapi==0.1.10

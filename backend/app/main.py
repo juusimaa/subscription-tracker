@@ -2,20 +2,29 @@
 # Run directly with `uvicorn app.main:app --reload` (see backend/Dockerfile
 # and docker-compose.yml for how this gets started in containers).
 
+import os
+import time
 from calendar import monthrange
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app import auth, backup_csv, cache, crud, models, renewals, schemas
 from app.database import get_db
+from app.logging_config import configure_logging, request_logger
+
+configure_logging()
 
 # No Base.metadata.create_all() here any more. It used to run at import time
 # and build any missing tables, which was enough only for as long as the
@@ -82,6 +91,62 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Rate limiting for /register and /token below -- nothing else throttled
+# login attempts before this, and bcrypt's cost factor was the only brake on
+# guessing a password (TODO.md item 2). Keyed on remote address: the two
+# routes it guards are unauthenticated, so there is no user id yet to key on.
+#
+# In-memory storage (slowapi's default) counts per process, which matches
+# local Compose's one backend container exactly. It stops being correct the
+# moment there is more than one backend replica behind a load balancer --
+# that's a milestone 7 decision (Redis, already in this stack, is slowapi's
+# other storage backend), not one to make now.
+#
+# RATE_LIMIT_ENABLED exists so the test suite can turn this off: dozens of
+# tests create a fresh account via the register() helper in conftest.py, and
+# a 5-per-minute budget shared across a whole pytest run would start
+# rejecting registrations partway through for reasons that have nothing to do
+# with what those tests are checking. See tests/test_rate_limit.py, which is
+# the one place this comes back on.
+RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() != "false"
+limiter = Limiter(key_func=get_remote_address, enabled=RATE_LIMIT_ENABLED)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """One structured line per request: method, path, status, duration.
+
+    Wraps call_next in a try/except rather than only logging the happy path,
+    so an exception that escapes every route and every FastAPI exception
+    handler -- the genuine "unhandled" case -- still leaves a line here
+    before uvicorn's default 500 response goes out, instead of being visible
+    only as whatever uvicorn prints to stderr.
+    """
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_ms = round((time.perf_counter() - start) * 1000, 1)
+        request_logger.exception(
+            "method=%s path=%s status=500 duration_ms=%s",
+            request.method,
+            request.url.path,
+            duration_ms,
+        )
+        raise
+    duration_ms = round((time.perf_counter() - start) * 1000, 1)
+    request_logger.info(
+        "method=%s path=%s status=%s duration_ms=%s",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
+    return response
+
 
 @app.get("/health", response_model=schemas.Health, tags=["Health"])
 def health(db: Session = Depends(get_db)):
@@ -106,10 +171,13 @@ def health(db: Session = Depends(get_db)):
         db.execute(text("SELECT 1"))
     except SQLAlchemyError as exc:
         # The exception text can carry the connection string, credentials and
-        # all, so it goes nowhere near the response body. Nothing logs it
-        # either yet (see TODO.md "No logging"), which is the reason it is
-        # chained rather than swallowed: `raise ... from exc` keeps the
-        # original in the traceback uvicorn prints.
+        # all, so it goes nowhere near the response body. request_logger.exception
+        # captures it -- traceback included -- in the application log instead,
+        # which is the only place it belongs; `raise ... from exc` also keeps
+        # it in what uvicorn prints. This route returning a clean 503 doesn't
+        # propagate as an "unhandled" exception (see log_requests above), so
+        # without this call the real cause would appear nowhere at all.
+        request_logger.exception("health check: database unreachable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Database unavailable",
@@ -121,22 +189,37 @@ def health(db: Session = Depends(get_db)):
 
 
 @app.post("/register", response_model=schemas.User, status_code=201, tags=["Auth"])
-def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def register(request: Request, user: schemas.UserCreate, db: Session = Depends(get_db)):
     """Create an account. Returns the new user without a token: the frontend
-    follows this immediately with a call to /token."""
+    follows this immediately with a call to /token.
+
+    Rate limited to 5/minute per remote address -- otherwise nothing stops
+    this from being scripted into a mass-registration or email-enumeration
+    tool (see /token's docstring for the enumeration angle on login itself).
+    """
     if crud.get_user_by_email(db, user.email):
         raise HTTPException(status_code=400, detail="Email already registered")
     return crud.create_user(db, user)
 
 
 @app.post("/token", response_model=schemas.Token, tags=["Auth"])
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def login(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
     """Exchange email + password for a JWT.
 
     OAuth2PasswordRequestForm reads a form-encoded body with fields named
     "username" and "password" -- that naming is fixed by the OAuth2 spec, so
     the email goes in "username". Following the spec is what lets the
     "Authorize" button on /docs log in against this endpoint.
+
+    Rate limited to 5/minute per remote address: bcrypt's cost factor is the
+    only other thing standing between this route and a password-guessing
+    script, and it isn't much of one on its own.
     """
     user = crud.get_user_by_email(db, form_data.username)
     # One combined check with one generic message: replying "no such user"

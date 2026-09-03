@@ -38,6 +38,13 @@ import pytest
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL") or "sqlite:///./test.db"
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ.setdefault("SECRET_KEY", "test-only-key-not-used-outside-the-suite")
+# /register and /token are rate limited (see app/main.py) at 5/minute per
+# remote address. TestClient's requests all share one fake address, and the
+# register() helper below runs on nearly every test in this suite -- left
+# enabled, the limiter would start rejecting registrations partway through a
+# full run for reasons that have nothing to do with what those tests check.
+# tests/test_rate_limit.py turns it back on for exactly the requests it needs.
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
 from fastapi.testclient import TestClient  # noqa: E402
 

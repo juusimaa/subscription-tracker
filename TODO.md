@@ -15,7 +15,9 @@ others is left alone, because the notes below refer to each other by it.
 
 Item 1 is partly fixed as of 2026-09-03 -- change password and delete account
 are done, written up at the bottom -- and kept at number 1 for what is left of
-it, the same reason the D-items keep theirs.
+it, the same reason the D-items keep theirs. Item 2 and the "No logging"
+Minor bullet are fixed too, as of the same day, and are written up at the
+bottom with the rest.
 
 ## 1. Account management
 
@@ -26,13 +28,6 @@ bottom). What's left:
 - **Password reset** and **email verification**, both noted as deliberately
   skipped in PLAN.md milestone 6. They need an email path, so they are a bigger
   step than the first two were.
-
-## 2. Rate limiting on `/token` and `/register`
-
-Nothing throttles login attempts. bcrypt's cost factor is the only brake on
-guessing a password, and registration is a wide-open endpoint. `slowapi` (a
-`limiter.limit("5/minute")` decorator) covers both, or the equivalent at
-whatever sits in front of the app once it is deployed.
 
 ## 4. CORS origin is hardcoded
 
@@ -194,8 +189,6 @@ notes at the bottom.)
 
 - **No pagination** on `GET /subscriptions`. Fine at personal scale; the route
   returns everything.
-- **No logging.** No request log beyond uvicorn's, and no structured logging, so
-  a 500 in production is only visible in container output.
 - **`cost` precision is silently truncated.** `10.999999` is accepted and stored
   as `11.00` by `Numeric(10, 2)`. Harmless, arguably surprising --
   `decimal_places=2` on the `Cost` type would turn it into a 422 instead, at the
@@ -261,6 +254,62 @@ confirmed for real (login after returns 401, both prompts guarded correctly)
 
 Still open: password reset and email verification, both needing an email path
 this build does not have. See item 1 above.
+
+**2. Rate limiting on `/register` and `/token`.** `slowapi` covers both at
+`5/minute`, keyed on remote address -- the two routes it guards are
+unauthenticated, so there is no user id yet to key on.
+
+- **In-memory storage, deliberately.** slowapi's default counts requests per
+  process, which is exactly right for local Compose's one backend container
+  and wrong for more than one replica behind a load balancer. Redis (already
+  in this stack, see the cache-aside layer) is slowapi's other storage
+  backend and is the fix, but it's a milestone 7 decision -- there is only
+  ever one backend process until then.
+- **`RATE_LIMIT_ENABLED` exists for the test suite, not for deployment.**
+  Nearly every test creates an account through the `register()` helper in
+  `conftest.py`; left on, a budget shared across a ~130-test run would start
+  rejecting registrations for reasons unrelated to what those tests check.
+  `conftest.py` sets it to `false` for the whole suite; `test_rate_limit.py`
+  is the one place that flips `limiter.enabled` back on, always inside a
+  `try/finally` that resets slowapi's counters afterward so a run stopped
+  mid-test (a failure, a `Ctrl-C`) can't leave the limiter enabled with stale
+  counts for whatever test happens to run next.
+- **The 6th attempt is refused with the *correct* password too**
+  (`test_token_is_throttled_after_five_attempts_per_minute`), which is the
+  test that actually proves this throttles by remote address rather than by
+  counting failures.
+
+**Minor: no logging.** `app/logging_config.py` configures Python's root
+logger once (`configure_logging()`, called at import time in `main.py`); a
+new `log_requests` ASGI middleware writes one `method=... path=... status=...
+duration_ms=...` line per request to the `app.request` logger. logfmt-style
+key=value rather than JSON -- grep-able straight out of `docker compose
+logs`, and still parseable if a real log aggregator sits downstream later.
+
+- **The health check's own gap is closed by name.** `/health`'s `except
+  SQLAlchemyError` block used to end in a comment saying nothing logs this
+  yet; it now calls `request_logger.exception(...)` before converting the
+  error into a clean 503. That call is necessary specifically *because* the
+  route handles its own exception -- a caught-and-converted error returns a
+  normal response as far as `log_requests` can see, so without an explicit
+  call here the one example TODO.md's "No logging" item opened with would
+  still go nowhere.
+- **A truly unhandled exception is logged too, once, then re-raised.**
+  `log_requests` wraps `call_next` in `try`/`except Exception`, logs
+  `status=500` with the traceback, and re-raises so FastAPI's own 500
+  handling is unchanged -- this only adds a log line, it never swallows or
+  changes a response.
+- **Level is `LOG_LEVEL` (default `INFO`), not hardcoded**, matching how
+  every other runtime setting here reads from the environment.
+
+Verified with the full suite on both databases (`test_health.py`'s new case
+and `test_logging.py` cover the two logging paths above; `test_rate_limit.py`
+covers the limiter, including that it stays off for everything else), then
+by hand against the running Compose stack: `docker compose logs backend -f`
+while clicking through the app shows one line per request, stopping Postgres
+and hitting `/health` logs the database error with its traceback, and `curl`
+in a loop against `/token` gets a 429 on the 6th attempt with the correct
+password already in hand.
 
 ---
 
