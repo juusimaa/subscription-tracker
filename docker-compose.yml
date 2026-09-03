@@ -73,6 +73,11 @@ services:
       # Same DNS trick, pointed at the redis service below. See app/cache.py
       # for what reads this and why the backend still starts fine without it.
       REDIS_URL: ${REDIS_URL}
+      # Origin(s) the browser is allowed to call this API from (comma-separated).
+      # Local dev's default in app/main.py already matches this value, so this
+      # line only starts pulling weight once a deployment sets CORS_ORIGINS in
+      # its own .env to something other than localhost:5173.
+      CORS_ORIGINS: ${CORS_ORIGINS}
       # Read from .env, which is gitignored -- the signing key is never
       # written into this file, into the image, or into git. In Azure this
       # same variable comes from a Container Apps secret instead.

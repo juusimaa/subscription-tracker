@@ -15,9 +15,9 @@ others is left alone, because the notes below refer to each other by it.
 
 Item 1 is partly fixed as of 2026-09-03 -- change password and delete account
 are done, written up at the bottom -- and kept at number 1 for what is left of
-it, the same reason the D-items keep theirs. Item 2 and the "No logging"
-Minor bullet are fixed too, as of the same day, and are written up at the
-bottom with the rest.
+it, the same reason the D-items keep theirs. Item 2, item 4 and the "No
+logging" Minor bullet are fixed too, as of the same day, and are written up
+at the bottom with the rest.
 
 ## 1. Account management
 
@@ -28,16 +28,6 @@ bottom). What's left:
 - **Password reset** and **email verification**, both noted as deliberately
   skipped in PLAN.md milestone 6. They need an email path, so they are a bigger
   step than the first two were.
-
-## 4. CORS origin is hardcoded
-
-`allow_origins=["http://localhost:5173"]` in `main.py`. Correct for local
-Compose, and wrong everywhere the app is actually deployed -- which is
-milestone 7, so this blocks that work. Read it from an env var with the current
-value as the default, the same way `DATABASE_URL` is handled.
-
-Note it pairs with the known frontend gap in PLAN.md milestone 5: `VITE_API_URL`
-is inlined at build time. Both sides of the origin problem want solving together.
 
 ## 5. Check-then-insert races return 500
 
@@ -278,6 +268,40 @@ unauthenticated, so there is no user id yet to key on.
   (`test_token_is_throttled_after_five_attempts_per_minute`), which is the
   test that actually proves this throttles by remote address rather than by
   counting failures.
+
+**4. CORS origin is hardcoded.** `allow_origins=["http://localhost:5173"]` in
+`main.py` is now `CORS_ORIGINS`, an env var read the same way `DATABASE_URL`
+is in `database.py`: `os.getenv` with the current value as the default, so
+local Compose needs no `.env` change to keep working.
+
+- **Comma-separated, not a single origin.** A real deployment plausibly wants
+  more than one allowed origin at once (a staging frontend alongside
+  production, say), and the split-and-strip is one line either way -- there
+  was no reason to build the single-origin version and redo this later.
+- **`docker-compose.yml` sets it explicitly** (`CORS_ORIGINS: ${CORS_ORIGINS}`),
+  matching `DATABASE_URL` and `REDIS_URL` rather than relying on the code
+  default reaching the container unset -- an unset `${CORS_ORIGINS}` in
+  Compose resolves to an empty string, not "absent", which would have shipped
+  as `allow_origins=[]` instead of the intended default. `.env` and
+  `.env.example` both gained `CORS_ORIGINS=http://localhost:5173` so that
+  substitution has something real to read.
+- **New tests:** `test_cors.py` -- a preflight from the configured origin gets
+  it echoed back in `Access-Control-Allow-Origin`, a preflight from anywhere
+  else does not.
+- **Still open, and deliberately not done here:** the paired frontend gap
+  this item's old note pointed at -- `VITE_API_URL` inlined at build time
+  (PLAN.md milestone 5) -- is unchanged. Fixing the backend's half doesn't
+  need it, and the frontend side is its own decision (build arg per
+  environment vs. a runtime-read URL) that milestone 7 should make once an
+  actual deployment target exists to decide it against.
+
+Verified against the actual local Compose stack, not just the suite: rebuilt
+and restarted the backend container, then a real preflight (`curl -X
+OPTIONS /health` with an `Origin` header) confirmed `localhost:5173` is
+allowed and an arbitrary other origin is not, and the running frontend still
+loads and talks to the API with no console errors. Also confirmed directly
+that a comma-separated `CORS_ORIGINS` parses into multiple origins, since
+that path has no other coverage without deploying a second frontend.
 
 **Minor: no logging.** `app/logging_config.py` configures Python's root
 logger once (`configure_logging()`, called at import time in `main.py`); a

@@ -80,13 +80,23 @@ app = FastAPI(
 
 # The React dev server runs on a different origin (localhost:5173) than this
 # API (localhost:8000). Browsers block cross-origin requests by default, so
-# CORS middleware explicitly allows the frontend's origin to call this API.
+# CORS middleware explicitly allows the frontend's origin(s) to call this API.
 # allow_headers=["*"] already covers the Authorization header the frontend
 # sends; because the token travels in a header rather than a cookie, no
 # credentials/SameSite configuration is needed here.
+#
+# CORS_ORIGINS is comma-separated so a real deployment can allow more than
+# one origin (e.g. a staging and a production frontend) without code
+# changes -- same env-var-with-a-local-default pattern as DATABASE_URL in
+# database.py.
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
