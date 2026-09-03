@@ -50,7 +50,7 @@ docker-subscription-tracker/
 4. ~~**docker-compose.yml**~~ ✅ ties all three together for local dev (`docker compose up`).
 5. ~~**GitHub Actions**~~ ✅ — on push to `main`, build both images and push them to GitHub Container Registry. Details below.
 6. ~~**Multi-user auth (JWT)**~~ ✅ — add a `users` table and scope every subscription to its owner, so the app is safe to expose publicly in step 7. Details below.
-7. **Deploy to Azure Container Apps** — backend + frontend as two container apps. Postgres either via Azure Database for PostgreSQL (flexible server) or kept in a container to stay fully free.
+7. **Deploy to Azure Container Apps** — backend + frontend as two container apps, both pulling the images already published to GHCR. Database is [Neon](https://neon.tech)'s free Postgres tier rather than Azure Database for PostgreSQL: Neon costs nothing at this scale and scales to zero on its own, while the cheapest Azure-managed Postgres (Burstable B1ms) runs ~$15–20/month with no free tier. Redis is dropped for this deployment — `app/cache.py` already fails open, so there's nothing worth paying to keep.
 
 ## Milestone 5 — GitHub Actions to GHCR (done)
 
