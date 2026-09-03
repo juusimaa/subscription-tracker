@@ -37,6 +37,25 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    # Alpine variant: same Redis, much smaller image, same reasoning as the
+    # backend's python:3.13-slim base (see backend/Dockerfile).
+    image: redis:7-alpine
+    restart: unless-stopped
+    # No volumes: entry here on purpose. This container backs app/cache.py, a
+    # cache-aside layer the backend already treats as optional (it fails
+    # open to Postgres if Redis is slow or unreachable -- see that file), so
+    # there is nothing here worth surviving a restart. Losing it just means
+    # the next request through a cached endpoint repopulates it.
+    healthcheck:
+      # redis-cli ping is Redis's own equivalent of db's pg_isready above:
+      # confirms the server is accepting commands, not just that the
+      # container process started.
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   backend:
     # Builds from the Dockerfile in ./backend instead of pulling a
     # pre-made image, since this is our own app code.
@@ -51,6 +70,9 @@ services:
       # service a DNS name matching its key in this file, resolvable only
       # from other containers on the same Compose network.
       DATABASE_URL: ${DATABASE_URL}
+      # Same DNS trick, pointed at the redis service below. See app/cache.py
+      # for what reads this and why the backend still starts fine without it.
+      REDIS_URL: ${REDIS_URL}
       # Read from .env, which is gitignored -- the signing key is never
       # written into this file, into the image, or into git. In Azure this
       # same variable comes from a Container Apps secret instead.
@@ -72,6 +94,12 @@ services:
         # Waits for db's healthcheck to pass (not just "container started")
         # before starting the backend, since it needs Postgres actually
         # accepting connections.
+        condition: service_healthy
+      redis:
+        # Same wait as for db, for consistency -- not because the backend
+        # actually needs it. app/cache.py connects lazily and fails open, so
+        # the backend would start (and pass its own healthcheck below) fine
+        # even if this condition were dropped entirely.
         condition: service_healthy
     healthcheck:
       # No curl in the slim Python image, so this uses Python itself to hit

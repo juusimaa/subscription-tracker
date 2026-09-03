@@ -13,3 +13,8 @@ email-validator==2.2.0
 # Required by FastAPI to parse the form-encoded body that the OAuth2 password
 # flow (POST /token) uses -- without it that endpoint fails at import time.
 python-multipart==0.0.12
+# Cache-aside layer for a couple of read-heavy GET endpoints (see
+# app/cache.py). Not required for the app to run -- app/cache.py fails open
+# if Redis is unreachable, which is also what happens when running the test
+# suite without a Redis container up.
+redis==5.2.1

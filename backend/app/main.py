@@ -14,7 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app import auth, backup_csv, crud, models, renewals, schemas
+from app import auth, backup_csv, cache, crud, models, renewals, schemas
 from app.database import get_db
 
 # No Base.metadata.create_all() here any more. It used to run at import time
@@ -174,10 +174,21 @@ def list_categories(
     """This user's categories, each with a count of the subscriptions using
     it -- enough for a filter list, and enough to warn before deleting one
     that is still in use."""
-    return [
-        schemas.Category(id=category.id, name=category.name, subscription_count=count)
+    # Cache-aside: this list is read on every page load and only changes on
+    # the handful of routes below that call cache.invalidate_user(), so a
+    # cache hit is both likely and safe to trust without asking Postgres.
+    key = cache.build_key(current_user.id, "categories")
+    cached = cache.get_json(key)
+    if cached is not None:
+        return cached
+    result = [
+        schemas.Category(id=category.id, name=category.name, subscription_count=count).model_dump(
+            mode="json"
+        )
         for category, count in crud.get_categories(db, current_user.id)
     ]
+    cache.set_json(key, result)
+    return result
 
 
 @app.post(
@@ -194,6 +205,7 @@ def create_category(
         # with something that already exists.
         raise HTTPException(status_code=409, detail="Category already exists")
     db_category = crud.create_category(db, category.name, current_user.id)
+    cache.invalidate_user(current_user.id)
     # A brand new category has nothing using it yet, so the count is 0 without
     # needing to ask the database.
     return schemas.Category(id=db_category.id, name=db_category.name, subscription_count=0)
@@ -219,6 +231,9 @@ def update_category(
         # a bigger decision than a rename and not obviously what was meant.
         raise HTTPException(status_code=409, detail="Category already exists")
     db_category = crud.rename_category(db, db_category, category.name)
+    # A rename relabels every subscription using the old name too (see
+    # crud.rename_category), so both cached lists are stale, not just this one.
+    cache.invalidate_user(current_user.id)
     count = crud.count_subscriptions_in_category(db, db_category.name, current_user.id)
     return schemas.Category(
         id=db_category.id, name=db_category.name, subscription_count=count
@@ -275,6 +290,7 @@ def delete_category(
             ),
         )
     crud.delete_category(db, db_category, target)
+    cache.invalidate_user(current_user.id)
 
 
 # --- Backup routes ---
@@ -406,9 +422,11 @@ def import_data(
                 f"this API reads version(s) {readable}"
             ),
         )
-    return crud.import_backup(
+    result = crud.import_backup(
         db, backup, current_user.id, replace=resolved is schemas.ImportMode.replace
     )
+    cache.invalidate_user(current_user.id)
+    return result
 
 
 # --- Subscription routes ---
@@ -453,7 +471,21 @@ def list_subscriptions(
     existing callers are unaffected. FastAPI validates billing_cycle and
     status against their enums, meaning a typo like ?billing_cycle=weekly
     comes back as a 422 rather than silently matching nothing."""
-    return crud.get_subscriptions(
+    # The filters become part of the cache key (see cache.build_key), so a
+    # filtered view and the plain list are cached separately and neither one
+    # can serve the other's result.
+    key = cache.build_key(
+        current_user.id,
+        "subscriptions",
+        category=category,
+        billing_cycle=billing_cycle,
+        active=active,
+        status=status,
+    )
+    cached = cache.get_json(key)
+    if cached is not None:
+        return cached
+    subscriptions = crud.get_subscriptions(
         db,
         current_user.id,
         category=category,
@@ -461,6 +493,11 @@ def list_subscriptions(
         active=active,
         status=status,
     )
+    result = [
+        schemas.Subscription.model_validate(sub).model_dump(mode="json") for sub in subscriptions
+    ]
+    cache.set_json(key, result)
+    return result
 
 
 @app.post(
@@ -476,9 +513,11 @@ def create_subscription(
     began. crud spots that once the default is filled in; it is a 422 here for
     the same reason the schema rejects the spelled-out version."""
     try:
-        return crud.create_subscription(db, subscription, current_user.id)
+        db_subscription = crud.create_subscription(db, subscription, current_user.id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    cache.invalidate_user(current_user.id)
+    return db_subscription
 
 
 # Declared before /subscriptions/{subscription_id}, and it has to stay there:
@@ -632,6 +671,7 @@ def update_subscription(
         raise HTTPException(status_code=422, detail=str(exc))
     if db_subscription is None:
         raise HTTPException(status_code=404, detail="Subscription not found")
+    cache.invalidate_user(current_user.id)
     return db_subscription
 
 
@@ -658,7 +698,9 @@ def archive_subscription(
         )
     if db_subscription.archived_date is not None:
         raise HTTPException(status_code=409, detail="Subscription is already archived")
-    return crud.set_archived(db, db_subscription, True)
+    result = crud.set_archived(db, db_subscription, True)
+    cache.invalidate_user(current_user.id)
+    return result
 
 
 @app.post(
@@ -680,7 +722,9 @@ def unarchive_subscription(
         raise HTTPException(status_code=404, detail="Subscription not found")
     if db_subscription.archived_date is None:
         raise HTTPException(status_code=409, detail="Subscription is not archived")
-    return crud.set_archived(db, db_subscription, False)
+    result = crud.set_archived(db, db_subscription, False)
+    cache.invalidate_user(current_user.id)
+    return result
 
 
 @app.post(
@@ -708,7 +752,9 @@ def restore_subscription(
         raise HTTPException(
             status_code=409, detail="Only a cancelled subscription can be restored"
         )
-    return crud.restore_subscription(db, db_subscription, current_user.id, payload)
+    result = crud.restore_subscription(db, db_subscription, current_user.id, payload)
+    cache.invalidate_user(current_user.id)
+    return result
 
 
 @app.delete("/subscriptions/{subscription_id}", status_code=204, tags=["Subscriptions"])
@@ -719,6 +765,7 @@ def delete_subscription(
 ):
     if not crud.delete_subscription(db, subscription_id, current_user.id):
         raise HTTPException(status_code=404, detail="Subscription not found")
+    cache.invalidate_user(current_user.id)
 
 
 def _monthly_cost(subscription: models.Subscription) -> Decimal:
