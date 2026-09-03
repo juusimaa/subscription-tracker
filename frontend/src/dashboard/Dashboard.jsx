@@ -198,6 +198,18 @@ function Dashboard({
 
   // --- actions ---
 
+  // A quick-add tile's prefill has to be cleared once it's been used --
+  // otherwise it outlives the AddForm instance that consumed it (the empty
+  // state's form unmounts the moment the first subscription lands, and a
+  // fresh AddForm mounts in its place downstream) and reapplies itself to
+  // that new, otherwise-blank form. The symptom is a form that looks like it
+  // never cleared, now flagging the subscription it just created as a
+  // duplicate of itself.
+  async function handleCreate(payload) {
+    await actions.create(payload);
+    setPrefill(null);
+  }
+
   function quickAdd(service) {
     // A new object every time, so tapping the same tile twice re-applies it.
     setPrefill({ name: service.name, cost: service.monthlyCost, billing_cycle: "monthly" });
@@ -229,7 +241,7 @@ function Dashboard({
       <div className="page">
         <EmptyState
           categories={categories}
-          onSubmit={actions.create}
+          onSubmit={handleCreate}
           prefill={prefill}
           onQuickAdd={quickAdd}
           actions={actions}
@@ -240,7 +252,7 @@ function Dashboard({
             <AddForm
               categories={categories}
               existing={subscriptions}
-              onSubmit={actions.create}
+              onSubmit={handleCreate}
               onOpenExisting={openExisting}
               prefill={prefill}
               onSuccess={() => setAddSheetOpen(false)}
@@ -322,7 +334,7 @@ function Dashboard({
           <AddForm
             categories={categories}
             existing={subscriptions}
-            onSubmit={actions.create}
+            onSubmit={handleCreate}
             onOpenExisting={openExisting}
             prefill={prefill}
           />
@@ -358,7 +370,7 @@ function Dashboard({
           <AddForm
             categories={categories}
             existing={subscriptions}
-            onSubmit={actions.create}
+            onSubmit={handleCreate}
             onOpenExisting={openExisting}
             prefill={prefill}
             onSuccess={() => setAddSheetOpen(false)}
