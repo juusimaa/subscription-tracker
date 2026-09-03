@@ -158,6 +158,39 @@ def read_me(current_user: models.User = Depends(auth.get_current_user)):
     return current_user
 
 
+@app.put("/me/password", response_model=schemas.User, tags=["Auth"])
+def change_password(
+    payload: schemas.PasswordChange,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Changes the calling user's password. Existing tokens keep working --
+    nothing here revokes them (see auth.TOKEN_EXPIRE_HOURS) -- but any future
+    login needs the new password."""
+    if not auth.verify_password(payload.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=401, detail="Incorrect password")
+    return crud.update_password(db, current_user, payload.new_password)
+
+
+@app.delete("/me", status_code=204, tags=["Auth"])
+def delete_account(
+    payload: schemas.AccountDelete,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Permanently deletes the calling user's account: every subscription,
+    category and subscription group it owns, then the account itself. There
+    is no undo and no soft-delete -- this is the same fate as
+    `docker compose down -v`, just scoped to one user instead of the whole
+    database.
+    """
+    if not auth.verify_password(payload.password, current_user.hashed_password):
+        raise HTTPException(status_code=401, detail="Incorrect password")
+    user_id = current_user.id
+    crud.delete_user(db, current_user)
+    cache.invalidate_user(user_id)
+
+
 # --- Category routes ---
 #
 # Categories exist so they can be managed as a list in their own right. A

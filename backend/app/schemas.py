@@ -403,6 +403,25 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class PasswordChange(BaseModel):
+    """What the client sends on PUT /me/password. `current_password` is
+    required even though the request already carries a valid Bearer token:
+    the token alone proves the request has *a* session, not that whoever is
+    holding it right now is the account owner -- the same reason a website
+    re-asks for your password before changing it."""
+
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=72)
+
+
+class AccountDelete(BaseModel):
+    """What the client sends on DELETE /me. Deleting the account is
+    irreversible, so it asks for the password again for the same reason
+    PasswordChange does."""
+
+    password: str
+
+
 # --- Backup (export / import) ---
 #
 # The backup file is deliberately made of the same SubscriptionBase fields the

@@ -32,6 +32,34 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     return db_user
 
 
+def update_password(db: Session, user: models.User, new_password: str) -> models.User:
+    """Overwrites the stored hash. The route is responsible for having
+    already verified the caller's current password -- this just does the
+    write, the same division of labour as set_archived."""
+    user.hashed_password = hash_password(new_password)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def delete_user(db: Session, user: models.User) -> None:
+    """Permanently deletes the account and everything it owns.
+
+    None of the foreign keys into `users` cascade at the database level (see
+    models.py), so the rows that point at this user have to go first, in an
+    order that respects the foreign keys *between* them too:
+    subscriptions reference subscription_groups, so groups can't be deleted
+    until every subscription in them is gone.
+    """
+    user_id = user.id
+    delete_all_user_data(db, user_id)
+    db.query(models.SubscriptionGroup).filter(
+        models.SubscriptionGroup.user_id == user_id
+    ).delete(synchronize_session=False)
+    db.delete(user)
+    db.commit()
+
+
 # --- Categories ---
 #
 # Subscriptions store a category *name*, not a foreign key (see the comment on
