@@ -14,6 +14,7 @@ import AddForm from "./AddForm";
 import CategoriesDialog from "./CategoriesDialog";
 import CategoryBars from "./CategoryBars";
 import ComingUp from "./ComingUp";
+import CancelDialog from "./CancelDialog";
 import ConfirmDialog from "./ConfirmDialog";
 import EmptyState from "./EmptyState";
 import Hero from "./Hero";
@@ -377,14 +378,12 @@ function Dashboard({
       )}
 
       {cancelTarget && (
-        <ConfirmDialog
-          title={`Cancel ${cancelTarget.name}?`}
-          body="It stops counting toward your totals and moves to your cancelled list, where its past charges stay on record. You can restore it any time."
-          confirmLabel="Cancel plan"
-          onConfirm={async () => {
+        <CancelDialog
+          subscription={cancelTarget}
+          onConfirm={async (payload) => {
             const target = cancelTarget;
             setCancelTarget(null);
-            await actions.update(target.id, { status: "cancelled" }).catch(() => {});
+            await actions.update(target.id, { status: "cancelled", ...payload }).catch(() => {});
           }}
           onClose={() => setCancelTarget(null)}
           destructive={{
