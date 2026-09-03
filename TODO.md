@@ -13,17 +13,19 @@ numbering and their own priority order. D1 is done and D4 is closed without a
 change; both are written up at the bottom with the rest. The numbering of the
 others is left alone, because the notes below refer to each other by it.
 
+Item 1 is partly fixed as of 2026-09-03 -- change password and delete account
+are done, written up at the bottom -- and kept at number 1 for what is left of
+it, the same reason the D-items keep theirs.
+
 ## 1. Account management
 
-`/register`, `/token` and `/me` are the entire account surface. Missing:
+`/register`, `/token` and `/me` used to be the entire account surface.
+Change password and delete account are done now (see the fix notes at the
+bottom). What's left:
 
-- **Change password** -- the one users notice immediately.
-- **Delete account** -- `crud.delete_all_user_data` already does most of the
-  work; it deletes the subscriptions and categories but deliberately leaves the
-  user row.
 - **Password reset** and **email verification**, both noted as deliberately
   skipped in PLAN.md milestone 6. They need an email path, so they are a bigger
-  step than the first two.
+  step than the first two were.
 
 ## 2. Rate limiting on `/token` and `/register`
 
@@ -202,6 +204,63 @@ notes at the bottom.)
   `get_categories` join compare `func.lower(...)`, which cannot use a plain
   index. At this size it does not matter; a functional index on
   `lower(category)` is the fix if it ever does.
+
+---
+
+## Fixed on 2026-09-03
+
+**1 (part). Change password and delete account.** `PUT /me/password` and
+`DELETE /me` are the two new routes; `/register`, `/token` and `/me` were the
+whole account surface before this.
+
+- **Both require the caller's current password again**, even though the
+  request already carries a valid Bearer token. A token proves there is a
+  session, not that whoever is holding it right now is the account owner --
+  the same reason a browser re-asks for a password before changing one. This
+  goes beyond what the item asked for (it only named the two features, not
+  how to authorize them), and is the more defensible default for an
+  irreversible action.
+- **A password change now actually signs out every other device**, which
+  needed a mechanism that did not exist: `users.token_version` (new column,
+  migration 0004), bumped by `crud.update_password` and embedded in every
+  JWT's `tv` claim. `auth.get_current_user` rejects a token whose `tv` no
+  longer matches the row. A stateless JWT cannot be revoked individually, but
+  invalidating all of them at once by moving one counter costs nothing extra
+  per request, since the row is already loaded.
+- **The device making the change stays logged in.** Bumping `token_version`
+  also invalidates the token the change-password request itself was
+  authenticated with, so `PUT /me/password` mints and returns a fresh one
+  (`response_model=schemas.Token`, not `schemas.User` as first drafted) and
+  the frontend stores it the same way login does.
+- **`crud.delete_user` does what `delete_all_user_data` (the item's
+  suggestion) does not finish.** That function only ever deleted
+  subscriptions and categories, deliberately leaving the user row -- it was
+  built for `replace`-mode import, which needs the first two gone but the
+  account to still exist. Account deletion needed a second step:
+  `subscription_groups` has its own FK into `users` that
+  `delete_all_user_data` never touches, so it is cleared before the user row,
+  since nothing here cascades at the database level.
+- **New tests:** `test_account.py` -- wrong-current-password on both routes,
+  the short-password 422, cross-account isolation, and the token_version
+  behaviour specifically: the changing device's *old* token goes stale, its
+  *new* one keeps working, and a second logged-in session goes stale too.
+
+Frontend: `AccountDialog.jsx` (new) is the "Account" dialog behind the
+signed-in email in the header -- change password, delete account with a
+typed-DELETE confirmation. It asks for the password on delete too, matching
+the backend decision above rather than the design handoff's own mock, which
+only showed the typed confirmation.
+
+Verified against the actual local Compose Postgres volume: `alembic upgrade
+head` ran 0003 -> 0004 against it, then the full flow was driven through a
+real browser -- wrong password rejected, mismatch rejected inline, a
+successful change confirmed live (old token 401s, new one and a reload both
+keep working, a second concurrent session goes stale), then account deletion
+confirmed for real (login after returns 401, both prompts guarded correctly)
+-- with no console errors at any step.
+
+Still open: password reset and email verification, both needing an email path
+this build does not have. See item 1 above.
 
 ---
 
