@@ -350,6 +350,25 @@ class TestStoppedRenewalDates:
         put(client, auth, created["id"], status="cancelled", cancelled_date=f"{LAST_YEAR}-03-02")
         assert get(client, auth, created["id"])["next_renewal_date"] == f"{LAST_YEAR + 1}-03-01"
 
+    def test_a_backdated_cancellation_before_a_future_anchor_is_not_ignored(self, client, auth):
+        """Regression: cancelled_date is editable after the fact (see
+        test_an_explicit_date_still_wins above), so a stop date can land
+        before the stored anchor -- e.g. the anchor was left at today when
+        the plan was added, and the cancellation is then backdated to months
+        earlier. The
+        old code used next_occurrence, whose "an anchor in the future is
+        itself the next occurrence" rule handed that anchor back untouched,
+        reporting access as running until a date that had nothing to do with
+        the actual cancellation."""
+        created = add_subscription(
+            client,
+            auth,
+            started_date=f"{LAST_YEAR}-01-01",
+            next_renewal_date=str(TODAY),
+        )
+        put(client, auth, created["id"], status="cancelled", cancelled_date=f"{LAST_YEAR}-03-03")
+        assert get(client, auth, created["id"])["next_renewal_date"] == f"{LAST_YEAR}-04-03"
+
     def test_a_paused_plan_reports_when_it_would_charge_again(self, client, auth):
         created = add_subscription(
             client,

@@ -248,10 +248,25 @@ class Subscription(Base):
         if self.status == SubscriptionStatus.trial:
             return self.renewal_anchor_date
         stopped = self.stopped_date
-        # The day *after* it stopped, not the day itself. A charge taken on
-        # the stopping day still happened -- _charge_dates counts it -- and
-        # every plan here bills upfront, so that charge bought one more whole
-        # period. Measuring from the stopping day would return that day back
-        # and report the term as running out on the morning it was paid for.
-        reference = stopped + timedelta(days=1) if stopped is not None else date.today()
-        return renewals.next_occurrence(self.renewal_anchor_date, self.cycle_months, reference)
+        if stopped is not None:
+            # The day *after* it stopped, not the day itself. A charge taken
+            # on the stopping day still happened -- _charge_dates counts it --
+            # and every plan here bills upfront, so that charge bought one
+            # more whole period. Measuring from the stopping day would return
+            # that day back and report the term as running out on the
+            # morning it was paid for.
+            #
+            # occurrence_on_or_after, not next_occurrence: a stop date can be
+            # backdated to before the stored anchor (cancelled_date is
+            # editable after the fact), and next_occurrence's "an anchor in
+            # the future is itself the next occurrence" rule would then hand
+            # back that future anchor untouched -- reporting access as
+            # running until whatever the anchor happened to be, regardless of
+            # how long ago the plan actually stopped. occurrence_on_or_after
+            # has no such shortcut: it always walks the schedule from the
+            # anchor, forward or backward, to find where the stop date
+            # actually falls.
+            return renewals.occurrence_on_or_after(
+                self.renewal_anchor_date, self.cycle_months, stopped + timedelta(days=1)
+            )
+        return renewals.next_occurrence(self.renewal_anchor_date, self.cycle_months, date.today())
