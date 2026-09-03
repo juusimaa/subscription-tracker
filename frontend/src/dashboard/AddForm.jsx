@@ -26,7 +26,19 @@ const blank = {
   category: "",
 };
 
-function AddForm({ categories, existing = [], onSubmit, onOpenExisting, prefill, endAligned = false }) {
+function AddForm({
+  categories,
+  existing = [],
+  onSubmit,
+  onOpenExisting,
+  prefill,
+  endAligned = false,
+  // Called after a successful submit, with nothing to pass -- the desktop
+  // inline form ignores it (the row just appears further down the page); the
+  // mobile add sheet uses it to close itself, which a modal has to do and an
+  // inline form does not.
+  onSuccess,
+}) {
   const [form, setForm] = useState(blank);
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState(null);
@@ -75,6 +87,7 @@ function AddForm({ categories, existing = [], onSubmit, onOpenExisting, prefill,
         category: form.category || null,
       });
       setForm(blank);
+      onSuccess?.();
     } catch (err) {
       if (err instanceof ApiError) {
         setErrors({

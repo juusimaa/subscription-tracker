@@ -11,8 +11,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   archiveSubscription,
+  changePassword,
   createCategory,
   createSubscription,
+  deleteAccount,
   deleteCategory,
   deleteSubscription,
   exportBackup,
@@ -30,6 +32,7 @@ import {
   unarchiveSubscription,
   updateSubscription,
 } from "./api";
+import AccountDialog from "./AccountDialog";
 import Dashboard from "./dashboard/Dashboard";
 import Login from "./Login";
 import { MAX_YEAR, MIN_YEAR, ageInWords } from "./format";
@@ -63,6 +66,7 @@ function App() {
   const [reauthOpen, setReauthOpen] = useState(false);
   const [staleId, setStaleId] = useState(null);
   const [period, setPeriod] = useState(initialPeriod);
+  const [accountOpen, setAccountOpen] = useState(false);
   // Only so the banner's "last updated N minutes ago" stays true while it is
   // on screen; nothing else reads it.
   const [, setTick] = useState(0);
@@ -229,6 +233,27 @@ function App() {
     await load();
   }
 
+  // Neither of these goes through `perform`: that wrapper reloads the
+  // subscription list and rewrites staleId/catSpend, none of which a password
+  // or the account itself has anything to do with.
+  async function handleChangePassword(current, next) {
+    // changePassword() (api.js) already stores the fresh token this device
+    // needs to keep working -- the old one is stale the instant the server
+    // bumps token_version, which happens as a side effect of this same call.
+    await changePassword(current, next);
+  }
+
+  async function handleDeleteAccount(password) {
+    await deleteAccount(password);
+    // The account is gone; there is nothing left to sign out of but this tab.
+    handleLogout();
+  }
+
+  function handleExportFirst() {
+    setAccountOpen(false);
+    document.getElementById("io")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   // The gate: no token, no app.
   if (!token) return <Login onLogin={setToken} />;
 
@@ -240,7 +265,17 @@ function App() {
         <span className="nav-brand">Subscriptions</span>
         <a className="nav-link" href="#overview" aria-current="location">Overview</a>
         <a className="nav-link" href="#all">All subscriptions</a>
-        {email && <span className="nav-email">{email}</span>}
+        {email && (
+          <button
+            type="button"
+            className="btn btn-ghost nav-account"
+            aria-label={`Account — ${email}`}
+            onClick={() => setAccountOpen(true)}
+          >
+            <span className="nav-email">{email}</span>
+            <span className="nav-avatar" aria-hidden="true">{email[0]?.toUpperCase()}</span>
+          </button>
+        )}
         <button type="button" className="btn btn-secondary" onClick={handleLogout}>Log out</button>
       </nav>
 
@@ -300,6 +335,18 @@ function App() {
           setPeriod={setPeriod}
           actions={actions}
           staleId={staleId}
+        />
+      )}
+
+      {accountOpen && data && (
+        <AccountDialog
+          email={email}
+          subscriptionCount={data.subscriptions.length}
+          categoryCount={data.categories.length}
+          onChangePassword={handleChangePassword}
+          onDeleteAccount={handleDeleteAccount}
+          onExportFirst={handleExportFirst}
+          onClose={() => setAccountOpen(false)}
         />
       )}
 

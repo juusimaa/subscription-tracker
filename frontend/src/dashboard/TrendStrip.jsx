@@ -14,12 +14,18 @@ function TrendStrip({ label, bars, onSelect }) {
   // every bar NaN pixels tall.
   const peak = Math.max(0, ...bars.map((bar) => bar.value));
   const height = (bar) => (peak > 0 ? Math.round((bar.value / peak) * (bar.on ? 96 : 92)) : 0);
+  const active = bars.find((bar) => bar.on);
 
   return (
     <section aria-label="Spending over time" className="trend">
       <div className="section-head">
         <span className="eyebrow">{label}</span>
+        {/* Desktop: a hint beside the eyebrow. Mobile drops the per-bar value
+            label (no room for twelve of them at 4px gaps) and moves the
+            selected one up here instead -- see the media query at the bottom
+            of dashboard.css for which of the two is actually shown. */}
         <span className="hint">Click a bar to jump to it</span>
+        <span className="trend-active">{active ? money(active.value) : ""}</span>
       </div>
       <div className="trend-bars">
         {bars.map((bar) => (
@@ -42,7 +48,14 @@ function TrendStrip({ label, bars, onSelect }) {
       <div className="trend-ticks">
         {bars.map((bar) => (
           <span key={bar.tick} className={bar.on ? "trend-tick on" : "trend-tick"}>
-            {bar.tick}
+            {/* Twelve three-letter month labels don't fit a 335px-wide
+                mobile row (grid items won't shrink below their text's
+                min-content width, so they'd overflow the page rather than
+                compress) -- the media query in dashboard.css shows one of
+                these two and hides the other, same dual-render pattern as
+                .trend-value/.trend-active above. */}
+            <span className="tick-full">{bar.tick}</span>
+            <span className="tick-short">{bar.shortTick}</span>
           </span>
         ))}
       </div>

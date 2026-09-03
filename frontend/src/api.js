@@ -141,10 +141,33 @@ export const getMe = () => request("/me");
 
 export function logout() {
   // Purely client-side: the token stays technically valid until it expires,
-  // there just isn't a copy of it anywhere anymore. Server-side revocation
-  // would need a token blocklist, which is out of scope here.
+  // there just isn't a copy of it anywhere anymore. Real revocation of *this*
+  // token would need a blocklist; changing the password (below) invalidates
+  // every token at once instead, which is the case that actually matters.
   clearToken();
 }
+
+// --- Account ---
+
+// A fresh token comes back because the one this request was authenticated
+// with is now stale too -- PUT /me/password bumps token_version server-side,
+// which invalidates every token issued before the change, this device's
+// included. Storing the new one is what keeps the current tab logged in
+// while every other device silently starts failing on its next request.
+export async function changePassword(currentPassword, newPassword) {
+  const body = await request("/me/password", {
+    method: "PUT",
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+  setToken(body.access_token);
+}
+
+// Requires the password again even though the request already carries a
+// valid Bearer token -- deleting the account is irreversible, and a token
+// alone proves there is a session, not that whoever is holding it right now
+// is the account owner.
+export const deleteAccount = (password) =>
+  request("/me", { method: "DELETE", body: JSON.stringify({ password }) });
 
 // --- Subscriptions ---
 

@@ -66,6 +66,14 @@ class User(Base):
     # Only ever the bcrypt hash -- the plaintext password is never stored,
     # logged, or returned by the API (see schemas.User, which omits it).
     hashed_password = Column(String, nullable=False)
+    # Bumped by crud.update_password and embedded in every token issued from
+    # then on (auth.create_access_token's "tv" claim). A JWT cannot be revoked
+    # individually, but get_current_user rejects one whose "tv" no longer
+    # matches this column, so moving the counter invalidates every token
+    # issued before the change at once -- which is what makes "changing your
+    # password signs out other devices" (see the Account dialog copy) true
+    # rather than aspirational.
+    token_version = Column(Integer, nullable=False, default=0, server_default="0")
 
 
 class SubscriptionGroup(Base):

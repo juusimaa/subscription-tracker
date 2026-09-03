@@ -19,7 +19,10 @@ class TestChangePassword:
             headers=auth,
         )
         assert response.status_code == 200, response.text
-        assert response.json()["email"] == email
+        # A fresh token for the device that made the change -- its old one is
+        # now stale too (see the next test).
+        new_token = response.json()["access_token"]
+        assert new_token and new_token != auth["Authorization"].removeprefix("Bearer ")
 
         # The new password logs in...
         login = client.post("/token", data={"username": email, "password": "new-password"})
@@ -28,6 +31,29 @@ class TestChangePassword:
         # ...and the old one no longer does.
         old_login = client.post("/token", data={"username": email, "password": "old-password"})
         assert old_login.status_code == 401
+
+    def test_signs_out_other_devices_but_not_the_one_that_changed_it(self, client):
+        email = f"user-{uuid.uuid4().hex[:12]}@example.com"
+        auth = register(client, email=email, password="old-password")
+        # A second "device": same account, its own token from a second login.
+        other_token = client.post(
+            "/token", data={"username": email, "password": "old-password"}
+        ).json()["access_token"]
+        other_device = {"Authorization": f"Bearer {other_token}"}
+
+        response = client.put(
+            "/me/password",
+            json={"current_password": "old-password", "new_password": "new-password"},
+            headers=auth,
+        )
+        new_auth = {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+        # The device that changed it keeps working on its new token...
+        assert client.get("/me", headers=new_auth).status_code == 200
+        # ...the token it used to make the change is now stale...
+        assert client.get("/me", headers=auth).status_code == 401
+        # ...and so is every other device's.
+        assert client.get("/me", headers=other_device).status_code == 401
 
     def test_wrong_current_password_is_rejected(self, client, auth):
         response = client.put(

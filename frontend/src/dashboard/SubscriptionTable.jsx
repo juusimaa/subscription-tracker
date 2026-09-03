@@ -11,8 +11,46 @@
 import { Fragment, useState } from "react";
 import { ApiError } from "../api";
 import MonoTile from "../MonoTile";
-import { TriangleAlert } from "../icons";
+import Sheet from "./Sheet";
+import { ChevronRight, TriangleAlert } from "../icons";
 import { longDate, money, perMonth } from "../format";
+import { useIsMobile } from "../useMediaQuery";
+
+// The sort chip row (mobile only) offers five of the desktop table's seven
+// columns, in the order the handoff lists them -- "Started" and "Per month"
+// are left out, the same way the mobile row shows a combined cost line
+// instead of a separate Per month column.
+const CHIPS = [
+  { key: "renewal", label: "Renewal" },
+  { key: "name", label: "Name" },
+  { key: "cost", label: "Cost" },
+  { key: "category", label: "Category" },
+  { key: "status", label: "Status" },
+];
+
+// The mobile row's one meta line combines category with whatever the
+// desktop table says in two places (the Next renewal cell's date and its
+// sub-note): "Entertainment · 04 Sep 2026", "Work · last charge 30 Jul 2026".
+function mobileMeta(subscription) {
+  const cancelled = subscription.status === "cancelled";
+  const trial = subscription.status === "trial";
+  const paused = subscription.status === "paused";
+  let dateText;
+  if (cancelled && !subscription.cancelled_date) dateText = "—";
+  else if (cancelled) dateText = `last charge ${longDate(subscription.next_renewal_date)}`;
+  else if (paused) dateText = "resumes when unpaused";
+  else if (trial) dateText = `trial ends ${longDate(subscription.next_renewal_date)}`;
+  else dateText = longDate(subscription.next_renewal_date);
+  return subscription.category ? `${subscription.category} · ${dateText}` : dateText;
+}
+
+function mobilePerMonthNote(subscription) {
+  if (subscription.status === "trial") {
+    return `then ${money(subscription.cost)}${subscription.billing_cycle === "yearly" ? "/yr" : "/mo"}`;
+  }
+  if (subscription.status === "active") return `${money(perMonth(subscription))}/mo`;
+  return subscription.billing_cycle;
+}
 
 const STATUS = {
   active: { label: "Active", tag: "tag tag-neutral" },
@@ -79,6 +117,12 @@ function SubscriptionTable({
   const [draft, setDraft] = useState(null);
   const [rowError, setRowError] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Mobile-only, and local rather than lifted to Dashboard: which row's
+  // detail sheet is open is browsing state, not something anything outside
+  // this component needs to know or set (unlike editingId, which the add
+  // form's duplicate-name warning also opens from outside).
+  const [detailId, setDetailId] = useState(null);
+  const isMobile = useIsMobile();
 
   // editingId is owned by the parent -- the duplicate-name warning in the add
   // form opens a row from outside this component -- so the draft is filled in
@@ -176,6 +220,317 @@ function SubscriptionTable({
     } finally {
       setBusy(false);
     }
+  }
+
+  // --- mobile: the table becomes a list (handoff section 14) ---
+  //
+  // Everything above this point -- visible, sort, draft, save, closeEditor --
+  // is shared with the desktop branch below; only how it's rendered differs.
+  // editingId (Dashboard-owned) doubles as "which row's edit sheet is open"
+  // here, the same id the desktop branch uses for its inline row -- that's
+  // what lets the add form's "Edit that subscription instead" link work
+  // identically on both layouts. detailId is local: which row's detail sheet
+  // is open is pure browsing state nothing outside this component needs.
+  if (isMobile) {
+    const detailSub = detailId == null ? null : subscriptions.find((s) => s.id === detailId);
+    const openDetailActions = (subscription) => (fn) => () => {
+      setDetailId(null);
+      fn(subscription);
+    };
+
+    const draftPerMonth =
+      draft && draft.status === "active" && Number(draft.cost) > 0
+        ? money(perMonth({ cost: draft.cost, billing_cycle: draft.billing_cycle }))
+        : "—";
+
+    return (
+      <section id="all" className="table-section">
+        <div className="section-head">
+          <span className="eyebrow">All subscriptions — {visible.length}</span>
+        </div>
+
+        {archivedCount > 0 && showCancelled && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-small mobile-list-toggle"
+            onClick={() => { setShowArchived(!showArchived); closeEditor(); }}
+          >
+            {showArchived ? "Hide archived" : `Show archived — ${archivedCount}`}
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn btn-ghost btn-small mobile-list-toggle"
+          onClick={() => { setShowCancelled(!showCancelled); closeEditor(); }}
+        >
+          {showCancelled ? "Hide cancelled" : `Show cancelled — ${cancelledCount}`}
+        </button>
+
+        <div className="sort-chips" role="group" aria-label="Sort">
+          {CHIPS.map((chip) => {
+            const on = sort.key === chip.key;
+            return (
+              <button
+                key={chip.key}
+                type="button"
+                className={on ? "sort-chip on" : "sort-chip"}
+                aria-pressed={on}
+                onClick={() => sortBy(chip.key)}
+              >
+                {chip.label}
+                {on && <span>{sort.dir === "asc" ? " ↑" : " ↓"}</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mobile-list">
+          {visible.map((subscription) => {
+            if (subscription.id === staleId) {
+              return (
+                <div key={subscription.id} className="mobile-row-stale">
+                  <TriangleAlert />
+                  <span>
+                    <span>
+                      {subscription.name} no longer exists — it was removed on another device.
+                      404 on save.
+                    </span>
+                    <button type="button" className="btn btn-ghost btn-small" onClick={onRefreshStale}>
+                      Refresh list
+                    </button>
+                  </span>
+                </div>
+              );
+            }
+            const cancelled = subscription.status === "cancelled";
+            const archived = Boolean(subscription.archived_date);
+            const status = STATUS[subscription.status];
+            return (
+              <button
+                key={subscription.id}
+                type="button"
+                className={cancelled ? "mobile-row cancelled" : "mobile-row"}
+                onClick={() => setDetailId(subscription.id)}
+              >
+                <MonoTile name={subscription.name} dim={cancelled} />
+                <span className="mobile-row-main">
+                  <span className="mobile-row-title">
+                    <span className="mobile-row-name">{subscription.name}</span>
+                    {subscription.status !== "active" && (
+                      <span className={status.tag}>{status.label}</span>
+                    )}
+                    {archived && <span className="tag tag-outline">Archived</span>}
+                  </span>
+                  <span className="mobile-row-meta">{mobileMeta(subscription)}</span>
+                </span>
+                <span className="mobile-row-cost">
+                  <span className="mobile-row-amount">
+                    {subscription.status === "trial" ? money(0) : money(subscription.cost)}
+                  </span>
+                  <span className="mobile-row-permonth">{mobilePerMonthNote(subscription)}</span>
+                </span>
+                <ChevronRight size={16} />
+              </button>
+            );
+          })}
+        </div>
+
+        {detailSub && !editing && (
+          <Sheet
+            title={detailSub.name}
+            header={
+              <div className="row-detail-head">
+                <MonoTile name={detailSub.name} dim={detailSub.status === "cancelled"} />
+                <p className="row-detail-name">{detailSub.name}</p>
+              </div>
+            }
+            onClose={() => setDetailId(null)}
+            className="dialog-detail"
+          >
+            <div className="row-detail-facts">
+              {[
+                ["Status", STATUS[detailSub.status].label + (detailSub.archived_date ? " · Archived" : "")],
+                ["Category", detailSub.category || "—"],
+                [
+                  "Cost",
+                  `${detailSub.status === "trial" ? money(0) : money(detailSub.cost)} ${detailSub.billing_cycle}`,
+                ],
+                ["Per month", detailSub.status === "active" ? money(perMonth(detailSub)) : "—"],
+                [
+                  detailSub.status === "cancelled" ? "Last charge" : "Next renewal",
+                  detailSub.status === "cancelled" && !detailSub.cancelled_date
+                    ? "—"
+                    : longDate(detailSub.next_renewal_date),
+                ],
+                ["Counts toward", detailSub.status === "active" ? "Your totals" : "Nothing right now"],
+              ].map(([label, value]) => (
+                <div className="row-detail-fact" key={label}>
+                  <span className="field-label">{label}</span>
+                  <span>{value}</span>
+                </div>
+              ))}
+            </div>
+            <div className="row-detail-actions">
+              {detailSub.status === "cancelled" ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={openDetailActions(detailSub)(onReactivate)}
+                  >
+                    Reactivate
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={openDetailActions(detailSub)(onRestore)}
+                  >
+                    Restore
+                  </button>
+                  {detailSub.archived_date ? (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={openDetailActions(detailSub)(onUnarchive)}
+                      >
+                        Restore to list
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={openDetailActions(detailSub)(onDeleteArchived)}
+                      >
+                        Delete permanently
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={openDetailActions(detailSub)(onArchive)}
+                    >
+                      Archive
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => { setDetailId(null); setEditingId(detailSub.id); }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={openDetailActions(detailSub)(onCancelPlan)}
+                  >
+                    Cancel plan
+                  </button>
+                </>
+              )}
+            </div>
+          </Sheet>
+        )}
+
+        {editing && draft && draft.id === editingId && (
+          <Sheet title={`Edit ${editing.name}`} onClose={closeEditor} className="dialog-sheet-edit">
+            <div className="sheet-fields">
+              <label className="field">
+                <span className="field-label">Service</span>
+                <input
+                  className="input"
+                  type="text"
+                  value={draft.name}
+                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                />
+              </label>
+              <div className="sheet-row">
+                <label className="field">
+                  <span className="field-label">Cost</span>
+                  <input
+                    className="input tnum"
+                    type="text"
+                    value={draft.cost}
+                    onChange={(e) => setDraft({ ...draft, cost: e.target.value })}
+                  />
+                </label>
+                <label className="field">
+                  <span className="field-label">Cycle</span>
+                  <select
+                    className="input"
+                    value={draft.billing_cycle}
+                    onChange={(e) => setDraft({ ...draft, billing_cycle: e.target.value })}
+                  >
+                    <option value="monthly">Monthly</option>
+                    <option value="yearly">Yearly</option>
+                  </select>
+                </label>
+              </div>
+              <div className="sheet-row">
+                <label className="field">
+                  <span className="field-label">Category</span>
+                  <select
+                    className="input"
+                    value={draft.category}
+                    onChange={(e) => setDraft({ ...draft, category: e.target.value })}
+                  >
+                    <option value="">No category</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.name}>{category.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span className="field-label">Status</span>
+                  <select
+                    className="input"
+                    value={draft.status}
+                    onChange={(e) => setDraft({ ...draft, status: e.target.value })}
+                  >
+                    <option value="active">Active</option>
+                    <option value="trial">Trial</option>
+                    <option value="paused">Paused</option>
+                  </select>
+                </label>
+              </div>
+              <label className="field">
+                <span className="field-label">Next renewal</span>
+                <input
+                  className="input tnum"
+                  type="date"
+                  value={draft.next_renewal_date}
+                  onChange={(e) => setDraft({ ...draft, next_renewal_date: e.target.value })}
+                />
+              </label>
+              <p className="sheet-hint">Per month: {draftPerMonth}</p>
+            </div>
+            {rowError && (
+              <p role="alert" className="dialog-error">
+                <TriangleAlert size={16} />
+                <span>{rowError}</span>
+              </p>
+            )}
+            <div className="sheet-actions">
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={() => save(editing)}
+              >
+                Save changes
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={closeEditor}>
+                Discard
+              </button>
+            </div>
+          </Sheet>
+        )}
+      </section>
+    );
   }
 
   return (

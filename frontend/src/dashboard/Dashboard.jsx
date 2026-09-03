@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { MAX_YEAR, MIN_YEAR, SHORT_MONTHS, longDate, money, signed } from "../format";
 import { chargeCountInYear, chargesInMonth } from "../renewals";
+import { useIsMobile } from "../useMediaQuery";
 import AddForm from "./AddForm";
 import CategoriesDialog from "./CategoriesDialog";
 import CategoryBars from "./CategoryBars";
@@ -19,6 +20,7 @@ import Hero from "./Hero";
 import ImportExport from "./ImportExport";
 import KpiBand from "./KpiBand";
 import RestoreDialog from "./RestoreDialog";
+import Sheet from "./Sheet";
 import SubscriptionTable from "./SubscriptionTable";
 import TrendStrip from "./TrendStrip";
 import TrialBanner from "./TrialBanner";
@@ -44,6 +46,12 @@ function Dashboard({
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [catPanelOpen, setCatPanelOpen] = useState(false);
   const [prefill, setPrefill] = useState(null);
+  // Mobile-only: the add sheet has no desktop equivalent (desktop scrolls to
+  // the always-visible inline form instead), and is shared between the
+  // populated view's fixed action bar and the empty state's "Add it
+  // yourself" button -- one sheet, two openers, rather than two.
+  const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   const { view, year, month } = period;
   const monthly = view === "monthly";
@@ -71,6 +79,11 @@ function Dashboard({
 
   const activeSubs = subscriptions.filter((s) => s.status === "active");
   const trials = subscriptions.filter((s) => s.status === "trial");
+  // Same count SubscriptionTable computes for itself -- needed here too for
+  // the mobile fixed action bar's label, which sits outside that component.
+  const cancelledCount = subscriptions.filter(
+    (s) => s.status === "cancelled" && !s.archived_date,
+  ).length;
   const usedCategories = [...new Set(activeSubs.map((s) => s.category).filter(Boolean))];
 
   // --- by category ---
@@ -134,12 +147,17 @@ function Dashboard({
   const bars = monthly
     ? SHORT_MONTHS.map((tick, index) => ({
         tick,
+        // Mobile's 12-column tick row has no room for three letters (see
+        // TrendStrip.jsx) -- a year has only three columns and keeps its
+        // full label there too, so this is monthly-only.
+        shortTick: tick[0],
         value: monthTotal(year, index) ?? 0,
         on: index === month,
         go: () => changePeriod({ month: index }),
       }))
     : Array.from({ length: MAX_YEAR - MIN_YEAR + 1 }, (_, i) => MIN_YEAR + i).map((y) => ({
         tick: String(y),
+        shortTick: String(y),
         value: yearTotal(y) ?? 0,
         on: y === year,
         go: () => changePeriod({ year: y }),
@@ -182,16 +200,27 @@ function Dashboard({
   function quickAdd(service) {
     // A new object every time, so tapping the same tile twice re-applies it.
     setPrefill({ name: service.name, cost: service.monthlyCost, billing_cycle: "monthly" });
+    // Desktop scrolls the always-visible form into view instead (below); on
+    // mobile there is nothing to scroll to until the sheet is open.
+    if (isMobile) setAddSheetOpen(true);
   }
 
   function focusAddForm() {
+    if (isMobile) { setAddSheetOpen(true); return; }
     document.getElementById("add")?.scrollIntoView({ behavior: "smooth", block: "center" });
     document.querySelector("#add input")?.focus();
   }
 
   function openExisting(subscription) {
+    // On mobile this fires from inside the add sheet (the duplicate-name
+    // warning), which has to close before the edit sheet it hands off to can
+    // open -- both use .dialog-backdrop, and two stacked at once is not what
+    // either sheet is for.
+    setAddSheetOpen(false);
     setEditingId(subscription.id);
-    document.getElementById("all")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!isMobile) {
+      document.getElementById("all")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
 
   if (subscriptions.length === 0) {
@@ -203,7 +232,20 @@ function Dashboard({
           prefill={prefill}
           onQuickAdd={quickAdd}
           actions={actions}
+          onOpenAddSheet={() => setAddSheetOpen(true)}
         />
+        {addSheetOpen && (
+          <Sheet title="Add a subscription" onClose={() => setAddSheetOpen(false)}>
+            <AddForm
+              categories={categories}
+              existing={subscriptions}
+              onSubmit={actions.create}
+              onOpenExisting={openExisting}
+              prefill={prefill}
+              onSuccess={() => setAddSheetOpen(false)}
+            />
+          </Sheet>
+        )}
       </div>
     );
   }
@@ -294,6 +336,34 @@ function Dashboard({
           onExport={actions.exportBackup}
         />
       </div>
+
+      {/* Mobile only (hidden by the media query in dashboard.css): the
+          add-section above is desktop's always-visible form, and this
+          fixed-position bar is what reaches it and the cancelled toggle
+          without scrolling back up to the table. Rendered unconditionally,
+          like the header's avatar square, rather than gated on isMobile --
+          CSS decides whether it's on screen, JS just supplies the handlers. */}
+      <div className="mobile-action-bar">
+        <button type="button" className="btn btn-primary" onClick={focusAddForm}>
+          Add subscription
+        </button>
+        <button type="button" className="btn btn-secondary" onClick={() => setShowCancelled(!showCancelled)}>
+          {showCancelled ? "Hide cancelled" : `Show cancelled — ${cancelledCount}`}
+        </button>
+      </div>
+
+      {addSheetOpen && (
+        <Sheet title="Add a subscription" onClose={() => setAddSheetOpen(false)}>
+          <AddForm
+            categories={categories}
+            existing={subscriptions}
+            onSubmit={actions.create}
+            onOpenExisting={openExisting}
+            prefill={prefill}
+            onSuccess={() => setAddSheetOpen(false)}
+          />
+        </Sheet>
+      )}
 
       {catPanelOpen && (
         <CategoriesDialog

@@ -174,7 +174,7 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
   // Export is left out because there is nothing to export yet.
   if (variant === "entry") {
     return (
-      <section className="io-entry" aria-label="Import a file">
+      <section id="io" className="io-entry" aria-label="Import a file">
         <p>
           Already have a list somewhere? Bring in a JSON or CSV export instead of typing it out.
         </p>
@@ -189,7 +189,7 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
   }
 
   return (
-    <section className="io-section" aria-label="Import and export">
+    <section id="io" className="io-section" aria-label="Import and export">
       <div className="section-head">
         <span className="eyebrow">Import &amp; export</span>
         <span className="hint">Maintenance — moving your list in and out in one go</span>

@@ -148,7 +148,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return schemas.Token(access_token=auth.create_access_token(user.id))
+    return schemas.Token(access_token=auth.create_access_token(user.id, user.token_version))
 
 
 @app.get("/me", response_model=schemas.User, tags=["Auth"])
@@ -158,18 +158,27 @@ def read_me(current_user: models.User = Depends(auth.get_current_user)):
     return current_user
 
 
-@app.put("/me/password", response_model=schemas.User, tags=["Auth"])
+@app.put("/me/password", response_model=schemas.Token, tags=["Auth"])
 def change_password(
     payload: schemas.PasswordChange,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    """Changes the calling user's password. Existing tokens keep working --
-    nothing here revokes them (see auth.TOKEN_EXPIRE_HOURS) -- but any future
-    login needs the new password."""
+    """Changes the calling user's password and signs out every *other* token.
+
+    crud.update_password bumps token_version, which get_current_user checks
+    on every request -- so the token this very request was authenticated with
+    is now stale too. A fresh one is minted and returned so the calling
+    device keeps working without a re-login; a token sitting in any other
+    browser has no way to learn the new version and simply starts failing
+    with 401 on its next request.
+    """
     if not auth.verify_password(payload.current_password, current_user.hashed_password):
         raise HTTPException(status_code=401, detail="Incorrect password")
-    return crud.update_password(db, current_user, payload.new_password)
+    crud.update_password(db, current_user, payload.new_password)
+    return schemas.Token(
+        access_token=auth.create_access_token(current_user.id, current_user.token_version)
+    )
 
 
 @app.delete("/me", status_code=204, tags=["Auth"])

@@ -33,10 +33,13 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
 
 
 def update_password(db: Session, user: models.User, new_password: str) -> models.User:
-    """Overwrites the stored hash. The route is responsible for having
-    already verified the caller's current password -- this just does the
-    write, the same division of labour as set_archived."""
+    """Overwrites the stored hash and bumps token_version, which is what
+    signs out every token issued before this call (see auth.get_current_user).
+    The route is responsible for having already verified the caller's current
+    password -- this just does the write, the same division of labour as
+    set_archived."""
     user.hashed_password = hash_password(new_password)
+    user.token_version += 1
     db.commit()
     db.refresh(user)
     return user

@@ -55,18 +55,24 @@ def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed.encode())
 
 
-def create_access_token(user_id: int) -> str:
+def create_access_token(user_id: int, token_version: int = 0) -> str:
     """Build a signed token identifying one user.
 
     The payload is signed, *not* encrypted -- anyone holding the token can
     read these claims (try pasting one into jwt.io). That's fine for an id and
     an expiry; never put anything secret in here. What the signature buys is
     that nobody can change "sub" to another user's id without SECRET_KEY.
+
+    "tv" (token version) is not a standard JWT claim -- it exists so
+    get_current_user can reject every token issued before a password change
+    at once. Stamping the version that was current *when this token was
+    minted* is what makes that comparison work: a token outlives the moment
+    it was issued, but the row's own token_version moves forward without it.
     """
     expire = datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS)
     # "sub" (subject) and "exp" (expiry) are standard JWT claim names; the jwt
     # library enforces exp automatically on decode. sub must be a string.
-    payload = {"sub": str(user_id), "exp": expire}
+    payload = {"sub": str(user_id), "tv": token_version, "exp": expire}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -100,5 +106,11 @@ def get_current_user(
     # of staying valid until its token happens to expire.
     user = db.query(models.User).filter(models.User.id == int(user_id)).first()
     if user is None:
+        raise credentials_error
+    # A token minted before the last password change carries the old
+    # token_version and is rejected here, same as an expired or forged one --
+    # this is the enforcement half of "changing your password signs out other
+    # devices" (crud.update_password is the half that moves the counter).
+    if payload.get("tv") != user.token_version:
         raise credentials_error
     return user
