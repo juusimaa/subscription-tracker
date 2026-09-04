@@ -82,6 +82,7 @@ body { text-wrap: pretty; }
   text-transform: uppercase;
   color: color-mix(in srgb, var(--color-text) 70%, transparent);
   margin-bottom: 8px;
+  white-space: nowrap;
 }
 .section-head {
   display: flex;
@@ -1201,7 +1202,13 @@ body { text-wrap: pretty; }
   .hero .eyebrow { margin: 0 0 16px; }
   .hero-total { font-size: clamp(44px, 14vw, 64px); }
   .hero-body { font-size: 14px; line-height: 22px; margin: 18px 0 0; }
-  .period { margin-top: 24px; }
+  /* Desktop's align-items: flex-start (base rule) lets .period sit in the
+     hero grid's auto-sized column without stretching to fill it. On mobile
+     .hero is block, so .period is already full width -- but flex-start would
+     still shrink .period-controls to its content's fit-content width instead
+     of that full width, which is what .seg/.stepper's own align-items:
+     stretch below needs to have something to stretch into. */
+  .period { margin-top: 24px; align-items: stretch; }
   .period-controls { flex-direction: column; align-items: stretch; gap: 10px; }
   .seg { display: grid; grid-template-columns: 1fr 1fr; }
   .seg-opt { min-height: 44px; justify-content: center; }
@@ -1210,11 +1217,14 @@ body { text-wrap: pretty; }
   .stepper-label { min-height: 44px; min-width: 0; justify-content: center; }
   .stepper-label span { margin-right: 0; }
   /* The popover becomes an inline block under the stepper rather than an
-     absolutely-positioned overlay -- there's no room to float it. */
+     absolutely-positioned overlay -- there's no room to float it. Full width
+     rather than shrink-to-fit, matching the seg and stepper above it: .period
+     is align-items: flex-start, so without this the popover sits narrower
+     than -- and left-aligned under -- the controls that open it. */
   .picker {
     position: static;
     margin-top: 10px;
-    width: auto;
+    width: 100%;
     box-shadow: none;
   }
   .picker-grid.months { grid-template-columns: repeat(4, 1fr); }
@@ -1399,8 +1409,14 @@ body { text-wrap: pretty; }
   }
   .dialog-sheet { width: 440px; max-width: calc(100vw - 64px); }
 
-  /* — add form, restacked inside the add sheet — */
-  .add-grid { grid-template-columns: 1fr; gap: 16px; }
+  /* — add form, restacked inside the add sheet —
+     Service, Started and the submit button run full width; Cost pairs with
+     Cycle and Next renewal pairs with Category, matching the design's
+     two-up mobile layout instead of stacking every field on its own row. */
+  .add-grid { grid-template-columns: 1fr 1fr; gap: 16px 12px; }
+  .add-grid > :nth-child(1),
+  .add-grid > :nth-child(4),
+  .add-grid > .btn-primary { grid-column: 1 / -1; }
   .add-grid .btn-primary { margin-top: 0; width: 100%; min-height: 48px; }
   .add-section { display: none; }
 
