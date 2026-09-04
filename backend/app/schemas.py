@@ -382,6 +382,11 @@ class UserCreate(BaseModel):
     # bcrypt hashes at most 72 bytes and raises on anything longer, so the
     # upper bound is enforced here as a clean 422 rather than a 500 later.
     password: str = Field(min_length=8, max_length=72)
+    # Optional here because the gate it feeds (INVITE_CODE in main.py) is
+    # itself optional -- a deployment that hasn't set one accepts requests
+    # that omit this entirely, which is what every local/test registration
+    # does today.
+    invite_code: str | None = None
 
 
 class User(BaseModel):

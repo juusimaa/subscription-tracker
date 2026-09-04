@@ -124,6 +124,18 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
+# PLAN.md milestone 7: a stopgap for the gap between "registration is
+# architecturally open to anyone" (milestone 6) and "an email is verified
+# before it can do anything" (milestone 9, not built yet). Unset -- the
+# default for local dev and the whole test suite -- /register stays open, the
+# same as before this existed. Set it once the app is reachable on a public
+# URL and only people holding the code can create an account; take it back
+# out once milestone 9 lands.
+#
+# `or None` so an explicitly empty value (INVITE_CODE=) is also "disabled",
+# the same convention TEST_DATABASE_URL uses in conftest.py.
+INVITE_CODE = os.getenv("INVITE_CODE") or None
+
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -207,7 +219,13 @@ def register(request: Request, user: schemas.UserCreate, db: Session = Depends(g
     Rate limited to 5/minute per remote address -- otherwise nothing stops
     this from being scripted into a mass-registration or email-enumeration
     tool (see /token's docstring for the enumeration angle on login itself).
+
+    Checked before the email lookup below, on purpose: if INVITE_CODE is set,
+    a wrong or missing one is rejected without ever touching the users table,
+    so no response here can be used to probe which emails are registered.
     """
+    if INVITE_CODE and user.invite_code != INVITE_CODE:
+        raise HTTPException(status_code=403, detail="Invalid invite code")
     if crud.get_user_by_email(db, user.email):
         raise HTTPException(status_code=400, detail="Email already registered")
     return crud.create_user(db, user)

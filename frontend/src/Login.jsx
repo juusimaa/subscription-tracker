@@ -13,6 +13,7 @@ function Login({ onLogin, email: knownEmail, compact = false }) {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState(knownEmail || "");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState(null);
   // Disables the submit button while the request is in flight, so an
   // impatient double-click can't fire two registrations for the same email.
@@ -25,7 +26,7 @@ function Login({ onLogin, email: knownEmail, compact = false }) {
     try {
       // Registering doesn't return a token, so a successful signup falls
       // straight through to login -- the user never has to type it twice.
-      if (isRegistering) await register(email, password);
+      if (isRegistering) await register(email, password, inviteCode);
       const token = await login(email, password);
       // Handing the token up to App is what swaps this screen for the app.
       onLogin(token);
@@ -78,6 +79,21 @@ function Login({ onLogin, email: knownEmail, compact = false }) {
             required
           />
         </label>
+        {isRegistering && (
+          <label className="field">
+            <span className="field-label">Invite code</span>
+            <input
+              className="input"
+              type="text"
+              value={inviteCode}
+              onChange={(event) => setInviteCode(event.target.value)}
+              // Not every deployment requires one -- see the backend's
+              // INVITE_CODE env var. Left blank, the request just omits it,
+              // same as this app not having the field at all.
+              autoComplete="off"
+            />
+          </label>
+        )}
         <button type="submit" className="btn btn-primary" disabled={busy}>
           {isRegistering ? "Sign up" : "Log in"}
         </button>
@@ -87,7 +103,7 @@ function Login({ onLogin, email: knownEmail, compact = false }) {
         <button
           type="button"
           className="link-button login-toggle"
-          onClick={() => { setIsRegistering(!isRegistering); setError(null); }}
+          onClick={() => { setIsRegistering(!isRegistering); setError(null); setInviteCode(""); }}
         >
           {isRegistering ? "Already have an account? Log in" : "Need an account? Sign up"}
         </button>

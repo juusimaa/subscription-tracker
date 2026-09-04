@@ -82,6 +82,11 @@ services:
       # written into this file, into the image, or into git. In Azure this
       # same variable comes from a Container Apps secret instead.
       SECRET_KEY: ${SECRET_KEY}
+      # Gates /register (see app/main.py) -- left unset here, matching
+      # .env.example, so local dev keeps open signup. Empty-string
+      # substitution when unset in .env is exactly what app/main.py treats
+      # as "disabled".
+      INVITE_CODE: ${INVITE_CODE}
     volumes:
       # Bind mount: maps the host's ./backend/app directly into the
       # container, so edits on your Mac are picked up immediately without

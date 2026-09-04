@@ -70,6 +70,7 @@ that need them ([.env.example](.env.example) documents the same list):
 | `POSTGRES_PASSWORD` | `db` | Superuser password for the `postgres` role. |
 | `DATABASE_URL` | `backend` | Full SQLAlchemy URL. Host is `db`, not `localhost` — see [Docker & Compose](#9-docker--compose). |
 | `SECRET_KEY` | `backend` | Signs the JWTs. Changing it logs everyone out. |
+| `INVITE_CODE` | `backend` | Optional. Set it to gate `/register` behind a shared code — see [Accounts](#accounts). Left blank, signup stays open. |
 | `VITE_API_URL` | `frontend` | Baked into the browser bundle, so it must be an address *your browser* can reach. |
 
 ---
@@ -564,7 +565,7 @@ http://localhost:8000/docs (Swagger UI) and http://localhost:8000/redoc.
 | Method | Path | What it does |
 | --- | --- | --- |
 | `GET` | `/health` | Readiness check, used by Docker's healthcheck: 200 only if a `SELECT 1` reaches the database, 503 otherwise. Unauthenticated. |
-| `POST` | `/register` | Create an account. |
+| `POST` | `/register` | Create an account. Rejects the request with 403 if `INVITE_CODE` is set and `invite_code` doesn't match. |
 | `POST` | `/token` | Exchange email + password for a JWT (form-encoded; email goes in `username`). |
 | `GET` | `/me` | The logged-in user — used to check a stored token is still valid. |
 | `GET` | `/subscriptions` | List, with optional `category`, `billing_cycle`, `status`, `active` filters. |
@@ -665,6 +666,24 @@ as `Authorization: Bearer <token>` on every request. Tokens expire after 12
 hours; a different browser or device starts logged out. On
 http://localhost:8000/docs the **Authorize** button logs the docs page in the
 same way.
+
+### Invite codes
+
+Registration is otherwise open to anyone who can reach `/register` — nothing
+yet verifies that an email belongs to whoever is signing up with it (that's
+PLAN.md milestone 9). Until then, set `INVITE_CODE` in the backend's
+environment and `/register` starts rejecting any request whose `invite_code`
+field doesn't match:
+
+```
+curl -X POST localhost:8000/register -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"at-least-8-chars","invite_code":"whatever-you-set-INVITE_CODE-to"}'
+```
+
+Left unset (the default for local dev and the test suite), `/register`
+behaves exactly as it did before this existed. This is a stopgap for the
+window between public deploy and real email verification, not a long-term
+access-control mechanism — it's one shared string, not a per-invite code.
 
 ## Backup and restore
 

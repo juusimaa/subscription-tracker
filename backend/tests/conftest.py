@@ -84,15 +84,25 @@ def client():
         yield test_client
 
 
-def register(client, email: str | None = None, password: str = "password123") -> dict:
+def register(
+    client,
+    email: str | None = None,
+    password: str = "password123",
+    invite_code: str | None = None,
+) -> dict:
     """Creates an account and returns the Authorization header for it.
 
     The email defaults to a unique one so two calls in the same test give two
     genuinely different users -- which is the whole point of the isolation
-    tests.
+    tests. invite_code is omitted from the request entirely when not given,
+    matching what a client talking to a deployment with no INVITE_CODE set
+    would send -- see test_invite_code.py for the gate itself.
     """
     email = email or f"user-{uuid.uuid4().hex[:12]}@example.com"
-    response = client.post("/register", json={"email": email, "password": password})
+    payload = {"email": email, "password": password}
+    if invite_code is not None:
+        payload["invite_code"] = invite_code
+    response = client.post("/register", json=payload)
     assert response.status_code == 201, response.text
     token = client.post(
         "/token", data={"username": email, "password": password}

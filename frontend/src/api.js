@@ -134,8 +134,16 @@ export async function login(email, password) {
   return body.access_token;
 }
 
-export const register = (email, password) =>
-  request("/register", { method: "POST", body: JSON.stringify({ email, password }) });
+export const register = (email, password, inviteCode) =>
+  request("/register", {
+    method: "POST",
+    // inviteCode is omitted rather than sent as "" when the field is left
+    // blank, matching what a deployment with no INVITE_CODE set expects --
+    // see the backend's schemas.UserCreate.
+    body: JSON.stringify(
+      inviteCode ? { email, password, invite_code: inviteCode } : { email, password }
+    ),
+  });
 
 export const getMe = () => request("/me");
 
