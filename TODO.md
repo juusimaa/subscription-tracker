@@ -27,7 +27,7 @@ bottom). What's left:
 
 - **Password reset** and **email verification**, both noted as deliberately
   skipped in PLAN.md milestone 6. They need an email path, so they are a bigger
-  step than the first two were.
+  step than the first two were. Scheduled as PLAN.md milestone 9.
 
 ## 5. Check-then-insert races return 500
 
@@ -243,7 +243,7 @@ confirmed for real (login after returns 401, both prompts guarded correctly)
 -- with no console errors at any step.
 
 Still open: password reset and email verification, both needing an email path
-this build does not have. See item 1 above.
+this build does not have. See item 1 above (PLAN.md milestone 9).
 
 **2. Rate limiting on `/register` and `/token`.** `slowapi` covers both at
 `5/minute`, keyed on remote address -- the two routes it guards are
@@ -253,7 +253,7 @@ unauthenticated, so there is no user id yet to key on.
   process, which is exactly right for local Compose's one backend container
   and wrong for more than one replica behind a load balancer. Redis (already
   in this stack, see the cache-aside layer) is slowapi's other storage
-  backend and is the fix, but it's a milestone 7 decision -- there is only
+  backend and is the fix, but it's a milestone 8 decision -- there is only
   ever one backend process until then.
 - **`RATE_LIMIT_ENABLED` exists for the test suite, not for deployment.**
   Nearly every test creates an account through the `register()` helper in
@@ -292,7 +292,7 @@ local Compose needs no `.env` change to keep working.
   this item's old note pointed at -- `VITE_API_URL` inlined at build time
   (PLAN.md milestone 5) -- is unchanged. Fixing the backend's half doesn't
   need it, and the frontend side is its own decision (build arg per
-  environment vs. a runtime-read URL) that milestone 7 should make once an
+  environment vs. a runtime-read URL) that milestone 8 should make once an
   actual deployment target exists to decide it against.
 
 Verified against the actual local Compose stack, not just the suite: rebuilt

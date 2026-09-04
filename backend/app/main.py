@@ -109,7 +109,7 @@ app.add_middleware(
 # In-memory storage (slowapi's default) counts per process, which matches
 # local Compose's one backend container exactly. It stops being correct the
 # moment there is more than one backend replica behind a load balancer --
-# that's a milestone 7 decision (Redis, already in this stack, is slowapi's
+# that's a milestone 8 decision (Redis, already in this stack, is slowapi's
 # other storage backend), not one to make now.
 #
 # RATE_LIMIT_ENABLED exists so the test suite can turn this off: dozens of

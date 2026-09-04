@@ -498,7 +498,7 @@ can do neither.
 
 Packages are private by default — make them public, or `docker login ghcr.io`
 with a personal access token, to pull them elsewhere. Nothing deploys these yet;
-that's milestone 7.
+that's milestone 8.
 
 ---
 

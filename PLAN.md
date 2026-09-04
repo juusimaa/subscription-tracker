@@ -49,17 +49,19 @@ docker-subscription-tracker/
 3. ~~**Build the frontend**~~ ✅ — simple React UI (list subscriptions, add/edit form, total cost summary), Dockerized as its own container, calling the backend API.
 4. ~~**docker-compose.yml**~~ ✅ ties all three together for local dev (`docker compose up`).
 5. ~~**GitHub Actions**~~ ✅ — on push to `main`, build both images and push them to GitHub Container Registry. Details below.
-6. ~~**Multi-user auth (JWT)**~~ ✅ — add a `users` table and scope every subscription to its owner, so the app is safe to expose publicly in step 7. Details below.
-7. **Deploy to Azure Container Apps** — backend + frontend as two container apps, both pulling the images already published to GHCR. Database is [Neon](https://neon.tech)'s free Postgres tier rather than Azure Database for PostgreSQL: Neon costs nothing at this scale and scales to zero on its own, while the cheapest Azure-managed Postgres (Burstable B1ms) runs ~$15–20/month with no free tier. Redis is dropped for this deployment — `app/cache.py` already fails open, so there's nothing worth paying to keep.
+6. ~~**Multi-user auth (JWT)**~~ ✅ — add a `users` table and scope every subscription to its owner, so the app is safe to expose publicly in step 8. Details below.
+7. **Invite code for registration** — gate `POST /register` behind a shared invite code (env var, checked alongside the existing rate limit) before the app is reachable on a public URL. Registration is architecturally open to anyone (milestone 6), and step 9 is what actually verifies an email belongs to whoever is registering with it — until that exists, an invite code is the stopgap that keeps step 8's public deploy from being genuinely open signup. Removed once step 9 lands.
+8. **Deploy to Azure Container Apps** — backend + frontend as two container apps, both pulling the images already published to GHCR. Database is [Neon](https://neon.tech)'s free Postgres tier rather than Azure Database for PostgreSQL: Neon costs nothing at this scale and scales to zero on its own, while the cheapest Azure-managed Postgres (Burstable B1ms) runs ~$15–20/month with no free tier. Redis is dropped for this deployment — `app/cache.py` already fails open, so there's nothing worth paying to keep.
 
     **Keeping it updated after deploy:** Container Apps doesn't watch GHCR — it only pulls when told to, so a code change alone never reaches production. `build-and-push.yml` now has a `deploy` job sketched in (not yet active) that runs after both images publish and calls `az containerapp update --image ...:sha-<short>` for each app, closing the loop into push-to-main → live. It's gated behind an `AZURE_DEPLOY_ENABLED` repo variable and an OIDC federated credential (`azure/login`, no long-lived secret), both of which get created as part of this milestone's infra work — until then the job is skipped, not failing. Deploys pin to the immutable `sha-<short>` tag rather than `latest`, matching the reasoning in milestone 5. DB migrations aren't part of this step — an Alembic migration still needs to run against Neon separately.
+9. **Password reset and email verification** — the two account-surface gaps milestone 6 deliberately skipped, built for real this time. Needs an actual email-sending path (e.g. [Resend](https://resend.com)), which nothing in this stack has today — only `email-validator`, which checks an address's *format*, not that anyone reads it. New accounts land unverified and stay usable (registering, logging in, tracking subscriptions all still work), but anything that emails the user — password reset, and any future renewal-reminder notification — is gated on verification. Once this exists, step 7's invite code is no longer the thing standing between a public URL and open signup, and can come out.
 
 ## Milestone 5 — GitHub Actions to GHCR (done)
 
 One workflow, `.github/workflows/build-and-push.yml`, triggered by pushes to
 `main` (documentation-only commits are skipped via `paths-ignore`) and by a
 manual **Run workflow** button. It builds and publishes, and nothing more —
-deploying these images is milestone 7.
+deploying these images is milestone 8.
 
 **Registry:** GHCR rather than Docker Hub, because it needs no external
 account. The `GITHUB_TOKEN` that Actions mints for each run is enough to push,
@@ -86,12 +88,12 @@ per image so the two builds don't overwrite each other's cache.
 **Verified:** both images build locally exactly as the workflow builds them
 (`docker build ./backend` and `docker build --target production ./frontend`).
 
-**Known gap, deferred to milestone 7:** Vite inlines `VITE_API_URL` at *build*
+**Known gap, deferred to milestone 8:** Vite inlines `VITE_API_URL` at *build*
 time, so the published frontend image has the fallback `http://localhost:8000`
 baked into its JavaScript bundle. That is correct for a local `docker compose`
 run and wrong for Azure. Fixing it means either passing the real API URL as a
 Docker build arg (and rebuilding per environment) or having the app read the
-backend URL at runtime instead — a milestone 7 decision, since the URL isn't
+backend URL at runtime instead — a milestone 8 decision, since the URL isn't
 known until the backend container app exists.
 
 ## Milestone 6 — JWT auth (done)
@@ -157,8 +159,8 @@ refuses to boot without a `SECRET_KEY`.
 
 **Deliberately not built:** logout is client-side only -- the discarded token
 stays cryptographically valid until it expires, since real revocation needs a
-token blocklist. There is also no password reset and no email verification. The
-12-hour expiry is the only thing that ends a session.
+token blocklist. There is also no password reset and no email verification —
+both are milestone 9. The 12-hour expiry is the only thing that ends a session.
 
 **Session behaviour to expect:** `localStorage` is per-origin, per-browser. Same
 browser tomorrow means still logged in (until the token expires); a different
@@ -174,7 +176,7 @@ one, which is why the expiry is kept short.
   `docker compose down -v` while the only data is local test rows, and would
   have needed a real migration once there's an Azure database worth keeping.
   (Implementing it did in fact require a `down -v`.) Alembic has since taken
-  the schema over, so step 7 no longer inherits that problem. And step 7 puts
+  the schema over, so step 8 no longer inherits that problem. And step 8 puts
   `POST`/`DELETE` endpoints on a public URL, which shouldn't happen while they're
   unauthenticated. It didn't block step 5, which only builds images and doesn't
   care what's in them.

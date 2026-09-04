@@ -3,7 +3,7 @@
 # bundled with the repo -- no Docker Hub account or external credentials
 # needed.
 #
-# This workflow builds and publishes images, then -- once milestone 7's Azure
+# This workflow builds and publishes images, then -- once milestone 8's Azure
 # infra exists -- rolls them out. Rollout is gated behind the
 # AZURE_DEPLOY_ENABLED repo variable (Settings > Secrets and variables >
 # Actions > Variables) so it stays a no-op until the Container Apps and
@@ -126,7 +126,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
   # Rolls the just-published images out to Azure Container Apps. Sketched now,
-  # switched on once milestone 7's infra (Container Apps Environment, the two
+  # switched on once milestone 8's infra (Container Apps Environment, the two
   # apps, the federated credential below) actually exists -- until then
   # AZURE_DEPLOY_ENABLED is unset, the `if:` is false, and this job is skipped
   # entirely rather than failing on infra that isn't there yet.
@@ -146,7 +146,7 @@ jobs:
     # No long-lived Azure credential stored as a secret. This exchanges the
     # run's short-lived OIDC token for an Azure login, via a federated
     # credential on an App Registration scoped to just this resource group --
-    # set up once, in the Azure Portal, as part of milestone 7's infra work.
+    # set up once, in the Azure Portal, as part of milestone 8's infra work.
     permissions:
       id-token: write
       contents: read
@@ -169,7 +169,7 @@ jobs:
 
       # `az containerapp update --image` points the app at a new image and
       # creates a new revision; Container Apps handles the traffic cutover.
-      # Names/resource group here are placeholders for milestone 7's actual
+      # Names/resource group here are placeholders for milestone 8's actual
       # infra names.
       - name: Update backend container app
         run: |

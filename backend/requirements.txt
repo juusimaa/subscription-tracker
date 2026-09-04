@@ -20,5 +20,5 @@ python-multipart==0.0.12
 redis==5.2.1
 # Rate limiting on /register and /token (see app/main.py). In-memory storage
 # by default -- fine for local Compose's single backend container, not for
-# multiple replicas behind a load balancer (a milestone 7 decision).
+# multiple replicas behind a load balancer (a milestone 8 decision).
 slowapi==0.1.10
