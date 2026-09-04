@@ -3,8 +3,12 @@
 # bundled with the repo -- no Docker Hub account or external credentials
 # needed.
 #
-# This workflow only *builds and publishes* images. Nothing deploys them yet;
-# that's milestone 7 (Azure Container Apps), which will pull these same tags.
+# This workflow builds and publishes images, then -- once milestone 7's Azure
+# infra exists -- rolls them out. Rollout is gated behind the
+# AZURE_DEPLOY_ENABLED repo variable (Settings > Secrets and variables >
+# Actions > Variables) so it stays a no-op until the Container Apps and
+# federated credential in this file actually exist. Until then, flip it on
+# and this becomes real push-to-main -> live deploy.
 
 name: Build and push images
 
@@ -120,3 +124,63 @@ jobs:
           # which matters for the frontend's multi-stage build.
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  # Rolls the just-published images out to Azure Container Apps. Sketched now,
+  # switched on once milestone 7's infra (Container Apps Environment, the two
+  # apps, the federated credential below) actually exists -- until then
+  # AZURE_DEPLOY_ENABLED is unset, the `if:` is false, and this job is skipped
+  # entirely rather than failing on infra that isn't there yet.
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main' && vars.AZURE_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+
+    # Deploys, unlike registry pushes, are worth doing one at a time -- if a
+    # push landed while the previous deploy was still rolling out, finish
+    # that one before starting the next rather than racing two `az`
+    # invocations against the same Container Apps.
+    concurrency:
+      group: azure-deploy
+      cancel-in-progress: false
+
+    # No long-lived Azure credential stored as a secret. This exchanges the
+    # run's short-lived OIDC token for an Azure login, via a federated
+    # credential on an App Registration scoped to just this resource group --
+    # set up once, in the Azure Portal, as part of milestone 7's infra work.
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # docker/metadata-action's short-sha format is the first 7 characters
+      # of the commit SHA -- computed the same way here so this points at
+      # exactly the tag the build job above just pushed, not `latest`
+      # (which, per the comment above, a real deploy shouldn't float on).
+      - name: Compute image tag
+        id: tag
+        run: echo "sha=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # `az containerapp update --image` points the app at a new image and
+      # creates a new revision; Container Apps handles the traffic cutover.
+      # Names/resource group here are placeholders for milestone 7's actual
+      # infra names.
+      - name: Update backend container app
+        run: |
+          az containerapp update \
+            --name subscription-tracker-backend \
+            --resource-group subscription-tracker-rg \
+            --image ghcr.io/${{ github.repository }}-backend:${{ steps.tag.outputs.sha }}
+
+      - name: Update frontend container app
+        run: |
+          az containerapp update \
+            --name subscription-tracker-frontend \
+            --resource-group subscription-tracker-rg \
+            --image ghcr.io/${{ github.repository }}-frontend:${{ steps.tag.outputs.sha }}

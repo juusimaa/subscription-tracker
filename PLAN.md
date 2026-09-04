@@ -52,6 +52,8 @@ docker-subscription-tracker/
 6. ~~**Multi-user auth (JWT)**~~ ✅ — add a `users` table and scope every subscription to its owner, so the app is safe to expose publicly in step 7. Details below.
 7. **Deploy to Azure Container Apps** — backend + frontend as two container apps, both pulling the images already published to GHCR. Database is [Neon](https://neon.tech)'s free Postgres tier rather than Azure Database for PostgreSQL: Neon costs nothing at this scale and scales to zero on its own, while the cheapest Azure-managed Postgres (Burstable B1ms) runs ~$15–20/month with no free tier. Redis is dropped for this deployment — `app/cache.py` already fails open, so there's nothing worth paying to keep.
 
+    **Keeping it updated after deploy:** Container Apps doesn't watch GHCR — it only pulls when told to, so a code change alone never reaches production. `build-and-push.yml` now has a `deploy` job sketched in (not yet active) that runs after both images publish and calls `az containerapp update --image ...:sha-<short>` for each app, closing the loop into push-to-main → live. It's gated behind an `AZURE_DEPLOY_ENABLED` repo variable and an OIDC federated credential (`azure/login`, no long-lived secret), both of which get created as part of this milestone's infra work — until then the job is skipped, not failing. Deploys pin to the immutable `sha-<short>` tag rather than `latest`, matching the reasoning in milestone 5. DB migrations aren't part of this step — an Alembic migration still needs to run against Neon separately.
+
 ## Milestone 5 — GitHub Actions to GHCR (done)
 
 One workflow, `.github/workflows/build-and-push.yml`, triggered by pushes to
