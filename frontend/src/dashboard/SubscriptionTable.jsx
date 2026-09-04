@@ -77,7 +77,11 @@ function sortValue(subscription, key) {
   switch (key) {
     case "category": return (subscription.category || "").toLowerCase();
     case "status": return STATUS_ORDER[subscription.status];
-    case "cost": return Number(subscription.cost);
+    // Yearly plans are billed in one lump sum, so sorting on the raw cost
+    // would rank a $100/yr plan above a $10/mo one; normalising to a monthly
+    // figure is the only way the order matches what subscriptions actually
+    // cost against each other.
+    case "cost": return perMonth(subscription);
     // Non-charging rows sort together at one end rather than being scattered
     // through the numbers by a cost they are not paying.
     case "perMonth": return subscription.status === "active" ? perMonth(subscription) : -1;
