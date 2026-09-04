@@ -502,6 +502,15 @@ function SubscriptionTable({
                 </label>
               </div>
               <label className="field">
+                <span className="field-label">Started</span>
+                <input
+                  className="input tnum"
+                  type="date"
+                  value={draft.started_date}
+                  onChange={(e) => setDraft({ ...draft, started_date: e.target.value })}
+                />
+              </label>
+              <label className="field">
                 <span className="field-label">Next renewal</span>
                 <input
                   className="input tnum"
