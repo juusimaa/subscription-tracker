@@ -51,9 +51,7 @@ docker-subscription-tracker/
 5. ~~**GitHub Actions**~~ ✅ — on push to `main`, build both images and push them to GitHub Container Registry. Details below.
 6. ~~**Multi-user auth (JWT)**~~ ✅ — add a `users` table and scope every subscription to its owner, so the app is safe to expose publicly in step 8. Details below.
 7. ~~**Invite code for registration**~~ ✅ — gate `POST /register` behind a shared invite code (env var, checked alongside the existing rate limit) before the app is reachable on a public URL. Registration is architecturally open to anyone (milestone 6), and step 9 is what actually verifies an email belongs to whoever is registering with it — until that exists, an invite code is the stopgap that keeps step 8's public deploy from being genuinely open signup. Removed once step 9 lands.
-8. **Deploy to Azure Container Apps** — backend + frontend as two container apps, both pulling the images already published to GHCR. Database is [Neon](https://neon.tech)'s free Postgres tier rather than Azure Database for PostgreSQL: Neon costs nothing at this scale and scales to zero on its own, while the cheapest Azure-managed Postgres (Burstable B1ms) runs ~$15–20/month with no free tier. Redis is dropped for this deployment — `app/cache.py` already fails open, so there's nothing worth paying to keep.
-
-    **Keeping it updated after deploy:** Container Apps doesn't watch GHCR — it only pulls when told to, so a code change alone never reaches production. `build-and-push.yml` now has a `deploy` job sketched in (not yet active) that runs after both images publish and calls `az containerapp update --image ...:sha-<short>` for each app, closing the loop into push-to-main → live. It's gated behind an `AZURE_DEPLOY_ENABLED` repo variable and an OIDC federated credential (`azure/login`, no long-lived secret), both of which get created as part of this milestone's infra work — until then the job is skipped, not failing. Deploys pin to the immutable `sha-<short>` tag rather than `latest`, matching the reasoning in milestone 5. DB migrations aren't part of this step — an Alembic migration still needs to run against Neon separately.
+8. ~~**Deploy to Azure Container Apps**~~ ✅ — backend + frontend as two container apps, both pulling the images already published to GHCR. Database is [Neon](https://neon.tech)'s free Postgres tier rather than Azure Database for PostgreSQL: Neon costs nothing at this scale and scales to zero on its own, while the cheapest Azure-managed Postgres (Burstable B1ms) runs ~$15–20/month with no free tier. Redis is dropped for this deployment — `app/cache.py` already fails open, so there's nothing worth paying to keep. Details below.
 9. **Password reset and email verification** — the two account-surface gaps milestone 6 deliberately skipped, built for real this time. Needs an actual email-sending path (e.g. [Resend](https://resend.com)), which nothing in this stack has today — only `email-validator`, which checks an address's *format*, not that anyone reads it. New accounts land unverified and stay usable (registering, logging in, tracking subscriptions all still work), but anything that emails the user — password reset, and any future renewal-reminder notification — is gated on verification. Once this exists, step 7's invite code is no longer the thing standing between a public URL and open signup, and can come out.
 
 ## Milestone 5 — GitHub Actions to GHCR (done)
@@ -88,13 +86,11 @@ per image so the two builds don't overwrite each other's cache.
 **Verified:** both images build locally exactly as the workflow builds them
 (`docker build ./backend` and `docker build --target production ./frontend`).
 
-**Known gap, deferred to milestone 8:** Vite inlines `VITE_API_URL` at *build*
-time, so the published frontend image has the fallback `http://localhost:8000`
-baked into its JavaScript bundle. That is correct for a local `docker compose`
-run and wrong for Azure. Fixing it means either passing the real API URL as a
-Docker build arg (and rebuilding per environment) or having the app read the
-backend URL at runtime instead — a milestone 8 decision, since the URL isn't
-known until the backend container app exists.
+**Gap fixed in milestone 8:** Vite inlines `VITE_API_URL` at *build* time, so
+the published frontend image had the fallback `http://localhost:8000` baked
+into its JavaScript bundle — correct for local `docker compose`, wrong for
+Azure. Fixed by reading the backend URL at runtime instead of build time; see
+milestone 8 below.
 
 ## Milestone 6 — JWT auth (done)
 
@@ -167,6 +163,56 @@ browser tomorrow means still logged in (until the token expires); a different
 browser, device, or private window means the login screen again. Logging in from
 two browsers gives two independent valid tokens — nothing invalidates the older
 one, which is why the expiry is kept short.
+
+## Milestone 8 — Azure Container Apps deploy (done)
+
+**Infra** (Germany West Central, near Neon's `eu-central-1`, all in the
+existing `subscription-tracker-rg` resource group): one Container Apps
+Environment (`subscription-tracker-env`) holding two apps,
+`subscription-tracker-backend` and `subscription-tracker-frontend`, each on
+the Consumption plan at 0.25 vCPU / 0.5Gi with `min-replicas: 0` — this is a
+low-traffic hobby deploy, so scaling to zero when idle (both apps, and Neon
+itself) matters more here than avoiding cold starts. A $10/month budget alert
+on the resource group notifies at 80% and 100% of spend.
+
+**Secrets:** `SECRET_KEY` and `INVITE_CODE` were freshly generated for
+production (never reused from local dev), and `DATABASE_URL` is Neon's
+**unpooled** connection string — see milestone 7's note and
+`backend/app/database.py`/`backend/alembic/env.py`, which both read the one
+`DATABASE_URL` var, and Neon's pooler (PgBouncer, transaction mode) can
+misbehave with Alembic's DDL/locking. All three are Container Apps secrets,
+referenced by the containers via `secretref`, never plain env values.
+`CORS_ORIGINS` on the backend points at the frontend app's own FQDN.
+
+**No separate migration step needed:** `backend/entrypoint.sh` already runs
+`alembic upgrade head` before every container start (see milestone 2/3's
+Dockerfile), so the backend app migrated Neon's schema itself on first boot —
+milestone 5's plan to run this "separately" turned out to be unnecessary.
+
+**The `VITE_API_URL`-at-build-time gap (flagged in milestone 5) is fixed with
+a runtime config, not a build arg:** the frontend's production (Nginx) image
+now has `frontend/docker-entrypoint.sh` render `frontend/config.template.js`
+into `/usr/share/nginx/html/config.js` via `envsubst`, using whatever `API_URL`
+env var the Container App has, at container *startup* — `index.html` loads it
+before the app bundle, and `src/api.js` reads `window.__API_URL__` first,
+falling back to the build-time `VITE_API_URL` (for local Vite dev, which has
+no `config.js`) and then `http://localhost:8000`. One built image now works
+against any backend URL; changing it later is a Container Apps env var update,
+not a rebuild.
+
+**Continuous deploy:** `build-and-push.yml`'s `deploy` job (added in milestone
+5's PR, inert until now) is live — `AZURE_DEPLOY_ENABLED` is `true`, backed by
+an Azure AD app registration + service principal with an OIDC federated
+credential scoped to `repo:<owner>/subscription-tracker:ref:refs/heads/main`
+(`azure/login`, no long-lived secret in GitHub) and a **Container Apps
+Contributor** role assignment scoped to just the resource group — not
+`Contributor`, so a compromised workflow run can't touch anything outside the
+two container apps. Every push to `main` now builds, publishes, and rolls out
+automatically, pinned to the immutable `sha-<short>` tag.
+
+**GHCR images:** already publicly pullable with no registry secret needed —
+GHCR packages inherit this repo's public visibility by default, so Container
+Apps' anonymous pulls just worked.
 
 ## Notes / rationale
 

@@ -9,6 +9,11 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Only present in the production (Nginx) image -- rendered by
+         docker-entrypoint.sh from config.template.js at container start.
+         404s harmlessly in local dev, where src/api.js falls back to
+         VITE_API_URL instead. Must load before the app bundle below. -->
+    <script src="/config.js"></script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

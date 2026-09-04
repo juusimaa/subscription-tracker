@@ -1,12 +1,15 @@
 // Thin wrapper around fetch() for talking to the FastAPI backend.
 
-// import.meta.env.VITE_API_URL is injected by Vite at build/serve time from
-// the VITE_API_URL environment variable (see docker-compose.yml). Only env
-// vars prefixed with VITE_ are exposed to client-side code -- this prevents
-// accidentally leaking server-only secrets into the browser bundle. It is
-// also why the JWT signing key is never a VITE_ variable: anything prefixed
-// that way is readable by anyone who opens the page.
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// window.__API_URL__ is set by config.js, which only exists in the
+// production (Nginx) image -- rendered at container *startup* from whatever
+// API_URL env var the Container App has, so one built image works against
+// any backend URL (see frontend/config.template.js and
+// docker-entrypoint.sh). Local dev has no config.js, so it falls through to
+// import.meta.env.VITE_API_URL, injected by Vite at build/serve time (see
+// docker-compose.yml) -- only env vars prefixed with VITE_ are exposed to
+// client-side code, which is also why the JWT signing key is never one of
+// them: anything prefixed that way is readable by anyone who opens the page.
+const API_URL = window.__API_URL__ || import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const TOKEN_KEY = "token";
 

@@ -21,5 +21,11 @@ RUN npm run build
 # dev server for hot-reloading (see docker-compose.yml).
 FROM nginx:alpine AS production
 COPY --from=build /app/dist /usr/share/nginx/html
+# Template for the runtime API URL, rendered into a real config.js by
+# docker-entrypoint.sh on every container start -- see that file and
+# config.template.js for why this can't just be baked in here.
+COPY config.template.js /etc/nginx/config.template.js
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
