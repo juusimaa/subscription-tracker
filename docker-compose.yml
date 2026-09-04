@@ -133,8 +133,20 @@ services:
       # the host's published ports, not Docker's internal network.
       VITE_API_URL: ${VITE_API_URL}
     volumes:
-      - ./frontend/src:/app/src
-      - ./frontend/index.html:/app/index.html
+      # Whole-directory mount, not per-file: a bind mount on a single file
+      # (as this used to do for index.html) goes stale on macOS whenever
+      # that file is saved via the usual write-temp-then-rename, since the
+      # mount is attached to the old file's inode -- every edit ends in
+      # "ENOENT: no such file or directory, open '/app/index.html'" until
+      # the container is restarted. A directory mount doesn't have that
+      # problem: renames of files inside it don't touch the mount point
+      # itself (this is why ./frontend/src never hit the bug).
+      - ./frontend:/app
+      # Anonymous volume: shadows the host mount above for just this one
+      # path, so the image's own /app/node_modules (built with `npm ci` in
+      # the Dockerfile, for Linux) keeps winning instead of being replaced
+      # by the host's node_modules (built for macOS, and gitignored besides).
+      - /app/node_modules
     ports:
       - "5173:5173"
     depends_on:

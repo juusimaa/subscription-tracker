@@ -61,6 +61,61 @@
   --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
   --shadow-md: 0 3px 10px color-mix(in srgb, #2d2b2b 16%, transparent);
   --shadow-lg: 0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent);
+
+  color-scheme: light dark;
+}
+
+/* Dark mode — reversed tonal ramps (same OKLCH lightness steps, opposite
+   ends) plus the elevation treatment for a dark ground: a hairline edge +
+   ambient darkness instead of the soft ink-tinted shadow. Every component
+   pairs a ramp step consistently (e.g. accent-100 fill + accent-900 text),
+   so reversing the whole ramp keeps every existing fill/text pairing legible
+   without touching component code. The accent brand red (--color-accent,
+   -2 and all ramp bases) is unchanged; only neutrals, the accent ramp's tint
+   steps, dividers and shadows flip. Follows the OS/browser setting only —
+   no in-app override. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-bg: #16151a;
+    --color-surface: #201f24;
+    --color-text: #f1efee;
+    --color-divider: color-mix(in srgb, #f1efee 30%, transparent);
+
+    --color-neutral-100: #2d2b2b;
+    --color-neutral-200: #444141;
+    --color-neutral-300: #605d5d;
+    --color-neutral-400: #7d7979;
+    --color-neutral-500: #9b9797;
+    --color-neutral-600: #bab6b6;
+    --color-neutral-700: #d7d3d3;
+    --color-neutral-800: #eae7e7;
+    --color-neutral-900: #f8f4f4;
+
+    --color-accent-100: #4d170e;
+    --color-accent-200: #7c1405;
+    --color-accent-300: #ae1800;
+    --color-accent-400: #dd2b0f;
+    --color-accent-500: #ff563c;
+    --color-accent-600: #ff9783;
+    --color-accent-700: #ffc4b8;
+    --color-accent-800: #ffe0d9;
+    --color-accent-900: #fff2ef;
+
+    --color-accent-2-100: #471d16;
+    --color-accent-2-200: #71261b;
+    --color-accent-2-300: #9e3526;
+    --color-accent-2-400: #c94b39;
+    --color-accent-2-500: #ef6853;
+    --color-accent-2-600: #ff9784;
+    --color-accent-2-700: #ffc4b9;
+    --color-accent-2-800: #ffe0da;
+    --color-accent-2-900: #fff2ef;
+
+    --shadow-sm: 0 0 0 1px color-mix(in srgb, #f1efee 14%, transparent), 0 2px 6px rgba(0, 0, 0, .55);
+    --shadow-md: 0 0 0 1px color-mix(in srgb, #f1efee 14%, transparent), 0 10px 26px rgba(0, 0, 0, .6);
+    --shadow-lg: 0 0 0 1px color-mix(in srgb, #f1efee 16%, transparent), 0 22px 50px rgba(0, 0, 0, .7);
+  }
 }
 
 body {
