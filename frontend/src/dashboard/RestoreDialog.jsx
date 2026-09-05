@@ -27,13 +27,12 @@ function RestoreDialog({ subscription, onConfirm, onClose }) {
         className="dialog dialog-confirm"
         role="dialog"
         aria-modal="true"
-        aria-label={`Restore ${subscription.name}?`}
+        aria-label={`Start ${subscription.name} over?`}
         onClick={(event) => event.stopPropagation()}
       >
-        <p className="dialog-title">Restore {subscription.name}?</p>
+        <p className="dialog-title">Start {subscription.name} over?</p>
         <p className="dialog-body">
-          Starts a new, active run of this subscription linked to its history here — the
-          cancelled one stays on record with its own past charges untouched.
+          Begins a fresh run from today. The cancelled one stays in your history.
         </p>
         <div className="restore-dates">
           <label className="field">
@@ -57,7 +56,7 @@ function RestoreDialog({ subscription, onConfirm, onClose }) {
         </div>
         <div className="dialog-actions">
           <button type="button" className="btn btn-primary" disabled={busy} onClick={confirm}>
-            Restore
+            Start over
           </button>
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             Cancel

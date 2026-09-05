@@ -8,7 +8,7 @@
 // Editing happens in the row. A modal would hide the neighbouring rows, which
 // are the context for whether a number looks right.
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { ApiError } from "../api";
 import MonoTile from "../MonoTile";
 import Sheet from "./Sheet";
@@ -63,6 +63,42 @@ const STATUS = {
 // towards costing nothing, which is the thing worth grouping by.
 const STATUS_ORDER = { active: 0, trial: 1, paused: 2, cancelled: 3 };
 
+// Every row's secondary actions, described rather than left as bare verbs --
+// "Reactivate" and "Start over" read as synonyms until the hint says one
+// keeps the original dates and the other starts a fresh run from today.
+const MENU_LABELS = {
+  cancel: "Cancel plan",
+  reactivate: "Reactivate",
+  restore: "Start over",
+  archive: "Archive",
+  unarchive: "Restore to list",
+  delete: "Delete permanently",
+};
+const MENU_HINTS = {
+  cancel: "Stops counting toward your totals. The record stays.",
+  reactivate: "Back on your active plans with its original dates.",
+  restore: "Begins a fresh run from today; the cancelled one stays in your history.",
+  archive: "Hides it from the list. Your totals don't change.",
+  unarchive: "Puts it back among your cancelled plans.",
+  delete: "Removes it and its history. No undo.",
+};
+
+// The primary control next to "More" -- Edit for a live row, otherwise
+// whichever action a cancelled row is most likely to want next.
+function primaryFor(subscription) {
+  if (subscription.status !== "cancelled") return { key: null, label: "Edit" };
+  if (!subscription.archived_date) return { key: "reactivate", label: "Reactivate" };
+  return { key: "unarchive", label: "Restore to list" };
+}
+
+// The "More" menu's contents -- never including whichever action is already
+// the primary control, so nothing appears twice.
+function menuKeysFor(subscription) {
+  if (subscription.status !== "cancelled") return ["cancel", "delete"];
+  if (!subscription.archived_date) return ["restore", "archive", "delete"];
+  return ["reactivate", "restore", "delete"];
+}
+
 const COLUMNS = [
   { key: "name", label: "Name" },
   { key: "category", label: "Category" },
@@ -111,7 +147,7 @@ function SubscriptionTable({
   onRestore,
   onArchive,
   onUnarchive,
-  onDeleteArchived,
+  onDelete,
   onAdd,
   staleId,
   onRefreshStale,
@@ -126,7 +162,28 @@ function SubscriptionTable({
   // this component needs to know or set (unlike editingId, which the add
   // form's duplicate-name warning also opens from outside).
   const [detailId, setDetailId] = useState(null);
+  // Desktop-only: which row's "More" menu is open. At most one at a time --
+  // opening a second closes whichever was already open.
+  const [menuOpenId, setMenuOpenId] = useState(null);
   const isMobile = useIsMobile();
+
+  useEffect(() => {
+    if (menuOpenId == null) return;
+    function onKeyDown(event) {
+      if (event.key === "Escape") setMenuOpenId(null);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [menuOpenId]);
+
+  const actionHandlers = {
+    cancel: onCancelPlan,
+    reactivate: onReactivate,
+    restore: onRestore,
+    archive: onArchive,
+    unarchive: onUnarchive,
+    delete: onDelete,
+  };
 
   // editingId is owned by the parent -- the duplicate-name warning in the add
   // form opens a row from outside this component -- so the draft is filled in
@@ -184,6 +241,7 @@ function SubscriptionTable({
   function sortBy(key) {
     setSort({ key, dir: sort.key === key && sort.dir === "asc" ? "desc" : "asc" });
     closeEditor();
+    setMenuOpenId(null);
   }
 
   async function save(subscription) {
@@ -314,7 +372,12 @@ function SubscriptionTable({
                 key={subscription.id}
                 type="button"
                 className={cancelled ? "mobile-row cancelled" : "mobile-row"}
-                onClick={() => setDetailId(subscription.id)}
+                // A cancelled row has nothing to edit inline -- its sheet is
+                // the read-only facts plus Manage plan. Anything else opens
+                // straight into the edit sheet; a "tap to view, tap Edit to
+                // edit" detour was two taps for the one thing most people
+                // are here for.
+                onClick={() => (cancelled ? setDetailId(subscription.id) : setEditingId(subscription.id))}
               >
                 <MonoTile name={subscription.name} dim={cancelled} />
                 <span className="mobile-row-main">
@@ -374,68 +437,25 @@ function SubscriptionTable({
                 </div>
               ))}
             </div>
-            <div className="row-detail-actions">
-              {detailSub.status === "cancelled" ? (
-                <>
+            <div className="manage-plan">
+              <span className="field-label">Manage plan</span>
+              <div className="manage-plan-list">
+                {/* This sheet only ever opens for a cancelled row now (see
+                    the row button above), so its primary action -- Reactivate,
+                    or Restore to list once archived -- has no button of its
+                    own up top; it's just the first item here instead. */}
+                {[primaryFor(detailSub).key, ...menuKeysFor(detailSub)].map((key) => (
                   <button
+                    key={key}
                     type="button"
-                    className="btn btn-primary"
-                    onClick={openDetailActions(detailSub)(onReactivate)}
+                    className={key === "delete" ? "manage-plan-item destructive" : "manage-plan-item"}
+                    onClick={openDetailActions(detailSub)(actionHandlers[key])}
                   >
-                    Reactivate
+                    <span className="manage-plan-label">{MENU_LABELS[key]}</span>
+                    <span className="manage-plan-hint">{MENU_HINTS[key]}</span>
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={openDetailActions(detailSub)(onRestore)}
-                  >
-                    Restore
-                  </button>
-                  {detailSub.archived_date ? (
-                    <>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={openDetailActions(detailSub)(onUnarchive)}
-                      >
-                        Restore to list
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={openDetailActions(detailSub)(onDeleteArchived)}
-                      >
-                        Delete permanently
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={openDetailActions(detailSub)(onArchive)}
-                    >
-                      Archive
-                    </button>
-                  )}
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => { setDetailId(null); setEditingId(detailSub.id); }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={openDetailActions(detailSub)(onCancelPlan)}
-                  >
-                    Cancel plan
-                  </button>
-                </>
-              )}
+                ))}
+              </div>
             </div>
           </Sheet>
         )}
@@ -501,24 +521,26 @@ function SubscriptionTable({
                   </select>
                 </label>
               </div>
-              <label className="field">
-                <span className="field-label">Started</span>
-                <input
-                  className="input tnum"
-                  type="date"
-                  value={draft.started_date}
-                  onChange={(e) => setDraft({ ...draft, started_date: e.target.value })}
-                />
-              </label>
-              <label className="field">
-                <span className="field-label">Next renewal</span>
-                <input
-                  className="input tnum"
-                  type="date"
-                  value={draft.next_renewal_date}
-                  onChange={(e) => setDraft({ ...draft, next_renewal_date: e.target.value })}
-                />
-              </label>
+              <div className="sheet-row">
+                <label className="field">
+                  <span className="field-label">Started</span>
+                  <input
+                    className="input tnum"
+                    type="date"
+                    value={draft.started_date}
+                    onChange={(e) => setDraft({ ...draft, started_date: e.target.value })}
+                  />
+                </label>
+                <label className="field">
+                  <span className="field-label">Next renewal</span>
+                  <input
+                    className="input tnum"
+                    type="date"
+                    value={draft.next_renewal_date}
+                    onChange={(e) => setDraft({ ...draft, next_renewal_date: e.target.value })}
+                  />
+                </label>
+              </div>
               <p className="sheet-hint">Per month: {draftPerMonth}</p>
             </div>
             {rowError && (
@@ -539,6 +561,22 @@ function SubscriptionTable({
               <button type="button" className="btn btn-ghost" onClick={closeEditor}>
                 Discard
               </button>
+            </div>
+            <div className="manage-plan">
+              <span className="field-label">Manage plan</span>
+              <div className="manage-plan-list">
+                {menuKeysFor(editing).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={key === "delete" ? "manage-plan-item destructive" : "manage-plan-item"}
+                    onClick={() => { closeEditor(); actionHandlers[key](editing); }}
+                  >
+                    <span className="manage-plan-label">{MENU_LABELS[key]}</span>
+                    <span className="manage-plan-hint">{MENU_HINTS[key]}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </Sheet>
         )}
@@ -803,57 +841,63 @@ function SubscriptionTable({
                   </span>
                 </td>
                 <td className="row-actions">
-                  {cancelled ? (
-                    <>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => onReactivate(subscription)}
-                      >
-                        Reactivate
-                      </button>
-                      <button type="button" className="btn btn-ghost" onClick={() => onRestore(subscription)}>
-                        Restore
-                      </button>
-                      {archived ? (
-                        <>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            onClick={() => onUnarchive(subscription)}
-                          >
-                            Restore to list
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            onClick={() => onDeleteArchived(subscription)}
-                          >
-                            Delete
-                          </button>
-                        </>
-                      ) : (
-                        <button type="button" className="btn btn-ghost" onClick={() => onArchive(subscription)}>
-                          Archive
+                  {(() => {
+                    const primary = primaryFor(subscription);
+                    const menuKeys = menuKeysFor(subscription);
+                    const menuOpen = menuOpenId === subscription.id;
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={
+                            primary.key
+                              ? () => actionHandlers[primary.key](subscription)
+                              : () => setEditingId(subscription.id)
+                          }
+                        >
+                          {primary.label}
                         </button>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <button type="button" className="btn btn-ghost" onClick={() => setEditingId(subscription.id)}>
-                        Edit
-                      </button>
-                      <button type="button" className="btn btn-ghost" onClick={() => onCancelPlan(subscription)}>
-                        Cancel plan
-                      </button>
-                    </>
-                  )}
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          aria-haspopup="menu"
+                          aria-expanded={menuOpen}
+                          onClick={() => setMenuOpenId(menuOpen ? null : subscription.id)}
+                        >
+                          More ▾
+                        </button>
+                        {menuOpen && (
+                          <div className="row-menu" role="menu">
+                            {menuKeys.map((key) => (
+                              <button
+                                key={key}
+                                type="button"
+                                role="menuitem"
+                                className={key === "delete" ? "row-menu-item destructive" : "row-menu-item"}
+                                onClick={() => {
+                                  setMenuOpenId(null);
+                                  actionHandlers[key](subscription);
+                                }}
+                              >
+                                <span className="row-menu-label">{MENU_LABELS[key]}</span>
+                                <span className="row-menu-hint">{MENU_HINTS[key]}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </td>
               </tr>
             );
           })}
         </tbody>
       </table>
+      {/* A fixed, transparent scrim rather than a per-row blur backdrop --
+          one open menu at a time, closed by a click anywhere outside it. */}
+      {menuOpenId != null && <div className="menu-scrim" onClick={() => setMenuOpenId(null)} />}
     </section>
   );
 }

@@ -19,19 +19,27 @@ function CancelDialog({ subscription, onConfirm, onClose, destructive }) {
     }
   }
 
+  // A trial that cancels here never gets to its first charge -- worth saying
+  // plainly in the title, since "Cancel?" alone reads as ambiguous right at
+  // the moment that distinction is the whole point.
+  const title =
+    subscription.status === "trial"
+      ? `Cancel ${subscription.name} before it charges?`
+      : `Cancel ${subscription.name}?`;
+
   return (
     <div className="dialog-backdrop confirm" onClick={onClose}>
       <div
         className="dialog dialog-confirm"
         role="dialog"
         aria-modal="true"
-        aria-label={`Cancel ${subscription.name}?`}
+        aria-label={title}
         onClick={(event) => event.stopPropagation()}
       >
-        <p className="dialog-title">Cancel {subscription.name}?</p>
+        <p className="dialog-title">{title}</p>
         <p className="dialog-body">
           It stops counting toward your totals and moves to your cancelled list, where its past
-          charges stay on record. You can restore it any time.
+          charges stay on record. You can reactivate it any time.
         </p>
         <label className="field">
           <span className="field-label">Cancelled date</span>

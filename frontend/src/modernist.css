@@ -204,6 +204,25 @@ figcaption {
 .input:hover { border-color: color-mix(in srgb, var(--color-text) 45%, transparent); }
 .input:focus-visible { border-color: var(--color-accent); outline-offset: 0; }
 textarea.input { min-height: 90px; resize: vertical; }
+/* WebKit's native menulist rendering ignores an author's padding and
+   min-height on <select> outright, so a select styled with .input alone
+   renders well under the height of the text/date inputs beside it (Safari
+   confirmed at ~20px against these inputs' 36-44px). appearance:none hands
+   sizing back to this stylesheet; the two-gradient chevron below replaces
+   the native arrow that comes off with it, in currentColor so it never
+   needs its own color to track the theme with. */
+select.input {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 30px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 16px) 55%, calc(100% - 11px) 55%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
 .radio { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
 .radio input, .seg-opt input {
   position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;

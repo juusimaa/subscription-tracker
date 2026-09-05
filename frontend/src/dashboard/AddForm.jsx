@@ -24,6 +24,19 @@ const blank = {
   started_date: todayISO(),
   next_renewal_date: todayISO(),
   category: "",
+  // Form-local only: it picks which labels the fields below show and which
+  // status the submit turns into, but is never itself sent to the API.
+  is_trial: false,
+};
+
+const PLAN_LABELS = {
+  paid: { cost: "Cost", started: "Started", renewal: "Next renewal", submit: "Add" },
+  trial: {
+    cost: "Price after trial",
+    started: "Trial started",
+    renewal: "Trial ends",
+    submit: "Add trial",
+  },
 };
 
 function AddForm({
@@ -85,8 +98,11 @@ function AddForm({
         // The API takes null for "no category"; an empty string would create
         // a category with a blank name.
         category: form.category || null,
+        status: form.is_trial ? "trial" : "active",
       });
-      setForm(blank);
+      // Adding two trials in a row is a real sequence, so the plan-type
+      // choice survives the reset; every other field goes back to blank.
+      setForm({ ...blank, is_trial: form.is_trial });
       onSuccess?.();
     } catch (err) {
       if (err instanceof ApiError) {
@@ -112,9 +128,37 @@ function AddForm({
   }
 
   const field = (key) => (errors[key] ? "field invalid" : "field");
+  const labels = form.is_trial ? PLAN_LABELS.trial : PLAN_LABELS.paid;
 
   return (
     <form onSubmit={handleSubmit} noValidate>
+      <div className="plan-type-field">
+        <span className="field-label">Plan type</span>
+        <div className="seg plan-type-seg" role="group" aria-label="Plan type">
+          <button
+            type="button"
+            className="seg-opt"
+            aria-pressed={!form.is_trial}
+            onClick={() => setForm({ ...form, is_trial: false })}
+          >
+            Paid plan
+          </button>
+          <button
+            type="button"
+            className="seg-opt"
+            aria-pressed={form.is_trial}
+            onClick={() => setForm({ ...form, is_trial: true })}
+          >
+            Free trial
+          </button>
+        </div>
+        <p className="plan-type-hint">
+          {form.is_trial
+            ? "It shows €0.00 and stays out of your totals until the trial ends — then it charges the price above."
+            : "It starts charging on the renewal date and counts toward your totals straight away."}
+        </p>
+      </div>
+
       <div className={endAligned ? "add-grid baseline" : "add-grid"}>
         <label className={field("name")}>
           <span className="field-label">Service</span>
@@ -141,7 +185,7 @@ function AddForm({
         </label>
 
         <label className={field("cost")}>
-          <span className="field-label">Cost</span>
+          <span className="field-label">{labels.cost}</span>
           <input
             className="input tnum"
             type="number"
@@ -167,7 +211,7 @@ function AddForm({
             has none either, and a start date after the next renewal is how a
             plan booked ahead of time looks. */}
         <label className="field">
-          <span className="field-label">Started</span>
+          <span className="field-label">{labels.started}</span>
           <input
             className="input tnum"
             type="date"
@@ -177,7 +221,7 @@ function AddForm({
         </label>
 
         <label className="field">
-          <span className="field-label">Next renewal</span>
+          <span className="field-label">{labels.renewal}</span>
           <input
             className="input tnum"
             type="date"
@@ -196,7 +240,7 @@ function AddForm({
           </select>
         </label>
 
-        <button type="submit" className="btn btn-primary" disabled={busy}>Add</button>
+        <button type="submit" className="btn btn-primary" disabled={busy}>{labels.submit}</button>
       </div>
 
       {formError && (

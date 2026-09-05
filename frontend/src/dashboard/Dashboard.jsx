@@ -303,6 +303,16 @@ function Dashboard({
             year={year}
             month={month}
             onReview={() => setSort({ key: "status", dir: "asc" })}
+            onConvert={(subscription) =>
+              actions.update(subscription.id, {
+                status: "active",
+                // The conversion date becomes the first charge -- it's what
+                // the trial was going to do anyway.
+                started_date: subscription.next_renewal_date,
+                next_renewal_date: subscription.next_renewal_date,
+              })
+            }
+            onCancel={setCancelTarget}
           />
         )}
 
@@ -323,7 +333,7 @@ function Dashboard({
           onRestore={setRestoreTarget}
           onArchive={(subscription) => actions.archive(subscription.id)}
           onUnarchive={(subscription) => actions.unarchive(subscription.id)}
-          onDeleteArchived={setDeleteTarget}
+          onDelete={setDeleteTarget}
           onAdd={focusAddForm}
           staleId={staleId}
           onRefreshStale={actions.refresh}
@@ -424,7 +434,7 @@ function Dashboard({
       {deleteTarget && (
         <ConfirmDialog
           title={`Delete ${deleteTarget.name} permanently?`}
-          body="This removes the archived record and its past charges for good. There is no undoing this from here."
+          body="This removes the subscription and its past charges for good. There is no undoing this from here."
           confirmLabel="Delete permanently"
           onConfirm={async () => {
             const target = deleteTarget;
