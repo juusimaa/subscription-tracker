@@ -1138,11 +1138,20 @@ body { text-wrap: pretty; }
    same for the add sheet. Everything else here is pure restyle. */
 @media (max-width: 760px) {
   .page { padding: 0 20px 96px; }
-  .app-nav { padding-inline: 20px; }
+  /* Brand, account button and Log out all have to share one row down to the
+     narrowest phones. Flex items default to min-width: auto, which floors
+     their shrink at the content's own width -- an email address next to
+     "Subscriptions" and "Log out" pushed that floor past a phone's
+     viewport, and since nothing up the tree clips overflow, the whole
+     document scrolled sideways instead of just this row (issue #6). The
+     account button drops the email here and shows only the avatar square,
+     which is enough room for the brand to sit at full size, untrimmed. */
+  .app-nav { padding-inline: 20px; flex-wrap: nowrap; }
   .nav-link { display: none; }
-  .nav-account { min-height: 44px; }
-  .nav-email { font-size: 12px; }
+  .nav-account { min-height: 44px; flex: 0 0 auto; }
+  .nav-email { display: none; }
   .nav-avatar { display: inline-flex; }
+  .app-nav > .btn-secondary { flex: 0 0 auto; }
 
   /* — every dialog becomes a bottom sheet —
      One rule for all of them: Categories, the confirm dialogs, Restore,
