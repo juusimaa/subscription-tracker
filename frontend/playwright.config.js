@@ -34,10 +34,13 @@ export default defineConfig({
     {
       name: "desktop",
       use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 900 } },
-      // The nav-overflow and edit-sheet regressions only exist at mobile
-      // widths (isMobile is false at 1280px, so .mobile-row never renders) --
-      // only the full dashboard screenshot is meaningful at desktop width.
-      testMatch: /dashboard\.spec\.js/,
+      // The nav-overflow, edit-sheet and add-sheet regressions only exist at
+      // mobile widths (isMobile is false at 1280px, so .mobile-row and the
+      // add sheet never render -- desktop's add form is an always-visible
+      // inline section, not a dialog). The account dialog is the one
+      // exception: AccountDialog.jsx is a real dialog on both, re-chromed to
+      // a bottom sheet by CSS alone at 760px, so it's worth both baselines.
+      testMatch: /(dashboard|account-dialog)\.spec\.js/,
     },
   ],
   webServer: {
