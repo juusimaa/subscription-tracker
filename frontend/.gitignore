@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Playwright. __screenshots__ under tests/visual is NOT listed here -- those
+# are the committed baselines the suite compares against, not output.
+/test-results/
+/playwright-report/
+/blob-report/

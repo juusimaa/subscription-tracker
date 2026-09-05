@@ -1,0 +1,61 @@
+# Visual regression tests for the dashboard: screenshots the app against
+# fixed fixture data (no backend, see frontend/tests/visual/mocks.js) and
+# fails on any pixel diff against the committed baselines.
+#
+# PR-only, unlike test.yml's push+PR: an intentional UI change makes this job
+# fail until someone reviews and commits new baselines (see
+# frontend/tests/visual/README.md), which is a decision for the PR that
+# changed the UI to make, not something to react to after it's already on
+# main.
+
+name: Frontend visual tests
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-visual.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  visual:
+    runs-on: ubuntu-latest
+
+    # The official Playwright image, not actions/setup-node + a separate
+    # browser install: it's the same container the baselines are generated
+    # in (see the README), which is what keeps font rendering identical
+    # between "the image someone ran locally" and "the image CI runs" --
+    # without that, this job would fail on font-antialiasing noise that has
+    # nothing to do with the change under review. The tag has to track
+    # @playwright/test's version in frontend/package.json.
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run visual regression tests
+        run: npx playwright test
+
+      - name: Upload failure report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 14
