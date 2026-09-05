@@ -2,15 +2,23 @@
 # fixed fixture data (no backend, see frontend/tests/visual/mocks.js) and
 # fails on any pixel diff against the committed baselines.
 #
-# PR-only, unlike test.yml's push+PR: an intentional UI change makes this job
-# fail until someone reviews and commits new baselines (see
-# frontend/tests/visual/README.md), which is a decision for the PR that
-# changed the UI to make, not something to react to after it's already on
-# main.
+# Runs on pull requests so an intentional UI change is caught and its
+# baselines reviewed before merge (see frontend/tests/visual/README.md), and
+# also on push to main as a safety net for the gap a PR's checks can't see:
+# main moving after this branch's last CI run and before merge, so the
+# actual merged result was never itself tested. A push-triggered failure
+# here can't block anything (it's already on main) but surfaces the drift
+# immediately as a red check instead of it going unnoticed until the next
+# unrelated PR's run.
 
 name: Frontend visual tests
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-visual.yml"
   pull_request:
     paths:
       - "frontend/**"
