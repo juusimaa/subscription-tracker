@@ -10,19 +10,20 @@
 # here can't block anything (it's already on main) but surfaces the drift
 # immediately as a red check instead of it going unnoticed until the next
 # unrelated PR's run.
+#
+# No `paths:` filter, on purpose: "visual" is a required status check on
+# main (branch protection), and a required check a path filter prevents from
+# ever running is one GitHub waits on forever instead of passing. The
+# workflow always runs; the "changes" job below is what skips visual's
+# actual work on a PR that doesn't touch frontend/, while still letting it
+# report success.
 
 name: Frontend visual tests
 
 on:
   push:
     branches: [main]
-    paths:
-      - "frontend/**"
-      - ".github/workflows/frontend-visual.yml"
   pull_request:
-    paths:
-      - "frontend/**"
-      - ".github/workflows/frontend-visual.yml"
   workflow_dispatch:
 
 permissions:
@@ -33,7 +34,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Split out from "visual" rather than a paths-filter step in that job: a
+  # job-level `container:` (below) puts every step of that job inside the
+  # Playwright image, which has no git history to diff against and isn't
+  # guaranteed to have git installed at all. This one runs on the plain
+  # runner instead, where the action's git-diff mode works normally.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - "frontend/**"
+              - ".github/workflows/frontend-visual.yml"
+
   visual:
+    needs: changes
     runs-on: ubuntu-latest
 
     # The official Playwright image, not actions/setup-node + a separate
@@ -52,12 +73,15 @@ jobs:
 
     steps:
       - name: Check out the repository
+        if: needs.changes.outputs.frontend == 'true'
         uses: actions/checkout@v7
 
       - name: Install dependencies
+        if: needs.changes.outputs.frontend == 'true'
         run: npm ci
 
       - name: Run visual regression tests
+        if: needs.changes.outputs.frontend == 'true'
         run: npx playwright test
 
       - name: Upload failure report
