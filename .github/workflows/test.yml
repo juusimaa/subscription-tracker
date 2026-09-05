@@ -9,18 +9,17 @@
 
 name: Tests
 
+# No `paths:` filter on these triggers, on purpose: both "sqlite" and
+# "postgres" are required status checks on main (branch protection), and a
+# required check that a path filter prevents from ever running is one GitHub
+# waits on forever -- "Expected -- Waiting for status to be reported" blocks
+# merging indefinitely instead of passing. The workflow now always runs; the
+# paths-filter step below is what skips the actual work when backend/ didn't
+# change, while still letting the job report success.
 on:
   push:
     branches: [main]
-    paths:
-      - "backend/**"
-      - ".github/workflows/test.yml"
-  # Unlike the image build, this also runs on pull requests: a test suite that
-  # only runs after a merge reports the problem too late to be worth much.
   pull_request:
-    paths:
-      - "backend/**"
-      - ".github/workflows/test.yml"
   workflow_dispatch:
 
 permissions:
@@ -82,9 +81,23 @@ jobs:
       - name: Check out the repository
         uses: actions/checkout@v7
 
+      # Reports "backend" as changed whenever this workflow itself changes
+      # too, so editing test.yml always exercises the thing it just edited.
+      # push events compare against github.event.before, pull_request events
+      # against the PR's merge base -- both handled by the action itself.
+      - name: Check whether backend/ changed
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - "backend/**"
+              - ".github/workflows/test.yml"
+
       # 3.13 to match backend/Dockerfile: the tests should run on the
       # interpreter the app ships on, not whichever one the runner defaults to.
       - name: Set up Python
+        if: steps.filter.outputs.backend == 'true'
         uses: actions/setup-python@v7
         with:
           python-version: "3.13"
@@ -94,9 +107,11 @@ jobs:
       # requirements-dev.txt pulls in requirements.txt itself, so this one line
       # installs both the app and what tests it.
       - name: Install dependencies
+        if: steps.filter.outputs.backend == 'true'
         run: pip install -r backend/requirements-dev.txt
 
       - name: Run the tests
+        if: steps.filter.outputs.backend == 'true'
         working-directory: backend
         env:
           TEST_DATABASE_URL: ${{ matrix.test_database_url }}
