@@ -19,6 +19,24 @@
 
 body { text-wrap: pretty; }
 
+/* — beta tag & footer — */
+.nav-beta-tag { vertical-align: middle; }
+
+.app-footer {
+  padding: 24px 32px calc(24px + env(safe-area-inset-bottom));
+  border-top: 2px solid var(--color-divider);
+  text-align: center;
+}
+.app-footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  font-size: 13px;
+  text-decoration: none;
+}
+.app-footer-link:hover { color: var(--color-accent); }
+
 /* Every figure on the page is tabular: columns of money that shift width as
    the digits change read as noise. */
 .tnum { font-feature-settings: 'tnum' 1; }
@@ -1579,6 +1597,10 @@ body { text-wrap: pretty; }
   }
   .mobile-action-bar .btn { min-height: 48px; white-space: nowrap; }
   .mobile-action-bar .btn-primary { justify-content: flex-start; }
+
+  /* Clears the fixed action bar the same way .page's own bottom padding
+     does -- otherwise the bar permanently covers the footer link. */
+  .app-footer { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
 
   /* — import & export — */
   .io-section { padding: 28px 20px 32px; margin-top: 28px; }

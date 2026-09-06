@@ -36,7 +36,7 @@ import AccountDialog from "./AccountDialog";
 import Dashboard from "./dashboard/Dashboard";
 import Login from "./Login";
 import { MAX_YEAR, MIN_YEAR, ageInWords } from "./format";
-import { TriangleAlert } from "./icons";
+import { GitHub, TriangleAlert } from "./icons";
 import "./modernist.css";
 import "./dashboard.css";
 
@@ -262,7 +262,9 @@ function App() {
   return (
     <>
       <nav className="nav app-nav">
-        <span className="nav-brand">Subscriptions</span>
+        <span className="nav-brand">
+          Subscriptions <span className="tag tag-outline nav-beta-tag">Beta</span>
+        </span>
         <a className="nav-link" href="#overview" aria-current="location">Overview</a>
         <a className="nav-link" href="#all">All subscriptions</a>
         {email && (
@@ -363,6 +365,18 @@ function App() {
           </div>
         </div>
       )}
+
+      <footer className="app-footer">
+        <a
+          className="app-footer-link"
+          href="https://github.com/juusimaa/subscription-tracker"
+          target="_blank"
+          rel="noreferrer"
+        >
+          <GitHub size={16} />
+          View on GitHub
+        </a>
+      </footer>
     </>
   );
 }
