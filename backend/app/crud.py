@@ -120,11 +120,19 @@ def get_category_by_name(db: Session, name: str, user_id: int) -> models.Categor
 
 
 def count_subscriptions_in_category(db: Session, name: str, user_id: int) -> int:
+    """Counts the subscriptions that make this category "in use".
+
+    Matches CategoriesDialog.jsx's own definition of "live" -- everything but
+    cancelled -- so a category whose only members are cancelled plans is
+    deletable on both sides instead of the frontend enabling a button the
+    backend then 409s on.
+    """
     return (
         db.query(models.Subscription)
         .filter(
             models.Subscription.user_id == user_id,
             func.lower(models.Subscription.category) == name.lower(),
+            models.Subscription.status != models.SubscriptionStatus.cancelled,
         )
         .count()
     )

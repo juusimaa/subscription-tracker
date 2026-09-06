@@ -12,9 +12,10 @@ design handoff against the API on 2026-09-01 -- so they carry their own
 numbering and their own priority order. D1 is done and D4 is closed without a
 change; both are written up at the bottom with the rest. As of 2026-09-06, with
 the dashboard shipped and the handoff no longer the reference, D2, D3, D5 and
-part of D7 are closed too -- written up at the bottom with the rest. The
-numbering of what is left is not closed up, for the same reason the rest of
-this file keeps its gaps.
+part of D7 are closed too -- written up at the bottom with the rest. D6 is
+fixed too, also written up at the bottom, though it was a real bug rather than
+a handoff question. The numbering of what is left is not closed up, for the
+same reason the rest of this file keeps its gaps.
 
 Item 1 is partly fixed as of 2026-09-03 -- change password and delete account
 are done, written up at the bottom -- and kept at number 1 for what is left of
@@ -79,34 +80,16 @@ seed-data.json) against the API. The dashboard has since shipped and is live
 handoff. Re-reading each item against what actually got built settled most of
 them: D2, D3, D5 and two of D7's three bullets are closed below, in each case
 because the frontend resolved the gap differently than the handoff assumed,
-and there's no chase-the-handoff work left to do. D6 stays open, and it is not
-a handoff disagreement -- it's the shipped frontend and the shipped backend
-disagreeing with *each other*, which the handoff had nothing to do with.
+and there's no chase-the-handoff work left to do. D6 was not a handoff
+disagreement -- it was the shipped frontend and the shipped backend
+disagreeing with *each other* -- and is fixed now too; see the fix notes at
+the bottom.
 
 Worth recording first, so nobody re-investigates it: **sorting is already
 covered.** `GET /subscriptions` returns the whole unpaginated list, and
 `crud.get_subscriptions` already sorts by next renewal, then lowercased name,
 then id, which is what the shipped table's column headers fall back to. No
 query parameters needed.
-
-### D6. Category deletion can 409 even though the dialog says it won't
-
-`CategoriesDialog.jsx` only disables its Delete button while a category has a
-**live** subscription in it -- `usage.live > 0` -- and shows "Only cancelled
-plans" rather than "Unused" for the others, matching the comment at the top of
-that file: "a cancelled one keeps its category on record without holding it
-hostage." `crud.count_subscriptions_in_category` doesn't make that
-distinction; it counts every row regardless of status, so deleting a category
-whose only members are cancelled plans still comes back as a 409. The dialog
-shows that error rather than swallowing it, so nobody is left staring at
-nothing, but an enabled button that then fails is still the wrong signal.
-
-The fix is on the backend: filter the count by status, excluding cancelled at
-least, and arguably paused and trial too since neither pays for the category
-either (see the D1 write-up for why status is four states now, not a
-boolean). `schemas.Category`'s single `subscription_count` would need the same
-live/cancelled split the dialog already computes client-side from the full
-subscription list, if it's ever worth putting on the server instead.
 
 ### D7. Currency has no home in the schema
 
@@ -171,6 +154,21 @@ of one, but N is a handful of categories at personal scale, and it reuses
 `_is_charged`/`_last_charged_month`'s already-correct started/cancelled-aware
 arithmetic instead of duplicating it client-side. A grouped response is still
 the cleaner shape if that ever stops being true; nothing today asks for it.
+
+**D6. Category deletion can 409 even though the dialog says it won't --
+fixed.** `crud.count_subscriptions_in_category` now excludes `cancelled`
+subscriptions, matching `CategoriesDialog.jsx`'s own definition of "live"
+(`usage.live > 0`, i.e. `status !== "cancelled"`) exactly. A category used
+only by cancelled plans now deletes cleanly -- `DELETE /categories/{id}` is
+called with no `reassign_to`/`detach` for that case, and `crud.delete_category`
+already detaches (rather than blocks on) anything the 409 check doesn't count,
+so the cancelled rows just lose their category label, same as an explicit
+`detach=true` would do. Active, trial and paused subscriptions still block
+deletion, unchanged. `schemas.Category.subscription_count` (used by
+`GET /categories` and the rename response) is untouched -- it comes from the
+separate all-inclusive `crud.get_categories` query, which the frontend was
+already bypassing for this exact reason (see the comment at the top of
+`CategoriesDialog.jsx`). Covered by `tests/test_categories.py`.
 
 **D5. Validation status code and the anchor-date model -- closed, no
 change.** Both halves of this item were decisions, and the shipped frontend
