@@ -10,8 +10,11 @@ fixed too, as of 2026-09-02, and are written up at the bottom with the rest.
 Items D1-D7 came later and from somewhere else -- reading the spending dashboard
 design handoff against the API on 2026-09-01 -- so they carry their own
 numbering and their own priority order. D1 is done and D4 is closed without a
-change; both are written up at the bottom with the rest. The numbering of the
-others is left alone, because the notes below refer to each other by it.
+change; both are written up at the bottom with the rest. As of 2026-09-06, with
+the dashboard shipped and the handoff no longer the reference, D2, D3, D5 and
+part of D7 are closed too -- written up at the bottom with the rest. The
+numbering of what is left is not closed up, for the same reason the rest of
+this file keeps its gaps.
 
 Item 1 is partly fixed as of 2026-09-03 -- change password and delete account
 are done, written up at the bottom -- and kept at number 1 for what is left of
@@ -67,109 +70,56 @@ Note the one field where import *is* now stricter than the schema:
 the row and storing the untrimmed spelling would leave the account holding a
 name no sort or search agrees with.
 
-## Supporting the spending dashboard design
+## Spending dashboard follow-ups
 
-A second set of gaps, from reading the frontend handoff in
-`../design_handoff_spending_dashboard` (README.md, STATES.md, seed-data.json)
-against the current API on 2026-09-01. These are feature work rather than
-defects: the API is self-consistent, it just cannot answer some of what the
-design asks. Numbered separately because they do not slot into the priority
-order above -- D2 and D3 are the ones the dashboard cannot be built without,
-and D7 may never be worth doing at all.
+A second set of items, opened on 2026-09-01 while comparing the frontend
+handoff in `../design_handoff_spending_dashboard` (README.md, STATES.md,
+seed-data.json) against the API. The dashboard has since shipped and is live
+(PLAN.md milestone 8), so the shipped frontend is the reference now, not the
+handoff. Re-reading each item against what actually got built settled most of
+them: D2, D3, D5 and two of D7's three bullets are closed below, in each case
+because the frontend resolved the gap differently than the handoff assumed,
+and there's no chase-the-handoff work left to do. D6 stays open, and it is not
+a handoff disagreement -- it's the shipped frontend and the shipped backend
+disagreeing with *each other*, which the handoff had nothing to do with.
 
 Worth recording first, so nobody re-investigates it: **sorting is already
-covered.** The design specifies all six columns sorted client-side with ties
-broken on name (README §7, *Interactions*), `GET /subscriptions` returns the
-whole unpaginated list, and `crud.get_subscriptions` already sorts by next
-renewal, then lowercased name, then id -- which is exactly the design's default
-sort and tie-break. No query parameters needed.
+covered.** `GET /subscriptions` returns the whole unpaginated list, and
+`crud.get_subscriptions` already sorts by next renewal, then lowercased name,
+then id, which is what the shipped table's column headers fall back to. No
+query parameters needed.
 
-### D2. `upcoming` cannot be asked about an arbitrary period
+### D6. Category deletion can 409 even though the dialog says it won't
 
-`GET /subscriptions/upcoming` is anchored to today: `days` is 1-365 forward, and
-the window always starts now. The design's "Coming up" panel lists the charges in
-the *selected* period, and the period picker spans 2025-01 to 2027-12 -- so past
-months, and months further out than 365 days.
+`CategoriesDialog.jsx` only disables its Delete button while a category has a
+**live** subscription in it -- `usage.live > 0` -- and shows "Only cancelled
+plans" rather than "Unused" for the others, matching the comment at the top of
+that file: "a cancelled one keeps its category on record without holding it
+hostage." `crud.count_subscriptions_in_category` doesn't make that
+distinction; it counts every row regardless of status, so deleting a category
+whose only members are cancelled plans still comes back as a 409. The dialog
+shows that error rather than swallowing it, so nobody is left staring at
+nothing, but an enabled button that then fails is still the wrong signal.
 
-The arithmetic already exists and is general: `renewals.occurrences_between`
-takes an arbitrary start and end. Only the route signature is today-shaped. A
-`from`/`to` pair (or `year`/`month`) alongside the existing `days` would do it,
-keeping `days` working for callers that want the "next 30 days" question.
+The fix is on the backend: filter the count by status, excluding cancelled at
+least, and arguably paused and trial too since neither pays for the category
+either (see the D1 write-up for why status is four states now, not a
+boolean). `schemas.Category`'s single `subscription_count` would need the same
+live/cancelled split the dialog already computes client-side from the full
+subscription list, if it's ever worth putting on the server instead.
 
-Note `days_until` stops making sense for a window in the past. It is there so the
-client does not have to redo date arithmetic or disagree with the server about
-what today is, which still holds -- it just goes negative, and the design does
-not display it for past periods anyway.
+### D7. Currency has no home in the schema
 
-### D3. No per-category breakdown for a period
+Recorded so the question is not reopened, not because it needs doing: everything
+in the frontend is in euros, and `cost` is a bare `Numeric(10, 2)` with no
+currency anywhere in the schema. Hardcoding EUR in the frontend works fine
+today, but it's an unstated assumption rather than a decision anyone has made
+-- multi-currency support would need a currency column, and a conversion or
+per-currency-total story that doesn't exist yet.
 
-The "By category" section needs, per category and for the selected period: an
-amount, a share of the period total, and the names of the subscriptions in it.
-`/subscriptions/summary/spend` takes a `category` filter but returns no grouping,
-so producing that section today is one request per category.
-
-Computing it client-side from `GET /subscriptions` only works for the current
-month. It cannot reproduce the started/cancelled-aware arithmetic
-`_is_charged` and `_last_charged_month` do for past periods -- which is the whole
-reason that logic lives on the server. A grouped response on the existing route
-is the smaller change; a separate route is the cleaner one, since the current
-response shape (`year`, `total`, `months`) has no room for a second axis.
-
-### D5. Validation answers 422 where the design expects 400, with no field map
-
-The design renders validation errors at the field that caused them, and prints
-the status code in the user-visible copy ("400 -- the change wasn't saved").
-The API returns **422** for a non-positive cost, a blank name and the date
-ordering rule -- deliberately, and consistently between schema-level and
-crud-level rejection (see the fix notes below). Either the copy changes or the
-route maps to 400; the status is part of the contract now, so this is a decision
-rather than a bug.
-
-Separately, FastAPI's 422 body is `detail: [{loc, msg}, ...]`, and the frontend
-has to turn that into per-field messages like "Required -- pick a service or type
-a name." Nothing in the API names the field in a form a client can key on
-without parsing `loc`.
-
-There is also a genuine conflict of models hiding in here. The design validates
-**"Renewal date must be in the future."** This API does the opposite on purpose:
-`next_renewal_date` is an *anchor*, a date years in the past is valid and often
-correct, and the response rolls it forward to the renewal that is actually next.
-Adopting the design's rule would break that. Someone has to pick, and the anchor
-model is the one the rest of the system is built on.
-
-### D6. Category deletion counts cancelled plans; the design does not
-
-The design blocks deleting a category only while a **live** subscription uses it,
-and says so in the dialog: "Cancelled plans keep their category on record but
-don't block deletion." `crud.count_subscriptions_in_category` counts every row
-regardless of `active`, so a category used only by cancelled plans returns 409
-where the design shows Delete enabled.
-
-The dialog also wants two things `schemas.Category` cannot supply: a monthly
-total per category ("EUR 41.97/mo"), and a usage string that distinguishes "Only
-cancelled plans" from "Unused". `subscription_count` is a single all-inclusive
-number and cannot tell those apart. Note that "live" now needs defining against
-four statuses rather than a boolean (see the D1 write-up): a trial occupies a
-category without paying for it, and a paused plan is coming back.
-
-### D7. Presentation fields with no home, probably by design
-
-Recorded so the question is not reopened, not because they need doing:
-
-- **Brand tiles.** The design's record shape carries `mono`, `brandBg`,
-  `brandFg` and `monoSize`. Nothing stores them. A client-side lookup keyed on
-  name is the right call unless they should be per-subscription and editable, in
-  which case they are four nullable columns.
-- **Currency.** Everything in the design is in euros; `cost` is a bare
-  `Numeric(10, 2)` with no currency anywhere in the schema. Hardcoding EUR in the
-  frontend is fine and is what the design assumes, but it is an unstated
-  assumption rather than a decision anyone has made.
-- **Quick-add catalogue.** The empty state offers eight one-tap services, and
-  STATES.md notes the list "should come from a small curated catalogue, ranked by
-  popularity in the user's region". That is an endpoint if it is ever real; a
-  static frontend list is the honest v1.
-
-(The `POST /:id/archive` and `/:id/restore` bullet that used to live here is
+(The other two bullets this item used to carry -- brand tiles and the
+quick-add catalogue -- are done; see the fix notes at the bottom. The `POST
+/:id/archive` and `/:id/restore` bullet that used to live here before that is
 gone rather than struck: item 7's 2026-09-02 refresh reopened the question --
 archiving turned out to carry a real invariant a generic `PUT` couldn't
 enforce in one place -- and both now exist as dedicated routes. See the fix
@@ -187,8 +137,59 @@ notes at the bottom.)
   `get_categories` join compare `func.lower(...)`, which cannot use a plain
   index. At this size it does not matter; a functional index on
   `lower(category)` is the fix if it ever does.
+- **The period-aware "Coming up" list can be off by up to three days at month
+  end, for a few plans.** `GET /subscriptions/upcoming` only answers "the next
+  N days from today," so `frontend/src/renewals.js` mirrors the backend's
+  renewal arithmetic entirely in the browser instead (see the D2 fix note
+  below). The mirror walks forward from `next_renewal_date` -- the already-
+  clamped occurrence the API returns -- rather than the stored anchor day. A
+  plan anchored on the 31st that has been clamped to 28 Feb keeps stepping from
+  the 28th instead of springing back to the 31st in March, the way the
+  server's own arithmetic does. Only affects plans anchored past the 28th, and
+  only the client-side month view; exposing the true anchor, or moving this
+  arithmetic server-side, is the fix if it ever matters.
 
 ---
+
+## Fixed on 2026-09-06
+
+**D2. `upcoming` cannot be asked about an arbitrary period -- closed, no
+change to the route.** The dashboard that shipped never actually asks the
+backend for a period-aware answer: `frontend/src/renewals.js` mirrors the
+renewal arithmetic client-side instead, and `App.jsx` still only ever calls
+`getUpcoming(30)`, for the fixed "charging in the next 30 days" KPI.
+`GET /subscriptions/upcoming` staying anchored to "the next `days` days from
+today" is the right shape for the one caller that exists. The client mirror
+has its own known inaccuracy, but that's a different problem than the one
+this item raised -- see the new Minor bullet above.
+
+**D3. No per-category breakdown for a period -- closed, no change.** The
+frontend resolved this exactly the way the item flagged as the smaller
+option: one `GET /subscriptions/summary/spend?category=...` request per
+category, cached by `(year, category)` (`App.jsx`). That's N requests instead
+of one, but N is a handful of categories at personal scale, and it reuses
+`_is_charged`/`_last_charged_month`'s already-correct started/cancelled-aware
+arithmetic instead of duplicating it client-side. A grouped response is still
+the cleaner shape if that ever stops being true; nothing today asks for it.
+
+**D5. Validation status code and the anchor-date model -- closed, no
+change.** Both halves of this item were decisions, and the shipped frontend
+confirms them rather than working around them: `api.js`'s `fieldErrors()`
+parses FastAPI's `detail: [{loc, msg}, ...]` body directly instead of
+expecting a flat field map from the API, `SubscriptionTable.jsx` and
+`AddForm.jsx` print whatever status code actually comes back rather than
+assuming 400, and `AddForm.jsx` has no client-side rule about the renewal
+date being in the future, matching `next_renewal_date`'s anchor semantics
+exactly. Nothing left to reconcile.
+
+**D7 (part). Brand tiles and quick-add catalogue -- done, client-side.**
+Both landed as the "honest v1" this item proposed:
+`frontend/src/services.js` is the client-side `SERVICES` catalogue (`mono`,
+`brandBg`, `brandFg`, `monthlyCost`) that `MonoTile.jsx` reads by name, and
+`QUICK_ADD` is the static eight-service list `EmptyState.jsx` renders.
+Nothing is stored in the database; both are matched purely by the
+subscription's own name. Currency is the one bullet from this item still
+open, above.
 
 ## Fixed on 2026-09-03
 
