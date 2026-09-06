@@ -8,6 +8,8 @@ A small app for tracking recurring subscriptions (Netflix, HBO, etc.), built as
 a learning project for Docker, PostgreSQL, and CI/CD to Azure. See
 [PLAN.md](PLAN.md) for the full project plan and milestones.
 
+**Live:** https://subscriptionstrack.com (API at https://api.subscriptionstrack.com/docs)
+
 Because it is a learning project, the code is written to be read: every source
 file opens with a comment explaining what it is for, and the non-obvious
 decisions are explained where they were made rather than in a document that
@@ -498,8 +500,9 @@ needs, so the build can publish images but cannot push commits, and the tests
 can do neither.
 
 Packages are private by default — make them public, or `docker login ghcr.io`
-with a personal access token, to pull them elsewhere. Nothing deploys these yet;
-that's milestone 8.
+with a personal access token, to pull them elsewhere. Every push to `main`
+also rolls the new images out to the live deployment above (milestone 8),
+via `build-and-push.yml`'s `deploy` job.
 
 ---
 
