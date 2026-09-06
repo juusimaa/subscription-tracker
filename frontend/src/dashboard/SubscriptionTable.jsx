@@ -30,14 +30,14 @@ const CHIPS = [
 
 // The mobile row's one meta line combines category with whatever the
 // desktop table says in two places (the Next renewal cell's date and its
-// sub-note): "Entertainment · 04 Sep 2026", "Work · last charge 30 Jul 2026".
+// sub-note): "Entertainment · 04 Sep 2026", "Work · access ends 30 Jul 2026".
 function mobileMeta(subscription) {
   const cancelled = subscription.status === "cancelled";
   const trial = subscription.status === "trial";
   const paused = subscription.status === "paused";
   let dateText;
   if (cancelled && !subscription.cancelled_date) dateText = "—";
-  else if (cancelled) dateText = `last charge ${longDate(subscription.next_renewal_date)}`;
+  else if (cancelled) dateText = `access ends ${longDate(subscription.next_renewal_date)}`;
   else if (paused) dateText = "resumes when unpaused";
   else if (trial) dateText = `trial ends ${longDate(subscription.next_renewal_date)}`;
   else dateText = longDate(subscription.next_renewal_date);
@@ -424,7 +424,7 @@ function SubscriptionTable({
                 ],
                 ["Per month", detailSub.status === "active" ? money(perMonth(detailSub)) : "—"],
                 [
-                  detailSub.status === "cancelled" ? "Last charge" : "Next renewal",
+                  detailSub.status === "cancelled" ? "Access ends" : "Next renewal",
                   detailSub.status === "cancelled" && !detailSub.cancelled_date
                     ? "—"
                     : longDate(detailSub.next_renewal_date),
