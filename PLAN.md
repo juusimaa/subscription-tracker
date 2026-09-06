@@ -69,6 +69,9 @@ docker-subscription-tracker/
     * Coming up panel
    
       <img width="904" height="1110" alt="image" src="https://github.com/user-attachments/assets/6f772707-5aac-407b-96d6-4bb0bcb5abd3" />
+    * Strip uses only selected currency
+   
+      <img width="2206" height="456" alt="image" src="https://github.com/user-attachments/assets/e13a8ca2-baeb-4c15-b8b7-90eec78bb4a4" />
 
 
 
