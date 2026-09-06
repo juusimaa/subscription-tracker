@@ -211,6 +211,23 @@ textarea.input { min-height: 90px; resize: vertical; }
    sizing back to this stylesheet; the two-gradient chevron below replaces
    the native arrow that comes off with it, in currentColor so it never
    needs its own color to track the theme with. */
+/* input[type="date"] keeps the same native-appearance exception as select
+   above, just without a visible symptom until #9: iOS Safari's date input
+   computes box-sizing: content-box and ignores min-height while its default
+   appearance is active (the CSS spec explicitly allows a UA to disregard
+   the box model for a control that keeps its native rendering), so padding
+   and border render on top of the width the grid assigned it instead of
+   inside it -- exactly the overflow-into-the-next-column #9 reported, and
+   only on real hardware, since neither Chromium nor the Simulator carries
+   that exception. appearance:none hands sizing back to this stylesheet the
+   same way it already does for select; the native calendar-icon affordance
+   comes from ::-webkit-calendar-picker-indicator, which stays functional
+   independent of the input's own appearance. */
+input[type="date"].input {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
 select.input {
   appearance: none;
   -webkit-appearance: none;
