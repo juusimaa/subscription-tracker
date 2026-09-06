@@ -3,12 +3,11 @@
 # bundled with the repo -- no Docker Hub account or external credentials
 # needed.
 #
-# This workflow builds and publishes images, then -- once milestone 8's Azure
-# infra exists -- rolls them out. Rollout is gated behind the
-# AZURE_DEPLOY_ENABLED repo variable (Settings > Secrets and variables >
-# Actions > Variables) so it stays a no-op until the Container Apps and
-# federated credential in this file actually exist. Until then, flip it on
-# and this becomes real push-to-main -> live deploy.
+# This workflow builds and publishes images, then rolls them out to the
+# Azure Container Apps serving https://subscriptionstrack.com. Rollout is
+# gated behind the AZURE_DEPLOY_ENABLED repo variable (Settings > Secrets and
+# variables > Actions > Variables), currently set to true -- so every push to
+# main is a real, live deploy.
 
 name: Build and push images
 
@@ -125,11 +124,11 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
-  # Rolls the just-published images out to Azure Container Apps. Sketched now,
-  # switched on once milestone 8's infra (Container Apps Environment, the two
-  # apps, the federated credential below) actually exists -- until then
-  # AZURE_DEPLOY_ENABLED is unset, the `if:` is false, and this job is skipped
-  # entirely rather than failing on infra that isn't there yet.
+  # Rolls the just-published images out to Azure Container Apps, live at
+  # https://subscriptionstrack.com (and https://api.subscriptionstrack.com
+  # for the backend). Gated behind AZURE_DEPLOY_ENABLED so a fork or a repo
+  # without the Azure infra and federated credential below set up can still
+  # run this workflow -- the job is just skipped rather than failing.
   deploy:
     needs: build
     if: github.ref == 'refs/heads/main' && vars.AZURE_DEPLOY_ENABLED == 'true'
@@ -169,8 +168,6 @@ jobs:
 
       # `az containerapp update --image` points the app at a new image and
       # creates a new revision; Container Apps handles the traffic cutover.
-      # Names/resource group here are placeholders for milestone 8's actual
-      # infra names.
       - name: Update backend container app
         run: |
           az containerapp update \
