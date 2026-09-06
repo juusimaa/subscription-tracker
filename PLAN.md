@@ -54,6 +54,26 @@ docker-subscription-tracker/
 8. ~~**Deploy to Azure Container Apps**~~ ✅ — backend + frontend as two container apps, both pulling the images already published to GHCR. Database is [Neon](https://neon.tech)'s free Postgres tier rather than Azure Database for PostgreSQL: Neon costs nothing at this scale and scales to zero on its own, while the cheapest Azure-managed Postgres (Burstable B1ms) runs ~$15–20/month with no free tier. Redis is dropped for this deployment — `app/cache.py` already fails open, so there's nothing worth paying to keep. Details below.
 9. **Password reset and email verification** — the two account-surface gaps milestone 6 deliberately skipped, built for real this time. Needs an actual email-sending path (e.g. [Resend](https://resend.com)), which nothing in this stack has today — only `email-validator`, which checks an address's *format*, not that anyone reads it. New accounts land unverified and stay usable (registering, logging in, tracking subscriptions all still work), but anything that emails the user — password reset, and any future renewal-reminder notification — is gated on verification. Once this exists, step 7's invite code is no longer the thing standing between a public URL and open signup, and can come out.
 10. **Multi-currency support** — closes TODO.md's D7, which was recorded as a decision to revisit rather than a task, on the grounds that every subscription today is silently assumed to be EUR. Currency lives on the **subscription**, not the user — `cost` gains a `currency` column, since two subscriptions on one account can legitimately be billed in different currencies (D4's own reasoning: don't force a schema constraint that isn't true about the user's money). Users additionally get a **default currency** setting, pre-filling new subscriptions rather than acting as a source of truth — the first of what will likely be several user-specific settings, so it gets its own typed column(s) rather than a JSONB blob, following the `token_version` precedent (milestone 6) instead of inventing a schemaless settings store. Still to decide, and worth settling before backend work starts since it drives the schema and has real UX impact: how the category panel and the per-month/year cost panel show a mix of currencies once summing raw `cost` across rows stops being meaningful — separate per-currency subtotals, a converted grand total (needing a conversion-rate source, live or cached), or something else.
+    * Currency settings at the bottom. TBD how to poll currency rates.
+      
+       <img width="1874" height="596" alt="Currency settings at the bottom of the page" src="https://github.com/user-attachments/assets/080681c0-1b1c-42e3-a798-914f770ec632" />
+    * Cost input control when adding a new subscription
+      
+       <img width="390" height="250" alt="Cost input control for new subsctiption" src="https://github.com/user-attachments/assets/4aee43ca-00c4-4491-9af6-484959dd5682" />
+    * Cost column when editing subsctiption (currency cannot be changed)
+   
+      <img width="508" height="194" alt="image" src="https://github.com/user-attachments/assets/71b18c65-4e1c-4628-836a-f253aee136cf" />
+    * Currency breakdown at the top of the page. When all subscriptions uses same currency this is not shown.
+   
+      <img width="2220" height="974" alt="image" src="https://github.com/user-attachments/assets/be6185f1-3667-47b9-b3b1-84785453d95c" />
+    * Coming up panel
+   
+      <img width="904" height="1110" alt="image" src="https://github.com/user-attachments/assets/6f772707-5aac-407b-96d6-4bb0bcb5abd3" />
+
+
+
+
+
 
 ## Milestone 5 — GitHub Actions to GHCR (done)
 
