@@ -93,12 +93,13 @@ query parameters needed.
 
 ### D7. Currency has no home in the schema
 
-Recorded so the question is not reopened, not because it needs doing: everything
-in the frontend is in euros, and `cost` is a bare `Numeric(10, 2)` with no
-currency anywhere in the schema. Hardcoding EUR in the frontend works fine
-today, but it's an unstated assumption rather than a decision anyone has made
--- multi-currency support would need a currency column, and a conversion or
-per-currency-total story that doesn't exist yet.
+Everything in the frontend is in euros, and `cost` is a bare `Numeric(10, 2)`
+with no currency anywhere in the schema. Hardcoding EUR in the frontend works
+fine today, but it's an unstated assumption rather than a decision anyone has
+made -- multi-currency support would need a currency column, and a conversion
+or per-currency-total story that doesn't exist yet. Scheduled as PLAN.md
+milestone 10, now that this is real, planned work rather than a note to avoid
+reopening.
 
 (The other two bullets this item used to carry -- brand tiles and the
 quick-add catalogue -- are done; see the fix notes at the bottom. The `POST
