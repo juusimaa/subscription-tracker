@@ -1520,7 +1520,12 @@ body { text-wrap: pretty; }
     color: color-mix(in srgb, var(--color-text) 62%, transparent);
   }
   .sheet-fields { display: grid; gap: 16px; margin: 20px 0 0; }
-  .sheet-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  /* minmax(0, 1fr), not bare 1fr: a plain fr track still floors at the
+     item's content width (same trap as issue #6's flex row above), and a
+     native date/select control's content width runs wider on real mobile
+     Safari than on desktop Safari or Chromium's mobile emulation -- which is
+     why this one only ever showed up on an actual phone (issue #9). */
+  .sheet-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
   .sheet-hint {
     font-size: 12px;
     line-height: 18px;
@@ -1533,7 +1538,9 @@ body { text-wrap: pretty; }
      Service, Started and the submit button run full width; Cost pairs with
      Cycle and Next renewal pairs with Category, matching the design's
      two-up mobile layout instead of stacking every field on its own row. */
-  .add-grid { grid-template-columns: 1fr 1fr; gap: 16px 12px; }
+  /* minmax(0, 1fr) here too (see .sheet-row above, issue #9) -- the desktop
+     definition above already gets this right per column. */
+  .add-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 12px; }
   .add-grid > :nth-child(1),
   .add-grid > :nth-child(4),
   .add-grid > .btn-primary { grid-column: 1 / -1; }
