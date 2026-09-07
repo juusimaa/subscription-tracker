@@ -1420,6 +1420,7 @@ body { text-wrap: pretty; }
     border-bottom: 1px solid var(--color-divider);
     text-align: left;
     font-family: var(--font-body);
+    color: var(--color-text);
     cursor: pointer;
   }
   .mobile-row:hover { background: var(--color-accent-100); }
