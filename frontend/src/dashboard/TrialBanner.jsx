@@ -4,7 +4,7 @@
 // at that moment -- keep it, or kill it before it charges -- rather than
 // making "Review trials" the only way to reach either from here.
 
-import { longDate, money } from "../format";
+import { cycleSuffix, longDate, money } from "../format";
 
 function TrialBanner({ trials, year, month, onReview, onConvert, onCancel }) {
   const converting = trials.filter((trial) => {
@@ -31,7 +31,7 @@ function TrialBanner({ trials, year, month, onReview, onConvert, onCancel }) {
               <p className="trial-row-name">{trial.name}</p>
               <p className="trial-row-detail tnum">
                 {money(trial.cost)}
-                {trial.billing_cycle === "yearly" ? "/yr from " : "/mo from "}
+                {cycleSuffix(trial.billing_cycle)} from{" "}
                 {longDate(trial.next_renewal_date)}
               </p>
             </div>

@@ -63,12 +63,24 @@ export function toISO(date) {
 
 export const todayISO = () => toISO(new Date());
 
+// How many months one billing period covers. Mirrors models.CYCLE_MONTHS on
+// the backend.
+export const CYCLE_MONTHS = { monthly: 1, quarterly: 3, yearly: 12 };
+
 // The one subscription figure everything else is built from: what a plan
-// costs per month, with a yearly plan spread across the twelve months it
-// covers. Mirrors main._monthly_cost on the backend.
+// costs per month, with a quarterly or yearly plan spread across the months
+// it covers. Mirrors main._monthly_cost on the backend.
 export function perMonth(subscription) {
   const cost = Number(subscription.cost);
-  return subscription.billing_cycle === "yearly" ? cost / 12 : cost;
+  return cost / CYCLE_MONTHS[subscription.billing_cycle];
+}
+
+// "/mo", "/qtr" or "/yr" -- the short form used next to a price wherever
+// space is tight (trial rows, the mobile table).
+export function cycleSuffix(billing_cycle) {
+  if (billing_cycle === "yearly") return "/yr";
+  if (billing_cycle === "quarterly") return "/qtr";
+  return "/mo";
 }
 
 // "14 minutes ago" for the 500 banner, which has to state the real age of the

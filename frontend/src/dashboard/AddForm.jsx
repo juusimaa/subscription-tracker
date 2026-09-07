@@ -202,6 +202,7 @@ function AddForm({
           <span className="field-label">Cycle</span>
           <select className="input" value={form.billing_cycle} onChange={set("billing_cycle")}>
             <option value="monthly">Monthly</option>
+            <option value="quarterly">Quarterly</option>
             <option value="yearly">Yearly</option>
           </select>
         </label>

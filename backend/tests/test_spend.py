@@ -249,6 +249,16 @@ class TestMonthlyTotal:
             "yearly_total": 240.0,
         }
 
+    def test_normalizes_quarterly_plans_to_a_monthly_figure(self, client, auth):
+        add_subscription(client, auth, cost="10.00", billing_cycle="monthly")
+        add_subscription(
+            client, auth, name="Quarterly", cost="30.00", billing_cycle="quarterly"
+        )
+        assert client.get("/subscriptions/summary/monthly-total", headers=auth).json() == {
+            "monthly_total": 20.0,
+            "yearly_total": 240.0,
+        }
+
     def test_ignores_cancelled_subscriptions(self, client, auth):
         created = add_subscription(client, auth, cost="10.00")
         client.put(f"/subscriptions/{created['id']}", json={"active": False}, headers=auth)

@@ -13,7 +13,7 @@ import { ApiError } from "../api";
 import MonoTile from "../MonoTile";
 import Sheet from "./Sheet";
 import { ChevronRight, TriangleAlert } from "../icons";
-import { longDate, money, perMonth } from "../format";
+import { cycleSuffix, longDate, money, perMonth } from "../format";
 import { useIsMobile } from "../useMediaQuery";
 
 // The sort chip row (mobile only) offers five of the desktop table's seven
@@ -46,7 +46,7 @@ function mobileMeta(subscription) {
 
 function mobilePerMonthNote(subscription) {
   if (subscription.status === "trial") {
-    return `then ${money(subscription.cost)}${subscription.billing_cycle === "yearly" ? "/yr" : "/mo"}`;
+    return `then ${money(subscription.cost)}${cycleSuffix(subscription.billing_cycle)}`;
   }
   if (subscription.status === "active") return `${money(perMonth(subscription))}/mo`;
   return subscription.billing_cycle;
@@ -490,6 +490,7 @@ function SubscriptionTable({
                     onChange={(e) => setDraft({ ...draft, billing_cycle: e.target.value })}
                   >
                     <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
                     <option value="yearly">Yearly</option>
                   </select>
                 </label>
@@ -726,6 +727,7 @@ function SubscriptionTable({
                         onChange={(e) => setDraft({ ...draft, billing_cycle: e.target.value })}
                       >
                         <option value="monthly">Monthly</option>
+                        <option value="quarterly">Quarterly</option>
                         <option value="yearly">Yearly</option>
                       </select>
                     </span>
@@ -801,7 +803,7 @@ function SubscriptionTable({
                   <span>{trial ? money(0) : money(subscription.cost)}</span>
                   <span className="sub-note">
                     {trial
-                      ? `then ${money(subscription.cost)}${subscription.billing_cycle === "yearly" ? "/yr" : "/mo"}`
+                      ? `then ${money(subscription.cost)}${cycleSuffix(subscription.billing_cycle)}`
                       : subscription.billing_cycle}
                   </span>
                 </td>

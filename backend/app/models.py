@@ -26,7 +26,19 @@ class BillingCycle(str, enum.Enum):
     this straight to a JSON string (e.g. "monthly") instead of an int."""
 
     monthly = "monthly"
+    quarterly = "quarterly"
     yearly = "yearly"
+
+
+# How many months one billing period covers, keyed by BillingCycle. Kept next
+# to the enum rather than as a chain of `==` checks so a new cycle only ever
+# needs an entry here, not a hunt through every place cycle_months was tested
+# by hand.
+CYCLE_MONTHS = {
+    BillingCycle.monthly: 1,
+    BillingCycle.quarterly: 3,
+    BillingCycle.yearly: 12,
+}
 
 
 class SubscriptionStatus(str, enum.Enum):
@@ -185,7 +197,7 @@ class Subscription(Base):
     @property
     def cycle_months(self) -> int:
         """How many months one billing period covers."""
-        return 12 if self.billing_cycle == BillingCycle.yearly else 1
+        return CYCLE_MONTHS[self.billing_cycle]
 
     @property
     def active(self) -> bool:
