@@ -216,6 +216,44 @@ class TestWhatCountsTowardTotals:
         )
         assert spend(client, auth, LAST_YEAR)["total"] == 0.0
 
+    def test_cancelling_a_trial_before_it_converts_still_counts_for_nothing(self, client, auth):
+        """A trial that is cancelled never reaches its first charge, so its
+        cost should stay at zero exactly as it did while it still carried the
+        `trial` status -- regression test for the bug in GitHub issue #19,
+        where cancelling stamped a cancelled_date and _charge_dates then
+        walked started_date forward as though the plan had been billing the
+        whole time."""
+        created = add_subscription(
+            client,
+            auth,
+            cost="10.00",
+            started_date=f"{LAST_YEAR}-01-05",
+            next_renewal_date=f"{LAST_YEAR}-02-05",
+            status="trial",
+        )
+        response = put(
+            client, auth, created["id"], status="cancelled", cancelled_date=f"{LAST_YEAR}-01-20"
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["cancelled_date"] is None
+        assert spend(client, auth, LAST_YEAR)["total"] == 0.0
+
+    def test_pausing_a_trial_before_it_converts_still_counts_for_nothing(self, client, auth):
+        """The same bug, reached through Pause instead of Cancel -- both stop
+        the row the same way, so both need the same fix."""
+        created = add_subscription(
+            client,
+            auth,
+            cost="10.00",
+            started_date=f"{LAST_YEAR}-01-05",
+            next_renewal_date=f"{LAST_YEAR}-02-05",
+            status="trial",
+        )
+        response = put(client, auth, created["id"], status="paused")
+        assert response.status_code == 200, response.text
+        assert response.json()["paused_date"] is None
+        assert spend(client, auth, LAST_YEAR)["total"] == 0.0
+
     def test_a_stopped_plan_with_no_stop_date_counts_for_nothing(self, client, auth):
         """The state a version 1 backup restores into, and the state a
         downgrade leaves behind: stopped, date unknown. Inventing spend for it
