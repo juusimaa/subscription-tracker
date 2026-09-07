@@ -78,16 +78,21 @@ const categories = [
 // March carries Adobe's one yearly charge; every other month is just the two
 // monthly plans. Three years, same shape, since nothing here needs to differ
 // year over year -- only the shape of "one bumped month" is being tested.
-function monthsArray(marchTotal, flatTotal) {
+// `subscription_ids` mirrors what /summary/spend actually returns: who billed
+// that month, not everyone still carrying the category label -- Notion (a
+// trial) never appears here even though it's tagged Work, since a trial
+// hasn't been charged.
+function monthsArray(marchTotal, flatTotal, marchIds, flatIds) {
   return Array.from({ length: 12 }, (_, i) => ({
     month: i + 1,
     total: i === 2 ? marchTotal : flatTotal,
+    subscription_ids: i === 2 ? marchIds : flatIds,
   }));
 }
 
-const OVERALL = { months: monthsArray(265.86, 25.98), total: 551.64 };
-const ENTERTAINMENT = { months: monthsArray(25.98, 25.98), total: 311.76 };
-const WORK = { months: monthsArray(239.88, 0), total: 239.88 };
+const OVERALL = { months: monthsArray(265.86, 25.98, [1, 2, 3], [1, 2]), total: 551.64 };
+const ENTERTAINMENT = { months: monthsArray(25.98, 25.98, [1, 2], [1, 2]), total: 311.76 };
+const WORK = { months: monthsArray(239.88, 0, [3], []), total: 239.88 };
 
 function spendFor(category) {
   if (category === "Entertainment") return ENTERTAINMENT;

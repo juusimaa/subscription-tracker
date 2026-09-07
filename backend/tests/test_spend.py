@@ -266,3 +266,57 @@ class TestMonthlyTotal:
             "monthly_total": 0.0,
             "yearly_total": 0.0,
         }
+
+
+class TestSubscriptionIds:
+    """`subscription_ids` on each month names who is actually behind the
+    total, not merely everyone the filters matched. This is what a category
+    breakdown needs: two plans can share a category and still bill in
+    different months, and only the one that actually charged should be named
+    for that month -- the bug this was reported as (see PLAN.md/TODO.md
+    history) named both every month either one billed."""
+
+    def test_only_names_subscriptions_that_billed_that_month(self, client, auth):
+        quarterly = add_subscription(
+            client,
+            auth,
+            name="RunGap",
+            cost="5.99",
+            billing_cycle="quarterly",
+            next_renewal_date=f"{LAST_YEAR}-01-29",
+            started_date=f"{LAST_YEAR}-01-29",
+        )
+        monthly = add_subscription(
+            client,
+            auth,
+            name="Strava",
+            cost="7.99",
+            billing_cycle="monthly",
+            next_renewal_date=f"{LAST_YEAR}-06-15",
+            started_date=f"{LAST_YEAR}-01-15",
+        )
+        summary = spend(client, auth, LAST_YEAR)
+        by_month = {m["month"]: m["subscription_ids"] for m in summary["months"]}
+        # June: only the monthly plan billed. RunGap must not be named here
+        # even though it shares no category filter yet -- the bug showed up
+        # one layer up, in the category breakdown, but the root cause is this
+        # endpoint not saying which subscriptions actually charged.
+        assert by_month[6] == [monthly["id"]]
+        # April and January: the monthly plan bills every month, and the
+        # quarterly plan lands on both of these too.
+        assert by_month[4] == sorted([quarterly["id"], monthly["id"]])
+        assert by_month[1] == sorted([quarterly["id"], monthly["id"]])
+
+    def test_a_single_month_still_carries_its_ids(self, client, auth):
+        created = add_subscription(
+            client,
+            auth,
+            cost="10.00",
+            billing_cycle="monthly",
+            next_renewal_date=f"{LAST_YEAR}-03-01",
+            started_date=f"{LAST_YEAR}-01-01",
+        )
+        summary = spend(client, auth, LAST_YEAR, month=3)
+        assert summary["months"] == [
+            {"month": 3, "total": 10.0, "subscription_ids": [created["id"]]}
+        ]
