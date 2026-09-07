@@ -20,6 +20,8 @@
 // timezone west of Greenwich, which is exactly the kind of bug a page full of
 // renewal dates cannot afford.
 
+import { CYCLE_MONTHS } from "./format";
+
 const daysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
 
 function parseISO(iso) {
@@ -73,7 +75,7 @@ export function occurrencesInMonth(subscription, year, month) {
     return [{ iso: toISOParts(anchor), cost: 0, isTrialConversion: true }];
   }
 
-  const step = subscription.billing_cycle === "yearly" ? 12 : 1;
+  const step = CYCLE_MONTHS[subscription.billing_cycle];
   // Jump straight to roughly the right period rather than stepping a month at
   // a time: the selected period can be years away from the anchor.
   const elapsed = (year - anchor.y) * 12 + (month - anchor.m);

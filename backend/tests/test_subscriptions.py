@@ -42,6 +42,18 @@ class TestTheRenewalDateIsDerived:
         renewal = date.fromisoformat(created["next_renewal_date"])
         assert renewal >= date.today() and (renewal.month, renewal.day) == (3, 15)
 
+    def test_a_quarterly_plan_derives_on_the_quarterly_cycle(self, client, auth):
+        created = add_subscription(
+            client,
+            auth,
+            billing_cycle="quarterly",
+            next_renewal_date="2022-03-15",
+            started_date="2022-03-15",
+        )
+        renewal = date.fromisoformat(created["next_renewal_date"])
+        assert renewal >= date.today() and renewal.day == 15
+        assert renewal.month % 3 == 0, "quarterly renews every three months from the March anchor"
+
     def test_listing_is_ordered_by_the_derived_date(self, client, auth):
         """Not by the stored anchor: a 2019 anchor and a 2026 one can both
         renew next week, so ordering by what is stored is not ordering by

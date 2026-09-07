@@ -15,7 +15,7 @@
 import { todayISO } from "./format";
 
 const STATUSES = ["active", "trial", "paused", "cancelled"];
-const CYCLES = ["monthly", "yearly"];
+const CYCLES = ["monthly", "quarterly", "yearly"];
 
 // The design's record shape calls a cancelled plan "archived"; this API has
 // said "cancelled" since it had a cancelled_date column. Accepted as a synonym
@@ -129,7 +129,7 @@ function readRow(raw, where) {
   const cycle = ((raw.billing_cycle ?? "monthly").toString().trim() || "monthly").toLowerCase();
   if (!CYCLES.includes(cycle)) {
     throw new BackupFileError(
-      `${where} has cycle "${cycle}". It has to be ${CYCLES.join(" or ")}.`,
+      `${where} has cycle "${cycle}". It has to be one of ${CYCLES.join(", ")}.`,
     );
   }
 

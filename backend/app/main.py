@@ -602,7 +602,7 @@ def list_subscriptions(
     ),
     billing_cycle: models.BillingCycle | None = Query(
         default=None,
-        description="Only subscriptions billed on this cycle: monthly or yearly.",
+        description="Only subscriptions billed on this cycle: monthly, quarterly or yearly.",
     ),
     status: models.SubscriptionStatus | None = Query(
         default=None,
@@ -922,16 +922,14 @@ def delete_subscription(
 
 
 def _monthly_cost(subscription: models.Subscription) -> Decimal:
-    """One subscription's cost expressed per month. Yearly plans are spread
-    across the 12 months they cover rather than landing entirely in their
-    renewal month, which is what makes monthly and yearly figures comparable.
+    """One subscription's cost expressed per month. A quarterly or yearly plan
+    is spread across the months it covers rather than landing entirely in its
+    renewal month, which is what makes every cycle's figures comparable.
 
     Only /summary/monthly-total wants this. /summary/spend counts each charge
     in the month it was actually made (see _charge_dates), because it is
     reporting money that moved rather than a rate."""
-    if subscription.billing_cycle == models.BillingCycle.yearly:
-        return subscription.cost / Decimal("12")
-    return subscription.cost
+    return subscription.cost / Decimal(subscription.cycle_months)
 
 
 def _charge_dates(
