@@ -98,9 +98,14 @@ function Dashboard({
   // stopped, including a yearly charge taken before that day, so a category
   // can carry a real amount for the period with nothing active in it. Listing
   // only active ones would print a figure with no rows behind it.
-  // The members line follows the same rule and lists everything still on the
-  // books; a plan cancelled long ago can still be inside a past period's
-  // figure without being named, which is the one place this under-reports.
+  // The members line follows the same rule and lists everyone who actually
+  // charged in the selected period, not everyone still carrying the
+  // category label -- a category can hold several subscriptions on
+  // different schedules, and only some of them may have billed in any given
+  // month. `subscription_ids` on each month is the server's own answer to
+  // that (see _charge_dates), so a plan cancelled long ago can still be
+  // named here if a past period's figure includes it, without a plan that
+  // simply shares the category but didn't bill this month tagging along.
   const onTheBooks = subscriptions.filter((s) => s.status !== "cancelled");
   const categoryRows = [...new Set(onTheBooks.map((s) => s.category).filter(Boolean))]
     .map((name) => {
@@ -110,10 +115,19 @@ function Dashboard({
           ? (summary.months.find((row) => row.month === month + 1)?.total ?? 0)
           : summary.total
         : 0;
+      const chargedIds = summary
+        ? new Set(
+            monthly
+              ? (summary.months.find((row) => row.month === month + 1)?.subscription_ids ?? [])
+              : summary.months.flatMap((row) => row.subscription_ids),
+          )
+        : new Set();
       return {
         name,
         amount,
-        members: onTheBooks.filter((s) => s.category === name).map((s) => s.name),
+        members: onTheBooks
+          .filter((s) => s.category === name && chargedIds.has(s.id))
+          .map((s) => s.name),
       };
     })
     .filter((row) => row.amount > 0.005)

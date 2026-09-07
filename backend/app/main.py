@@ -1064,11 +1064,20 @@ def spend(
     window_start = date(year, months[0], 1)
     window_end = date(year, months[-1], monthrange(year, months[-1])[1])
     charged = dict.fromkeys(months, Decimal("0"))
+    charged_ids: dict[int, set[int]] = {m: set() for m in months}
     for sub in subscriptions:
         for charge in _charge_dates(sub, window_start, window_end):
             charged[charge.month] += sub.cost
+            charged_ids[charge.month].add(sub.id)
 
-    breakdown = [{"month": m, "total": round(charged[m], 2)} for m in months]
+    breakdown = [
+        {
+            "month": m,
+            "total": round(charged[m], 2),
+            "subscription_ids": sorted(charged_ids[m]),
+        }
+        for m in months
+    ]
 
     return {
         "year": year,

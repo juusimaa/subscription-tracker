@@ -271,10 +271,19 @@ Money = Annotated[Decimal, PlainSerializer(float, return_type=float)]
 
 
 class SpendMonth(BaseModel):
-    """One month's share of a period's cost. `month` is 1-12."""
+    """One month's share of a period's cost. `month` is 1-12.
+
+    `subscription_ids` is who is actually behind `total` -- the subscriptions
+    that had a charge date in this month, not merely every subscription that
+    still matches the request's filters. A category can hold several
+    subscriptions with different schedules, and only some of them may have
+    billed in any given month; a caller listing "what's in this category this
+    month" needs this list rather than the filtered subscription set itself.
+    """
 
     month: int = Field(ge=1, le=12)
     total: Money
+    subscription_ids: list[int] = []
 
 
 class SpendSummary(BaseModel):
