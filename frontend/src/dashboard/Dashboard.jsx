@@ -125,7 +125,12 @@ function Dashboard({
       return {
         name,
         amount,
-        members: onTheBooks
+        // subscriptions, not onTheBooks: chargedIds already is the precise
+        // "did this one actually bill" answer, cancelled plans included, so
+        // narrowing the candidate list to non-cancelled first would just
+        // silently drop exactly the rows the comment above says to keep --
+        // a plan cancelled since can still be named for a period it billed.
+        members: subscriptions
           .filter((s) => s.category === name && chargedIds.has(s.id))
           .map((s) => s.name),
       };

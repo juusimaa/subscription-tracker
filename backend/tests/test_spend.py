@@ -320,3 +320,26 @@ class TestSubscriptionIds:
         assert summary["months"] == [
             {"month": 3, "total": 10.0, "subscription_ids": [created["id"]]}
         ]
+
+    def test_a_cancelled_plan_is_still_named_for_a_month_it_billed(self, client, auth):
+        """A category breakdown asks /summary/spend without a status filter
+        specifically so a cancelled plan's past charges keep counting (see
+        TestCancelledMonthlyPlans) -- and it needs the id right there too, or
+        a client filtering its own subscription list down to "not cancelled"
+        before matching against subscription_ids silently drops the very row
+        the total already includes, showing a category amount with nothing
+        named under it."""
+        created = add_subscription(
+            client,
+            auth,
+            name="RunGap",
+            cost="14.99",
+            billing_cycle="monthly",
+            next_renewal_date=f"{LAST_YEAR}-01-05",
+            started_date=f"{LAST_YEAR}-01-05",
+            active=False,
+            cancelled_date=f"{LAST_YEAR}-06-20",
+        )
+        summary = spend(client, auth, LAST_YEAR)
+        june = next(m for m in summary["months"] if m["month"] == 6)
+        assert june["subscription_ids"] == [created["id"]]
