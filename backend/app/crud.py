@@ -324,7 +324,7 @@ def get_subscription(db: Session, subscription_id: int, user_id: int) -> models.
     )
 
 
-def _sync_status_dates(db_subscription: models.Subscription) -> None:
+def _sync_status_dates(db_subscription: models.Subscription, came_from_trial: bool = False) -> None:
     """Keeps `status`, `cancelled_date` and `paused_date` telling one story.
 
     A client that stops a subscription normally just sends the new status, so
@@ -344,8 +344,27 @@ def _sync_status_dates(db_subscription: models.Subscription) -> None:
     than today's being stamped -- otherwise the months in between are counted
     as spend that never happened. An explicit cancelled_date still wins, which
     is what makes the fix correctable when the intent really was today.
+
+    `came_from_trial` (the status this row carried before *this* call, set by
+    update_subscription before it overwrites `status`) covers a different
+    case: a trial that stops without ever converting. It never had a first
+    charge, so `started_date` -- the day it began costing money -- describes
+    the trial, not any billing, and letting stopped_date read the date it
+    stopped here would make main._charge_dates walk that anchor forward as
+    though every month since had been paid for. No stop date is stamped for
+    it instead, the same "unknown, so it counts for nothing" rule
+    main._charge_dates already applies to
+    a row whose stop date predates the column -- and the UI already renders
+    that as "--" rather than a date.
     """
     status = db_subscription.status
+    if came_from_trial and status in (
+        models.SubscriptionStatus.cancelled,
+        models.SubscriptionStatus.paused,
+    ):
+        db_subscription.cancelled_date = None
+        db_subscription.paused_date = None
+        return
     if status == models.SubscriptionStatus.cancelled:
         if db_subscription.cancelled_date is None:
             db_subscription.cancelled_date = db_subscription.paused_date or date.today()
@@ -400,6 +419,11 @@ def update_subscription(
     db_subscription = get_subscription(db, subscription_id, user_id)
     if db_subscription is None:
         return None
+    # Read before the setattr loop below overwrites it -- _sync_status_dates
+    # needs to know what this row *was*, not just what it is becoming, to
+    # tell a trial that never converted apart from a subscription that really
+    # was billing (see its docstring).
+    came_from_trial = db_subscription.status == models.SubscriptionStatus.trial
     # exclude_unset=True skips fields the client didn't include in the
     # request, so a partial update doesn't overwrite existing values with None.
     fields = subscription.model_dump(exclude_unset=True)
@@ -409,7 +433,7 @@ def update_subscription(
     # unconditionally would re-register the existing name on every edit.
     if "category" in fields:
         db_subscription.category = ensure_category(db, db_subscription.category, user_id)
-    _sync_status_dates(db_subscription)
+    _sync_status_dates(db_subscription, came_from_trial=came_from_trial)
     # A status change that moves the row off cancelled un-archives it as a
     # side effect -- this is what lets Reactivate work on an archived row
     # with a plain `PUT {status: "active"}`, no separate unarchive call
