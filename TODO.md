@@ -34,6 +34,14 @@ day, written up at the bottom alongside them. Item 11 is fixed too, also the
 same day, written up at the bottom alongside them. Item 12 is fixed too, also
 the same day, written up at the bottom alongside them.
 
+Items 13-15 came from a further review the same day, once item 12 had merged,
+and all three are open. They share a shape, so they are grouped rather than
+scattered through the order above: each is a limit that reads as enforced but
+is enforced on the wrong quantity, or not at the point that matters. The
+Minor bullet on `cost` precision is gone rather than struck -- item 13 is
+that bullet, re-filed as a bug once the review showed the truncation it
+described is not always harmless.
+
 ## 1. Account management
 
 `/register`, `/token` and `/me` used to be the entire account surface.
@@ -43,6 +51,69 @@ bottom). What's left:
 - **Password reset** and **email verification**, both noted as deliberately
   skipped in PLAN.md milestone 6. They need an email path, so they are a bigger
   step than the first two were. Scheduled as PLAN.md milestone 9.
+
+## Limits that don't hold
+
+Three findings from the 2026-09-08 review of the branch that fixed item 12.
+Each was reproduced before being written down, and each is a bound that looks
+enforced in the schema while the thing it guards measures something else.
+
+### 13. Sub-cent costs pass validation and are stored as zero
+
+`Cost` (`backend/app/schemas.py`) bounds the value -- `gt=0`,
+`le=99999999.99` -- but says nothing about scale, so `0.001` validates
+cleanly (confirmed against the alias itself). Postgres then stores it in
+`Numeric(10, 2)` (`backend/app/models.py`) as `0.00`: a row that passed a
+`gt=0` check sitting in the database at zero, and every total computed over
+it short by the difference.
+
+This was a Minor bullet until now, filed as harmless truncation of
+`10.999999` to `11.00`. Rounding up *is* harmless. What the bullet missed is
+that rounding down through zero breaks the positive-cost invariant the lower
+bound exists to hold -- the same invariant whose absence, in the negative
+direction, the `Cost` comment already calls out as making "a whole month's
+spend read as less than it is."
+
+The fix is the one that bullet named and declined: `decimal_places=2` on
+`Cost`, which covers create, update and `POST /import` at once because all
+three reuse the alias. It turns requests that work today into 422s, which is
+the point of it.
+
+### 14. The password length limit counts characters; bcrypt counts bytes
+
+`UserCreate.password` and `PasswordChange.new_password` are both
+`Field(min_length=8, max_length=72)` -- 72 *characters*. bcrypt's limit is 72
+*bytes*. A 25-character password of `€` is 75 bytes, passes the schema, and
+is silently cut to its first 72 bytes before hashing. Verified against the
+pinned bcrypt 4.2.0: after hashing the 25-character password, `checkpw`
+accepts the 24-character prefix and rejects the 23-character one. Anyone
+whose password isn't pure ASCII can get a shorter password than they typed,
+with no error on either the register or the verify side.
+
+The comment above the field is wrong on precisely the point that would make
+the character limit safe: it says bcrypt "raises on anything longer", so the
+bound is there to turn a 500 into a 422. bcrypt 4.2.0 does not raise -- it
+truncates, quietly. Fix: enforce `len(password.encode("utf-8")) <= 72` in the
+schema (a field validator, since `max_length` can't express a byte bound) for
+both fields, and correct the comment while it's open.
+
+### 15. Token expiry is not required at decode time
+
+`jwt.decode` in `backend/app/auth.py` is called with no `require` option, and
+PyJWT only validates an `exp` that is actually present (confirmed against the
+pinned pyjwt 2.9.0, which decodes an `exp`-less token without complaint). A
+signed token carrying no expiry is therefore accepted indefinitely -- and
+item 12's fix made a claim-light token a supported shape, so
+`test_pre_migration_token_with_no_tv_claim_still_works` in
+`backend/tests/test_account.py` now mints exactly that token and asserts a
+200. The expiry is the only thing that ever revokes a token below a version
+bump, which is what makes an unbounded one worth fixing rather than noting.
+
+Item 12 does not need this latitude. Every issuer this codebase has had put
+`exp` in the payload; migration 0004 added `tv`, not `exp`, so the
+compatibility promise only requires treating a missing `tv` as version 0.
+Fix: pass `options={"require": ["exp"]}` to `jwt.decode`, and add an `exp` to
+the legacy test's token so it tests the one missing claim it is about.
 
 ## Spending dashboard follow-ups
 
@@ -86,10 +157,6 @@ notes at the bottom.)
 
 - **No pagination** on `GET /subscriptions`. Fine at personal scale; the route
   returns everything.
-- **`cost` precision is silently truncated.** `10.999999` is accepted and stored
-  as `11.00` by `Numeric(10, 2)`. Harmless, arguably surprising --
-  `decimal_places=2` on the `Cost` type would turn it into a 422 instead, at the
-  cost of rejecting requests that work today.
 - **Category matching is unindexed.** Every category filter and the
   `get_categories` join compare `func.lower(...)`, which cannot use a plain
   index. At this size it does not matter; a functional index on
