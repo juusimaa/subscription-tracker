@@ -10,10 +10,22 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import and_, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.auth import hash_password
+
+
+class DuplicateError(Exception):
+    """Raised when a commit trips a unique constraint that the caller's own
+    existence check just missed -- two concurrent identical requests can both
+    pass that check before either commits (TODO.md item 5). The route is what
+    knows the right status code and message for its own duplicate case, so
+    this carries no detail of its own; it only marks that the race happened
+    instead of surfacing the raw IntegrityError as a 500.
+    """
+
 
 # --- Users ---
 
@@ -27,7 +39,14 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     # model, so it is never written to Postgres.
     db_user = models.User(email=user.email, hashed_password=hash_password(user.password))
     db.add(db_user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Two concurrent registrations for the same email can both pass the
+        # route's pre-check before either commits -- users.email's unique
+        # constraint is what actually catches the second one.
+        db.rollback()
+        raise DuplicateError from None
     db.refresh(db_user)
     return db_user
 
@@ -141,7 +160,13 @@ def count_subscriptions_in_category(db: Session, name: str, user_id: int) -> int
 def create_category(db: Session, name: str, user_id: int) -> models.Category:
     db_category = models.Category(name=name.strip(), user_id=user_id)
     db.add(db_category)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Same race as create_user, on uq_categories_user_name instead of
+        # users.email.
+        db.rollback()
+        raise DuplicateError from None
     db.refresh(db_category)
     return db_category
 
@@ -381,32 +406,47 @@ def _sync_status_dates(db_subscription: models.Subscription, came_from_trial: bo
 def create_subscription(
     db: Session, subscription: schemas.SubscriptionCreate, user_id: int
 ) -> models.Subscription:
-    # model_dump() turns the Pydantic schema into a plain dict, which is then
-    # unpacked as keyword args to build the SQLAlchemy model instance. The
-    # owner is added separately -- it comes from the token, and deliberately
-    # isn't a field the client can send.
-    db_subscription = models.Subscription(**_columns(subscription.model_dump()), user_id=user_id)
-    db_subscription.category = ensure_category(db, db_subscription.category, user_id)
-    # A subscription being added now almost always starts now. Recording that
-    # beats leaving it unknown: without a start date the spend summary has to
-    # assume the subscription was running for every month it is asked about.
-    if db_subscription.started_date is None:
-        db_subscription.started_date = date.today()
-    _sync_status_dates(db_subscription)
-    # Both of the calls above write dates, so the row is only now final. A
-    # request carrying a back-dated cancelled_date and no started_date passes
-    # the schema (it has nothing to compare against) and then has today's date
-    # filled in above, which turns it into exactly the row the schema meant to
-    # reject. Checking here, after every default is applied, is the only place
-    # that sees what will actually be stored.
-    schemas.check_dates(
-        db_subscription.started_date,
-        db_subscription.cancelled_date,
-        db_subscription.paused_date,
-    )
-    schemas.check_archived(db_subscription.status, db_subscription.archived_date)
+    def build() -> models.Subscription:
+        # model_dump() turns the Pydantic schema into a plain dict, which is
+        # then unpacked as keyword args to build the SQLAlchemy model
+        # instance. The owner is added separately -- it comes from the token,
+        # and deliberately isn't a field the client can send.
+        row = models.Subscription(**_columns(subscription.model_dump()), user_id=user_id)
+        row.category = ensure_category(db, row.category, user_id)
+        # A subscription being added now almost always starts now. Recording
+        # that beats leaving it unknown: without a start date the spend
+        # summary has to assume the subscription was running for every month
+        # it is asked about.
+        if row.started_date is None:
+            row.started_date = date.today()
+        _sync_status_dates(row)
+        # Both of the calls above write dates, so the row is only now final.
+        # A request carrying a back-dated cancelled_date and no started_date
+        # passes the schema (it has nothing to compare against) and then has
+        # today's date filled in above, which turns it into exactly the row
+        # the schema meant to reject. Checking here, after every default is
+        # applied, is the only place that sees what will actually be stored.
+        schemas.check_dates(row.started_date, row.cancelled_date, row.paused_date)
+        schemas.check_archived(row.status, row.archived_date)
+        return row
+
+    db_subscription = build()
     db.add(db_subscription)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # The only unique constraint a subscription insert can trip is
+        # ensure_category's own insert of a brand new name, racing an
+        # identical concurrent one (TODO.md item 5) -- the subscription row
+        # itself has none. That isn't really a conflict from this route's
+        # point of view, so recover the way the sequential path already does
+        # for an existing name: rebuild against whichever spelling won,
+        # rather than surfacing a 500 (or a 409 that would be about the wrong
+        # resource).
+        db.rollback()
+        db_subscription = build()
+        db.add(db_subscription)
+        db.commit()
     # refresh() reloads the row from Postgres so db_subscription.id (assigned
     # by the database) is populated before we return it.
     db.refresh(db_subscription)
@@ -419,51 +459,62 @@ def update_subscription(
     db_subscription = get_subscription(db, subscription_id, user_id)
     if db_subscription is None:
         return None
-    # Read before the setattr loop below overwrites it -- _sync_status_dates
-    # needs to know what this row *was*, not just what it is becoming, to
-    # tell a trial that never converted apart from a subscription that really
-    # was billing (see its docstring).
-    came_from_trial = db_subscription.status == models.SubscriptionStatus.trial
-    # exclude_unset=True skips fields the client didn't include in the
-    # request, so a partial update doesn't overwrite existing values with None.
-    fields = subscription.model_dump(exclude_unset=True)
-    for field, value in _columns(fields).items():
-        setattr(db_subscription, field, value)
-    # Only when the request actually touched the category: doing it
-    # unconditionally would re-register the existing name on every edit.
-    if "category" in fields:
-        db_subscription.category = ensure_category(db, db_subscription.category, user_id)
-    _sync_status_dates(db_subscription, came_from_trial=came_from_trial)
-    # A status change that moves the row off cancelled un-archives it as a
-    # side effect -- this is what lets Reactivate work on an archived row
-    # with a plain `PUT {status: "active"}`, no separate unarchive call
-    # needed. Skipped when the request itself set archived_date: that is a
-    # client asking to archive a row that (after the rest of this update)
-    # turns out not to be cancelled, which is exactly what check_archived
-    # below is for -- silently clearing it here would launder that into a
-    # silent no-op instead of the 422 it should be.
-    if "archived_date" not in fields and db_subscription.status != models.SubscriptionStatus.cancelled:
-        db_subscription.archived_date = None
-    # The merged row, not the request. SubscriptionUpdate can only compare the
-    # fields one request happened to carry, so a PUT sending cancelled_date on
-    # its own was checked against nothing and committed -- leaving a stored row
-    # the API's own rules say cannot exist.
-    #
-    # The rollback matters as much as the check. Without it the invalid values
-    # are already set on a live ORM object, and any later flush on this session
-    # would write them; rolling back discards the whole edit, so a rejected
-    # update changes nothing at all.
+
+    def apply(row: models.Subscription) -> None:
+        # Read before the setattr loop below overwrites it -- _sync_status_dates
+        # needs to know what this row *was*, not just what it is becoming, to
+        # tell a trial that never converted apart from a subscription that really
+        # was billing (see its docstring).
+        came_from_trial = row.status == models.SubscriptionStatus.trial
+        # exclude_unset=True skips fields the client didn't include in the
+        # request, so a partial update doesn't overwrite existing values with None.
+        fields = subscription.model_dump(exclude_unset=True)
+        for field, value in _columns(fields).items():
+            setattr(row, field, value)
+        # Only when the request actually touched the category: doing it
+        # unconditionally would re-register the existing name on every edit.
+        if "category" in fields:
+            row.category = ensure_category(db, row.category, user_id)
+        _sync_status_dates(row, came_from_trial=came_from_trial)
+        # A status change that moves the row off cancelled un-archives it as a
+        # side effect -- this is what lets Reactivate work on an archived row
+        # with a plain `PUT {status: "active"}`, no separate unarchive call
+        # needed. Skipped when the request itself set archived_date: that is a
+        # client asking to archive a row that (after the rest of this update)
+        # turns out not to be cancelled, which is exactly what check_archived
+        # below is for -- silently clearing it here would launder that into a
+        # silent no-op instead of the 422 it should be.
+        if "archived_date" not in fields and row.status != models.SubscriptionStatus.cancelled:
+            row.archived_date = None
+        # The merged row, not the request. SubscriptionUpdate can only compare the
+        # fields one request happened to carry, so a PUT sending cancelled_date on
+        # its own was checked against nothing and committed -- leaving a stored row
+        # the API's own rules say cannot exist.
+        #
+        # The rollback matters as much as the check. Without it the invalid values
+        # are already set on a live ORM object, and any later flush on this session
+        # would write them; rolling back discards the whole edit, so a rejected
+        # update changes nothing at all.
+        try:
+            schemas.check_dates(row.started_date, row.cancelled_date, row.paused_date)
+            schemas.check_archived(row.status, row.archived_date)
+        except ValueError:
+            db.rollback()
+            raise
+
+    apply(db_subscription)
     try:
-        schemas.check_dates(
-            db_subscription.started_date,
-            db_subscription.cancelled_date,
-            db_subscription.paused_date,
-        )
-        schemas.check_archived(db_subscription.status, db_subscription.archived_date)
-    except ValueError:
+        db.commit()
+    except IntegrityError:
+        # Same category-name race as create_subscription (TODO.md item 5).
+        # rollback() expires db_subscription (it's a persistent row) and
+        # discards ensure_category's losing insert, so re-fetching and
+        # re-applying the edit redoes it against the row as it now stands;
+        # ensure_category's re-lookup then finds the spelling that actually won.
         db.rollback()
-        raise
-    db.commit()
+        db_subscription = get_subscription(db, subscription_id, user_id)
+        apply(db_subscription)
+        db.commit()
     db.refresh(db_subscription)
     return db_subscription
 
