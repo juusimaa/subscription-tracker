@@ -111,6 +111,9 @@ def get_current_user(
     # token_version and is rejected here, same as an expired or forged one --
     # this is the enforcement half of "changing your password signs out other
     # devices" (crud.update_password is the half that moves the counter).
-    if payload.get("tv") != user.token_version:
+    # A token minted before this feature shipped carries no "tv" claim at
+    # all, which migration 0004 backfills as version 0 -- treat a missing
+    # claim the same way so those pre-existing sessions aren't signed out.
+    if payload.get("tv", 0) != user.token_version:
         raise credentials_error
     return user

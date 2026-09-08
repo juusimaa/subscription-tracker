@@ -31,23 +31,8 @@ Items 9-12 came from a code review on 2026-09-08, three of them (9-11) real
 data-corruption bugs rather than gaps. Item 9 is fixed already, same day, and
 is written up at the bottom with items 5 and 6. Item 10 is fixed too, same
 day, written up at the bottom alongside them. Item 11 is fixed too, also the
-same day, written up at the bottom alongside them. 12 leads the list below
-despite the numbering.
-
-## 12. Pre-migration JWTs are rejected, contradicting migration 0004's own compatibility claim
-
-`0004_token_version.py`'s docstring says "nothing already logged in is signed
-out by this migration itself," reasoning that the `server_default '0'`
-backfill matches the version already implied by tokens with no `tv` claim.
-But `auth.get_current_user` (auth.py:114) checks `payload.get("tv") !=
-user.token_version` literally: a token minted before this feature shipped
-carries no `tv` claim at all, so `payload.get("tv")` is `None`, which never
-equals the backfilled `0`. Every session issued before this code deploys is
-signed out the moment it ships, not only after a future password change --
-the opposite of what the migration promises.
-
-Fix: treat a missing `tv` claim as version 0 explicitly, e.g.
-`payload.get("tv", 0) != user.token_version`.
+same day, written up at the bottom alongside them. Item 12 is fixed too, also
+the same day, written up at the bottom alongside them.
 
 ## 1. Account management
 
@@ -258,6 +243,24 @@ only, status plus the unchanged started_date, and status plus a genuinely
 different one -- the first two assert the conversion is stamped to today and
 that last year's spend (a trial that started then) stays at zero, the third
 asserts the supplied date is kept as given.
+
+**12. Pre-migration JWTs were rejected, contradicting migration 0004's own
+compatibility claim -- fixed.** `0004_token_version.py`'s docstring says
+"nothing already logged in is signed out by this migration itself," reasoning
+that the `server_default '0'` backfill matches the version already implied by
+tokens with no `tv` claim. But `auth.get_current_user` checked
+`payload.get("tv") != user.token_version` literally: a token minted before
+this feature shipped carries no `tv` claim at all, so `payload.get("tv")` was
+`None`, which never equals the backfilled `0`. Every session issued before
+this code deployed was signed out the moment it shipped, not only after a
+future password change -- the opposite of what the migration promised.
+
+Fixed exactly as this item's write-up proposed: `get_current_user` now reads
+`payload.get("tv", 0)`, treating a missing claim as version 0 so it matches
+the backfill. New test in
+`test_account.py::TestChangePassword::test_pre_migration_token_with_no_tv_claim_still_works`
+mints a token with no `tv` claim at all (what a pre-migration login would
+have produced) against a fresh account and asserts it's still accepted.
 
 ## Fixed on 2026-09-06
 
