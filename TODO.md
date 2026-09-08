@@ -30,27 +30,9 @@ review of the import path and written up at the bottom alongside item 5.
 Items 9-12 came from a code review on 2026-09-08, three of them (9-11) real
 data-corruption bugs rather than gaps. Item 9 is fixed already, same day, and
 is written up at the bottom with items 5 and 6. Item 10 is fixed too, same
-day, written up at the bottom alongside them. 11-12 lead the list below
+day, written up at the bottom alongside them. Item 11 is fixed too, also the
+same day, written up at the bottom alongside them. 12 leads the list below
 despite the numbering.
-
-## 11. Converting a trial through `PUT /subscriptions/{id}` backfills charges for the free period
-
-`crud._sync_status_dates` (crud.py:352) clears `cancelled_date`/`paused_date`
-when a row moves to a running status, but never touches `started_date`.
-`Dashboard.jsx`'s "Convert to paid" button (line 325) works around this by
-explicitly sending `started_date: next_renewal_date` alongside
-`status: "active"`, but the editable row in `SubscriptionTable.jsx` sends
-whatever `started_date` was already on the draft -- the trial's original start
--- and so does any other client that calls `PUT` with just
-`{status: "active"}`. `_charge_dates` (main.py:982) then anchors billing on
-that original `started_date`, so every month since the trial began, not just
-since it converted, is counted as paid.
-
-Fix needs a decision, not just a null check -- e.g. `_sync_status_dates` could
-stamp `started_date := today()` (or a client-supplied conversion date)
-whenever `came_from_trial` and the new status is a paying one, mirroring what
-it already does with `cancelled_date`/`paused_date` for the opposite
-transition.
 
 ## 12. Pre-migration JWTs are rejected, contradicting migration 0004's own compatibility claim
 
@@ -244,6 +226,38 @@ already-stored row that predates this rule still exports cleanly. New tests
 in `test_backup.py::TestImportValidation` cover a `cancelled_date` before
 `started_date` and an `archived_date` on a non-cancelled row, both refused
 with 422 and nothing written.
+
+**11. Converting a trial through `PUT /subscriptions/{id}` backfilled charges
+for the free period -- fixed.** `crud._sync_status_dates` cleared
+`cancelled_date`/`paused_date` when a row moved to a running status, but
+never touched `started_date`, which still carried the trial's original
+start. `main._charge_dates` anchors billing on `started_date`, so converting
+a trial made every month since it began, not just since it converted, count
+as paid.
+
+`_sync_status_dates` now stamps `started_date := today()` on that same
+transition (trial to active), mirroring the `cancelled_date`/`paused_date`
+handling already there for the opposite one -- but the "was this explicit?"
+question this item flagged as needing a decision couldn't reuse that
+handling's own `is None` check: `started_date` is never `None` on a trial, so
+the mirror had to be to something else. The decision made: `started_date` is
+resolved to today unless the request's value genuinely differs from what the
+row carried *before* this update. That covers both gaps this item raised --
+a plain `PUT {status: "active"}` that omits `started_date` entirely, and
+`SubscriptionTable.jsx`'s editable row, which always resends the whole draft
+and so resends the trial's original start unchanged, not a real conversion
+date -- while still honoring a client that deliberately supplies a different
+date, the way `Dashboard.jsx`'s "Convert to paid" button does by sending
+`next_renewal_date`. `update_subscription` reads the row's `started_date`
+before the update's `setattr` loop overwrites it, the same way it already
+reads `came_from_trial` before `status` is overwritten, and compares that
+against the request's value to tell the two cases apart.
+
+New tests in `test_status.py::TestTrialConversion` cover all three: status
+only, status plus the unchanged started_date, and status plus a genuinely
+different one -- the first two assert the conversion is stamped to today and
+that last year's spend (a trial that started then) stays at zero, the third
+asserts the supplied date is kept as given.
 
 ## Fixed on 2026-09-06
 

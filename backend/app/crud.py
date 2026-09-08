@@ -349,8 +349,13 @@ def get_subscription(db: Session, subscription_id: int, user_id: int) -> models.
     )
 
 
-def _sync_status_dates(db_subscription: models.Subscription, came_from_trial: bool = False) -> None:
-    """Keeps `status`, `cancelled_date` and `paused_date` telling one story.
+def _sync_status_dates(
+    db_subscription: models.Subscription,
+    came_from_trial: bool = False,
+    started_date_was_sent: bool = False,
+) -> None:
+    """Keeps `status`, `cancelled_date`, `paused_date` and (for a trial's
+    conversion) `started_date` telling one story.
 
     A client that stops a subscription normally just sends the new status, so
     the date it stopped costing money is filled in here -- without it the
@@ -381,6 +386,21 @@ def _sync_status_dates(db_subscription: models.Subscription, came_from_trial: bo
     main._charge_dates already applies to
     a row whose stop date predates the column -- and the UI already renders
     that as "--" rather than a date.
+
+    A trial that *does* convert needs the opposite kind of fix, to
+    `started_date` rather than `cancelled_date`/`paused_date`. That column is
+    still carrying the day the trial began, not the day it started costing
+    money, and main._charge_dates anchors billing on it -- left alone, every
+    month since the trial began gets charged retroactively the moment it
+    converts, not just the months since. `started_date_was_sent` (set by
+    update_subscription only when the request's started_date genuinely
+    differs from what the row carried before this call) is what "explicit"
+    has to mean here, unlike the `is None` check above: started_date is never
+    None on a trial, and a client that resends the unchanged value -- every
+    full-object PUT, including the editable row in SubscriptionTable.jsx --
+    is not backdating anything, just echoing the draft. Only a value that
+    actually moved (Dashboard.jsx's "Convert to paid" button sends
+    next_renewal_date instead) counts as a deliberate conversion date.
     """
     status = db_subscription.status
     if came_from_trial and status in (
@@ -390,6 +410,8 @@ def _sync_status_dates(db_subscription: models.Subscription, came_from_trial: bo
         db_subscription.cancelled_date = None
         db_subscription.paused_date = None
         return
+    if came_from_trial and status == models.SubscriptionStatus.active and not started_date_was_sent:
+        db_subscription.started_date = date.today()
     if status == models.SubscriptionStatus.cancelled:
         if db_subscription.cancelled_date is None:
             db_subscription.cancelled_date = db_subscription.paused_date or date.today()
@@ -466,16 +488,31 @@ def update_subscription(
         # tell a trial that never converted apart from a subscription that really
         # was billing (see its docstring).
         came_from_trial = row.status == models.SubscriptionStatus.trial
+        original_started_date = row.started_date
         # exclude_unset=True skips fields the client didn't include in the
         # request, so a partial update doesn't overwrite existing values with None.
         fields = subscription.model_dump(exclude_unset=True)
         for field, value in _columns(fields).items():
             setattr(row, field, value)
+        # A client converting a trial to paid either omits started_date
+        # entirely, or -- like SubscriptionTable.jsx's editable row, which
+        # always sends the whole draft -- resends whatever started_date the
+        # row already had, the trial's original start. Neither is a real
+        # conversion date, so both need to fall through to _sync_status_dates'
+        # own stamp below; only a value that actually differs from what the
+        # row carried before this update is a client deliberately backdating
+        # the conversion (the way Dashboard.jsx's "Convert to paid" button
+        # does, by sending next_renewal_date instead).
+        started_date_was_changed = (
+            "started_date" in fields and fields["started_date"] != original_started_date
+        )
         # Only when the request actually touched the category: doing it
         # unconditionally would re-register the existing name on every edit.
         if "category" in fields:
             row.category = ensure_category(db, row.category, user_id)
-        _sync_status_dates(row, came_from_trial=came_from_trial)
+        _sync_status_dates(
+            row, came_from_trial=came_from_trial, started_date_was_sent=started_date_was_changed
+        )
         # A status change that moves the row off cancelled un-archives it as a
         # side effect -- this is what lets Reactivate work on an archived row
         # with a plain `PUT {status: "active"}`, no separate unarchive call
