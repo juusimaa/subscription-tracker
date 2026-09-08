@@ -24,7 +24,8 @@ logging" Minor bullet are fixed too, as of the same day, and are written up
 at the bottom with the rest.
 
 Item 5 is fixed too, as of 2026-09-08, and is written up at the bottom with
-the rest.
+the rest. Item 6 is fixed too, also as of 2026-09-08, found independently by a
+review of the import path and written up at the bottom alongside item 5.
 
 ## 1. Account management
 
@@ -35,33 +36,6 @@ bottom). What's left:
 - **Password reset** and **email verification**, both noted as deliberately
   skipped in PLAN.md milestone 6. They need an email path, so they are a bigger
   step than the first two were. Scheduled as PLAN.md milestone 9.
-
-## 6. Imports are validated more loosely than writes
-
-`BackupSubscription` inherits the unconstrained `SubscriptionBase`, so a
-hand-edited backup file can still introduce the negative costs and blank names
-that `POST` and `PUT` now reject.
-
-This is a deliberate trade rather than an oversight: those rules live on the
-request schemas precisely so they cannot break `GET /export` for data that is
-already stored (see the fix notes below). A tighter import wants a separate
-constrained schema for the import direction only, so export stays permissive and
-import does not. Low priority -- the file is the user's own data -- but worth
-knowing the asymmetry is there.
-
-Since the import UI landed (see the fix notes below) the *browser* does enforce
-those rules before sending, so the loose path is now only reachable by calling
-`POST /import` directly. That narrows the exposure and does not close it, and it
-introduces a second asymmetry worth naming: the design's copy for a bad file
-prints a status code ("422 -- nothing was imported"), and a file the browser
-rejected never reached the server, so there is no code to print. The UI says
-"Nothing was imported." without one. Tightening the import schema is what would
-let that message be literally true, and is the reason to do this item.
-
-Note the one field where import *is* now stricter than the schema:
-`crud.import_backup` trims `name`, because `_match_key` already trims to find
-the row and storing the untrimmed spelling would leave the account holding a
-name no sort or search agrees with.
 
 ## Spending dashboard follow-ups
 
@@ -170,6 +144,24 @@ sequential path they were racing against doesn't do the same thing:
   actual threads. Confirmed these fail against the pre-fix code (a raw
   `sqlalchemy.exc.IntegrityError` surfacing as a 500) before confirming they
   pass against the fix, on both SQLite and Postgres.
+
+**6. Imports are validated more loosely than writes -- fixed.**
+`BackupSubscription` inherited the unconstrained `SubscriptionBase`, so a
+hand-edited backup file could introduce the negative costs and blank names
+that `POST` and `PUT` already rejected -- reachable directly through
+`POST /import` even though the browser's own import form enforced the rules
+before sending.
+
+Fixed the way this item's write-up already proposed: `POST /import` now takes
+a separate `schemas.BackupImport`, whose subscriptions are
+`schemas.BackupSubscriptionImport` -- `BackupSubscription` plus the same
+`SubscriptionName`/`Cost` fields `SubscriptionCreate` uses. `GET /export`
+still returns the original, unconstrained `Backup`/`BackupSubscription`, so an
+already-stored row that predates this rule still exports cleanly instead of
+turning into a 500 (the trap `schemas.Subscription`'s docstring describes).
+New tests in `test_backup.py::TestImportValidation` cover a negative cost and
+a blank name being refused with 422 and nothing written, plus a check that
+export is untouched by the tightened import schema.
 
 ## Fixed on 2026-09-06
 

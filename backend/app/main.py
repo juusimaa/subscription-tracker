@@ -535,7 +535,7 @@ def export_data(
 
 @app.post("/import", response_model=schemas.ImportResult, tags=["Backup"])
 def import_data(
-    backup: schemas.Backup,
+    backup: schemas.BackupImport,
     mode: schemas.ImportMode | None = Query(
         default=None,
         description=(
