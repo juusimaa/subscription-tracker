@@ -11,6 +11,7 @@ from decimal import Decimal
 from typing import Annotated, Literal
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     EmailStr,
@@ -395,15 +396,45 @@ class Category(CategoryBase):
 # --- Auth ---
 
 
+def _check_password_bytes(password: str) -> str:
+    """bcrypt's limit is 72 *bytes*, not characters. `Field(max_length=72)`
+    counts characters, so a password that is well within that limit can still
+    be over 72 bytes once non-ASCII characters are encoded as UTF-8 -- e.g. 25
+    copies of "€" (3 bytes each) is 25 characters and 75 bytes.
+
+    bcrypt 4.2.0, the version pinned here, does not raise on that: it silently
+    truncates the input to 72 bytes before hashing. So without this check, a
+    password like that would pass `max_length=72`, get hashed short, and the
+    user would end up with a shorter effective password than the one they
+    typed -- with no error anywhere to tell them. This checks the encoded
+    byte length directly and rejects it as a 422 instead, with a message that
+    says bytes rather than characters so it isn't read as a bug when the
+    password is visibly under 72 characters.
+    """
+    encoded_length = len(password.encode("utf-8"))
+    if encoded_length > 72:
+        raise ValueError(
+            "password must be at most 72 bytes when UTF-8 encoded "
+            f"(got {encoded_length} bytes for {len(password)} characters)"
+        )
+    return password
+
+
+# Declared once and reused by UserCreate and PasswordChange below, for the
+# same reason SubscriptionName and Cost are shared above: a rule applied to
+# only one of them is a rule a client can walk straight around by editing.
+Password = Annotated[
+    str, Field(min_length=8), AfterValidator(_check_password_bytes)
+]
+
+
 class UserCreate(BaseModel):
     """What the client sends on POST /register."""
 
     # EmailStr rejects malformed addresses before they ever reach the database
     # (validated by the email-validator package, pulled in via requirements).
     email: EmailStr
-    # bcrypt hashes at most 72 bytes and raises on anything longer, so the
-    # upper bound is enforced here as a clean 422 rather than a 500 later.
-    password: str = Field(min_length=8, max_length=72)
+    password: Password
     # Optional here because the gate it feeds (INVITE_CODE in main.py) is
     # itself optional -- a deployment that hasn't set one accepts requests
     # that omit this entirely, which is what every local/test registration
@@ -438,7 +469,7 @@ class PasswordChange(BaseModel):
     re-asks for your password before changing it."""
 
     current_password: str
-    new_password: str = Field(min_length=8, max_length=72)
+    new_password: Password
 
 
 class AccountDelete(BaseModel):

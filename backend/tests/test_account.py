@@ -119,6 +119,70 @@ class TestChangePassword:
         assert response.status_code == 401
 
 
+class TestPasswordByteLimit:
+    """bcrypt's limit is 72 *bytes*, not characters (TODO item 14). "€" is 3
+    bytes in UTF-8, so 25 of them is only 25 characters -- comfortably under
+    any character-based limit -- but 75 bytes, over bcrypt's limit. Before the
+    fix, that passed schema validation and was silently truncated by bcrypt
+    before hashing, so the account's real password became "€" * 24 rather
+    than what the user actually typed. 24 of them is exactly 72 bytes and
+    must still work.
+    """
+
+    def test_registering_with_a_too_many_bytes_password_is_422(self, client):
+        email = f"user-{uuid.uuid4().hex[:12]}@example.com"
+        response = client.post(
+            "/register", json={"email": email, "password": "€" * 25}
+        )
+        assert response.status_code == 422
+
+    def test_changing_to_a_too_many_bytes_password_is_422(self, client, auth):
+        response = client.put(
+            "/me/password",
+            json={"current_password": "password123", "new_password": "€" * 25},
+            headers=auth,
+        )
+        assert response.status_code == 422
+
+    def test_exactly_72_bytes_of_multi_byte_characters_registers_and_logs_in(
+        self, client
+    ):
+        email = f"user-{uuid.uuid4().hex[:12]}@example.com"
+        password = "€" * 24  # 24 characters, exactly 72 bytes encoded.
+        assert len(password.encode("utf-8")) == 72
+
+        response = client.post(
+            "/register", json={"email": email, "password": password}
+        )
+        assert response.status_code == 201, response.text
+
+        login = client.post("/token", data={"username": email, "password": password})
+        assert login.status_code == 200
+
+    def test_exactly_72_bytes_of_multi_byte_characters_is_accepted_on_change(
+        self, client, auth
+    ):
+        password = "€" * 24
+        response = client.put(
+            "/me/password",
+            json={"current_password": "password123", "new_password": password},
+            headers=auth,
+        )
+        assert response.status_code == 200, response.text
+
+    def test_ordinary_ascii_passwords_are_unaffected(self, client):
+        # The 8-character minimum still applies...
+        email = f"user-{uuid.uuid4().hex[:12]}@example.com"
+        short = client.post(
+            "/register", json={"email": email, "password": "short"}
+        )
+        assert short.status_code == 422
+
+        # ...and an ordinary password well under both limits still works.
+        auth = register(client, email=email, password="password123")
+        assert client.get("/me", headers=auth).status_code == 200
+
+
 class TestDeleteAccount:
     def test_deletes_the_account_and_its_data(self, client):
         email = f"user-{uuid.uuid4().hex[:12]}@example.com"
