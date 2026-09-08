@@ -5,6 +5,7 @@ import os
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 # Reads variables from a local .env file (used when running the backend
@@ -29,14 +30,19 @@ DATABASE_URL = os.getenv(
 # would hand out that dead connection and the query would fail with
 # "server closed the connection unexpectedly". pool_recycle backs this up
 # by proactively retiring connections older than the given age.
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
-    pool_timeout=30,
-    pool_recycle=1800,
-)
+#
+# pool_size/max_overflow/pool_timeout configure QueuePool, which SQLAlchemy
+# uses for Postgres and for file-based SQLite (e.g. the test suite's
+# sqlite:///./test.db). An in-memory SQLite URL (sqlite://, no path) gets
+# SingletonThreadPool instead, which doesn't accept them -- that combination
+# is only used by the docs workflow to import the app without a real
+# database, so skip the QueuePool-only options there.
+url = make_url(DATABASE_URL)
+engine_kwargs = {"pool_pre_ping": True}
+if not (url.get_backend_name() == "sqlite" and not url.database):
+    engine_kwargs.update(pool_size=5, max_overflow=10, pool_timeout=30, pool_recycle=1800)
+
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 # Each call to SessionLocal() gives a new "conversation" with the database.
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # All ORM models (see models.py) inherit from this so SQLAlchemy knows about them.
