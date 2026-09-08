@@ -2,17 +2,31 @@
 # session via FastAPI's dependency injection (see get_db below).
 
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-# Reads variables from a local .env file (used when running the backend
-# directly on the host, e.g. `uvicorn app.main:app`). Inside Docker Compose,
-# the DATABASE_URL env var is injected directly by docker-compose.yml instead,
-# so this call is a no-op there.
-load_dotenv()
+# Reads variables from backend/.env (used when running the backend directly on
+# the host, e.g. `uvicorn app.main:app`). Inside Docker Compose, the
+# DATABASE_URL env var is injected directly by docker-compose.yml instead, so
+# this call is a no-op there.
+#
+# The path is pinned rather than left to dotenv's default, which searches
+# upward from the working directory and takes the first .env it finds. That
+# default reads backend/.env only when the process happens to be started from
+# backend/. Started from anywhere else -- or from a git worktree, which has no
+# backend/.env of its own -- the search climbs past this directory and lands on
+# the *root* .env, which is a different file for a different job: Compose's
+# ${VAR} substitution source, carrying values meant for containers. Loading it
+# here silently reconfigures the app, and the failure is a long way from the
+# cause (INVITE_CODE set there turns ~47 tests red at once, all of them
+# looking like real failures). backend/.env.example documents exactly the
+# variables this file is meant to supply.
+ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(ENV_FILE)
 
 # The default value matches the credentials in docker-compose.yml, so the app
 # also works if DATABASE_URL isn't set. In Compose, DATABASE_URL points at

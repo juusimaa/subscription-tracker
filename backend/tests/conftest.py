@@ -45,6 +45,17 @@ os.environ.setdefault("SECRET_KEY", "test-only-key-not-used-outside-the-suite")
 # full run for reasons that have nothing to do with what those tests check.
 # tests/test_rate_limit.py turns it back on for exactly the requests it needs.
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+# Blanked rather than defaulted, because the value this defends against is one
+# that is already set. /register is gated on INVITE_CODE when it holds
+# anything (app/main.py), and register() below deliberately sends no invite
+# code -- so a stray value fails nearly every test in the suite at once, for a
+# reason none of them are about. database.py pins its .env lookup so a
+# neighbouring file can no longer supply one, but an exported shell variable
+# still can, and load_dotenv would not have overridden that either. An empty
+# value reads as "disabled" (`os.getenv(...) or None`), which is what a
+# deployment with open signup runs. tests/test_invite_code.py patches
+# main.INVITE_CODE directly and so is unaffected.
+os.environ["INVITE_CODE"] = ""
 
 from fastapi.testclient import TestClient  # noqa: E402
 
