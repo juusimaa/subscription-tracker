@@ -29,28 +29,9 @@ review of the import path and written up at the bottom alongside item 5.
 
 Items 9-12 came from a code review on 2026-09-08, three of them (9-11) real
 data-corruption bugs rather than gaps. Item 9 is fixed already, same day, and
-is written up at the bottom with items 5 and 6. 10-12 lead the list below
+is written up at the bottom with items 5 and 6. Item 10 is fixed too, same
+day, written up at the bottom alongside them. 11-12 lead the list below
 despite the numbering.
-
-## 10. `POST /import` accepts date/archive states the rest of the API refuses
-
-`schemas.BackupSubscriptionImport` (schemas.py:489) only tightens the `name`
-and `cost` it inherits from `BackupSubscription`; unlike
-`SubscriptionCreate._validate`, it has no validator calling `check_dates` or
-`check_archived`. `crud.import_backup` (crud.py:719-754) writes the
-merged/created row straight to the database with no re-check either, unlike
-`create_subscription` and `update_subscription`, which both re-validate the
-assembled row before committing. A hand-edited file posted directly to
-`/import` (bypassing the browser's own pre-flight in `backup.js`) can
-therefore store an active subscription with an `archived_date`, or a
-`cancelled_date` earlier than `started_date` -- states the ordinary write path
-already rejects as 422s, and that quietly corrupt spend-history arithmetic
-that assumes those invariants hold.
-
-Fix: give `BackupSubscriptionImport` a model validator that calls
-`check_dates`/`check_archived` per row, or check each assembled row in
-`crud.import_backup` before commit, the way `create_subscription` and
-`update_subscription` already do.
 
 ## 11. Converting a trial through `PUT /subscriptions/{id}` backfills charges for the free period
 
@@ -239,6 +220,30 @@ plus `differs()` in the same file, which drives the pre-import diff dialog and
 had the same omission -- an archived row's un-archiving would otherwise not
 even have shown up as a change in the summary the user confirms before
 writing anything.
+
+**10. `POST /import` accepted date/archive states the rest of the API refuses
+-- fixed.** `schemas.BackupSubscriptionImport` only tightened the `name` and
+`cost` it inherits from `BackupSubscription`; unlike
+`SubscriptionCreate._validate`, it had no validator calling `check_dates` or
+`check_archived`. A hand-edited file posted directly to `/import` (bypassing
+the browser's own pre-flight in `backup.js`) could therefore store an active
+subscription with an `archived_date`, or a `cancelled_date` earlier than
+`started_date` -- states the ordinary write path already rejects as 422s, and
+that quietly corrupt spend-history arithmetic that assumes those invariants
+hold.
+
+Fixed the way this item's own write-up proposed, and the same shape as item
+6's fix: `BackupSubscriptionImport` gained its own `model_validator(mode=
+"after")` calling `check_dates`/`check_archived`, rather than a re-check in
+`crud.import_backup`. It runs after `BackupSubscription._resolve_status` --
+inherited "after" validators run before ones declared on the subclass -- so
+`self.status` is already resolved to a real `SubscriptionStatus` by the time
+`check_archived` reads it, the same guarantee `SubscriptionCreate._validate`
+relies on. `GET /export`'s `BackupSubscription` is untouched, so an
+already-stored row that predates this rule still exports cleanly. New tests
+in `test_backup.py::TestImportValidation` cover a `cancelled_date` before
+`started_date` and an `archived_date` on a non-cancelled row, both refused
+with 422 and nothing written.
 
 ## Fixed on 2026-09-06
 

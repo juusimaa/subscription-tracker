@@ -190,6 +190,29 @@ class TestImportValidation:
         assert response.status_code == 422
         assert len(client.get("/subscriptions", headers=auth).json()) == 1
 
+    def test_a_cancelled_date_before_started_date_is_refused(self, client, auth):
+        # POST/PUT already reject this shape (schemas.check_dates); a
+        # hand-edited file used to be able to smuggle it straight past
+        # /import instead (TODO.md item 10).
+        add_subscription(client, auth, name="Netflix")
+        file = export(client, auth).json()
+        file["subscriptions"][0]["cancelled_date"] = str(YESTERDAY - timedelta(days=1))
+        file["subscriptions"][0]["started_date"] = str(YESTERDAY)
+        response = client.post("/import", json=file, headers=auth)
+        assert response.status_code == 422
+        assert len(client.get("/subscriptions", headers=auth).json()) == 1
+
+    def test_an_archived_date_on_a_non_cancelled_row_is_refused(self, client, auth):
+        # POST/PUT already reject this shape (schemas.check_archived); an
+        # active row with an archived_date is a state no UI action can
+        # produce, and used to be importable anyway (TODO.md item 10).
+        add_subscription(client, auth, name="Netflix")
+        file = export(client, auth).json()
+        file["subscriptions"][0]["archived_date"] = str(TODAY)
+        response = client.post("/import", json=file, headers=auth)
+        assert response.status_code == 422
+        assert len(client.get("/subscriptions", headers=auth).json()) == 1
+
     def test_export_still_carries_whatever_is_already_stored(self, client, auth):
         # GET /export must not gain the same rejection: it serializes rows
         # that already satisfied POST/PUT when they were written, and a
