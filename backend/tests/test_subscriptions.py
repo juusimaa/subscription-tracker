@@ -178,6 +178,25 @@ class TestValidation:
         )
         assert response.status_code == 422
 
+    def test_a_sub_cent_cost_is_rejected(self, client, auth):
+        # Numeric(10, 2) would silently round this to 0.00 -- a row that
+        # passed gt=0 ending up at the very value that check forbids, and
+        # every total computed over it coming up short by the difference.
+        response = client.post(
+            "/subscriptions",
+            json={"name": "X", "cost": "0.001", "next_renewal_date": str(date.today())},
+            headers=auth,
+        )
+        assert response.status_code == 422
+
+    def test_a_cost_with_too_many_decimal_places_is_rejected(self, client, auth):
+        response = client.post(
+            "/subscriptions",
+            json={"name": "X", "cost": "10.999999", "next_renewal_date": str(date.today())},
+            headers=auth,
+        )
+        assert response.status_code == 422
+
     def test_a_blank_name_is_rejected(self, client, auth):
         for name in ("", "   "):
             response = client.post(
@@ -194,7 +213,12 @@ class TestValidation:
         """A rule enforced only on create is a rule a client walks around by
         editing."""
         created = add_subscription(client, auth)
-        for payload in ({"cost": "-1.00"}, {"name": "  "}, {"cost": "100000000.00"}):
+        for payload in (
+            {"cost": "-1.00"},
+            {"name": "  "},
+            {"cost": "100000000.00"},
+            {"cost": "0.001"},
+        ):
             response = client.put(
                 f"/subscriptions/{created['id']}", json=payload, headers=auth
             )
