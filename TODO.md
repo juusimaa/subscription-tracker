@@ -23,6 +23,9 @@ it, the same reason the D-items keep theirs. Item 2, item 4 and the "No
 logging" Minor bullet are fixed too, as of the same day, and are written up
 at the bottom with the rest.
 
+Item 5 is fixed too, as of 2026-09-08, and is written up at the bottom with
+the rest.
+
 ## 1. Account management
 
 `/register`, `/token` and `/me` used to be the entire account surface.
@@ -32,17 +35,6 @@ bottom). What's left:
 - **Password reset** and **email verification**, both noted as deliberately
   skipped in PLAN.md milestone 6. They need an email path, so they are a bigger
   step than the first two were. Scheduled as PLAN.md milestone 9.
-
-## 5. Check-then-insert races return 500
-
-`register` and `create_category` both ask "does this exist?" and then insert. Two
-concurrent identical requests both pass the check, and the second one trips the
-unique constraint -- surfacing as an unhandled `IntegrityError`, i.e. a 500,
-where the sequential path returns a clean 400/409. `ensure_category` has the same
-shape.
-
-The check is worth keeping for the good error message; catching `IntegrityError`
-around the commit and converting it to the same 400/409 closes the window.
 
 ## 6. Imports are validated more loosely than writes
 
@@ -134,6 +126,50 @@ notes at the bottom.)
   arithmetic server-side, is the fix if it ever matters.
 
 ---
+
+## Fixed on 2026-09-08
+
+**5. Check-then-insert races return 500 -- fixed.** `register` and
+`create_category` both asked "does this exist?" and then inserted, so two
+concurrent identical requests could both pass the check and the second would
+trip the unique constraint as a raw, unhandled `IntegrityError` -- a 500,
+where the sequential path already returns a clean 400/409. `ensure_category`
+had the same shape, called from `create_subscription` and
+`update_subscription`.
+
+The two routes and the one helper needed different fixes, because the
+sequential path they were racing against doesn't do the same thing:
+
+- **`create_user` and `create_category` now catch `IntegrityError` around
+  their own `db.commit()`**, roll back, and raise a new `crud.DuplicateError`
+  -- a plain marker with no message, since the caller already knows the
+  right one. `main.py`'s `register` and `create_category` routes catch it
+  and raise the exact same `400`/`409` their pre-check already raises for the
+  sequential case, so a client can't tell the two apart.
+- **`ensure_category`'s race needed the opposite answer.** Its sequential
+  "already exists" branch isn't an error at all -- it just returns the
+  stored spelling -- so turning its race into a `409` would fail a
+  `POST /subscriptions` over a category-name collision that has nothing to
+  do with the subscription being created. Instead, `create_subscription` and
+  `update_subscription` catch `IntegrityError` around their own commit, roll
+  back, and retry the whole operation once: rebuilding the row from scratch
+  for create, or re-fetching and redoing the merged edit for update (`
+  db.rollback()` expires the persistent row and discards the losing insert,
+  so the in-memory edit has to be redone, not just re-committed). The retry's
+  own call to `ensure_category` then finds the row the other side committed
+  and reuses its spelling, exactly as the sequential path would have.
+- **Both `create_subscription` and `update_subscription` grew a small nested
+  `build`/`apply` closure** so the retry can redo the same construction or
+  merge logic without duplicating it -- the pattern `import_backup`'s
+  `register_category` already used for a similar reason.
+- **New tests: `test_races.py`.** `TestClient` is synchronous, so there is no
+  way to make two real requests collide; each test instead monkeypatches the
+  "does this exist?" lookup (`get_user_by_email` / `get_category_by_name`) to
+  return "not found" for exactly as many calls as a real race would produce,
+  reproducing the same unique-constraint collision on commit without needing
+  actual threads. Confirmed these fail against the pre-fix code (a raw
+  `sqlalchemy.exc.IntegrityError` surfacing as a 500) before confirming they
+  pass against the fix, on both SQLite and Postgres.
 
 ## Fixed on 2026-09-06
 

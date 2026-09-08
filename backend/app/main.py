@@ -228,7 +228,14 @@ def register(request: Request, user: schemas.UserCreate, db: Session = Depends(g
         raise HTTPException(status_code=403, detail="Invalid invite code")
     if crud.get_user_by_email(db, user.email):
         raise HTTPException(status_code=400, detail="Email already registered")
-    return crud.create_user(db, user)
+    try:
+        return crud.create_user(db, user)
+    except crud.DuplicateError:
+        # Two concurrent registrations for the same email can both pass the
+        # check above before either commits (TODO.md item 5) -- this gives
+        # the second one the same answer the check would have, instead of an
+        # unhandled IntegrityError surfacing as a 500.
+        raise HTTPException(status_code=400, detail="Email already registered") from None
 
 
 @app.post("/token", response_model=schemas.Token, tags=["Auth"])
@@ -357,7 +364,12 @@ def create_category(
         # 409 rather than 400: the request is well-formed, it just collides
         # with something that already exists.
         raise HTTPException(status_code=409, detail="Category already exists")
-    db_category = crud.create_category(db, category.name, current_user.id)
+    try:
+        db_category = crud.create_category(db, category.name, current_user.id)
+    except crud.DuplicateError:
+        # Same race as /register (TODO.md item 5): two concurrent requests
+        # for the same name can both pass the check above.
+        raise HTTPException(status_code=409, detail="Category already exists") from None
     cache.invalidate_user(current_user.id)
     # A brand new category has nothing using it yet, so the count is 0 without
     # needing to ask the database.
