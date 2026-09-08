@@ -22,7 +22,21 @@ DATABASE_URL = os.getenv(
 )
 
 # The engine manages the pool of actual connections to Postgres.
-engine = create_engine(DATABASE_URL)
+#
+# pool_pre_ping is important in production: the deployed DB is Neon, which
+# scales to zero and drops idle connections on suspend, so a pooled
+# connection can go stale between requests. Without pre_ping, SQLAlchemy
+# would hand out that dead connection and the query would fail with
+# "server closed the connection unexpectedly". pool_recycle backs this up
+# by proactively retiring connections older than the given age.
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=1800,
+)
 # Each call to SessionLocal() gives a new "conversation" with the database.
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # All ORM models (see models.py) inherit from this so SQLAlchemy knows about them.
