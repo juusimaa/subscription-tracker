@@ -100,10 +100,23 @@ def resolve_status(
 # commit, long after the request was accepted) into a plain 422. The lower
 # bound matters just as much: a negative cost is subtracted from every total,
 # so one typo can make a whole month's spend read as less than it is.
+#
+# The scale bound matters for the same reason as the lower one, just less
+# obviously: Numeric(10, 2) also fixes how many decimal places a cost can
+# have, and Postgres does not reject the overflow the way it rejects a value
+# that is too large -- it rounds. Rounding a third decimal place up, as in
+# 10.999999 -> 11.00, is harmless; rounding one down, as in 0.001 -> 0.00, is
+# not -- it takes a value gt=0 checked and passed and quietly turns it into
+# the zero that check exists to forbid, and every total computed over that
+# row comes up short by however much was rounded away. decimal_places=2 stops
+# that at the same 422 the other two bounds use, before it ever reaches the
+# column that would silently absorb it.
 SubscriptionName = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
 ]
-Cost = Annotated[Decimal, Field(gt=0, le=Decimal("99999999.99"))]
+Cost = Annotated[
+    Decimal, Field(gt=0, le=Decimal("99999999.99"), decimal_places=2)
+]
 
 
 class SubscriptionBase(BaseModel):
