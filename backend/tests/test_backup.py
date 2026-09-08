@@ -182,6 +182,17 @@ class TestImportValidation:
         assert response.status_code == 422
         assert len(client.get("/subscriptions", headers=auth).json()) == 1
 
+    def test_a_sub_cent_cost_is_refused(self, client, auth):
+        # Same shape as the negative-cost case above: Numeric(10, 2) would
+        # silently round this to 0.00 on commit, storing a zero that already
+        # passed gt=0 -- exactly the invariant TODO.md item 13 is about.
+        add_subscription(client, auth, name="Netflix")
+        file = export(client, auth).json()
+        file["subscriptions"][0]["cost"] = "0.001"
+        response = client.post("/import", json=file, headers=auth)
+        assert response.status_code == 422
+        assert len(client.get("/subscriptions", headers=auth).json()) == 1
+
     def test_a_blank_name_is_refused(self, client, auth):
         add_subscription(client, auth, name="Netflix")
         file = export(client, auth).json()

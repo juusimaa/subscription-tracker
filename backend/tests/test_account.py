@@ -4,6 +4,7 @@
 # schemas.PasswordChange and schemas.AccountDelete for why.
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import jwt
 
@@ -63,15 +64,36 @@ class TestChangePassword:
         such claim at all. The migration backfills token_version as 0 and its
         docstring promises that backfill doesn't sign anyone out -- so a fresh
         account (token_version still 0) with a "tv"-less token must be accepted
-        exactly like one carrying an explicit tv=0 (TODO item 12)."""
+        exactly like one carrying an explicit tv=0 (TODO item 12). It still
+        needs a valid exp -- every issuer this codebase has ever had set one,
+        so the missing claim here is only "tv" -- see TODO item 15 for the
+        token that has no exp at all."""
         email = f"user-{uuid.uuid4().hex[:12]}@example.com"
         auth = register(client, email=email, password="password123")
         user_id = client.get("/me", headers=auth).json()["id"]
 
-        legacy_token = jwt.encode({"sub": str(user_id)}, SECRET_KEY, algorithm=ALGORITHM)
+        expire = datetime.now(timezone.utc) + timedelta(hours=1)
+        legacy_token = jwt.encode(
+            {"sub": str(user_id), "exp": expire}, SECRET_KEY, algorithm=ALGORITHM
+        )
         legacy_auth = {"Authorization": f"Bearer {legacy_token}"}
 
         assert client.get("/me", headers=legacy_auth).status_code == 200
+
+    def test_token_with_no_exp_claim_is_rejected(self, client):
+        """Without `require: ["exp"]` at decode time, PyJWT only checks an exp
+        claim that's actually present -- a token minted with none at all would
+        decode cleanly and never expire (TODO item 15). Distinct from the
+        "tv"-less case above: this token is missing "exp", not "tv"."""
+        email = f"user-{uuid.uuid4().hex[:12]}@example.com"
+        auth = register(client, email=email, password="password123")
+        user_id = client.get("/me", headers=auth).json()["id"]
+
+        no_exp_token = jwt.encode({"sub": str(user_id), "tv": 0}, SECRET_KEY, algorithm=ALGORITHM)
+        no_exp_auth = {"Authorization": f"Bearer {no_exp_token}"}
+
+        response = client.get("/me", headers=no_exp_auth)
+        assert response.status_code == 401
 
     def test_wrong_current_password_is_rejected(self, client, auth):
         response = client.put(
