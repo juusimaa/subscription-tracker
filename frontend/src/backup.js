@@ -39,6 +39,7 @@ const CSV_FIELDS = {
   started: "started_date",
   cancelled_date: "cancelled_date",
   paused_date: "paused_date",
+  archived_date: "archived_date",
 };
 
 // A file that cannot be read at all, or a row that would not survive the
@@ -161,6 +162,7 @@ function readRow(raw, where) {
     status,
     cancelled_date: readDate(raw.cancelled_date, where, "cancelled_date"),
     paused_date: readDate(raw.paused_date, where, "paused_date"),
+    archived_date: readDate(raw.archived_date, where, "archived_date"),
   };
 }
 
@@ -288,7 +290,8 @@ function differs(row, stored) {
     key(row.category) !== key(stored.category) ||
     row.status !== stored.status ||
     (row.cancelled_date ?? null) !== (stored.cancelled_date ?? null) ||
-    (row.paused_date ?? null) !== (stored.paused_date ?? null)
+    (row.paused_date ?? null) !== (stored.paused_date ?? null) ||
+    (row.archived_date ?? null) !== (stored.archived_date ?? null)
   );
 }
 

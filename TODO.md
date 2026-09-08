@@ -27,6 +27,65 @@ Item 5 is fixed too, as of 2026-09-08, and is written up at the bottom with
 the rest. Item 6 is fixed too, also as of 2026-09-08, found independently by a
 review of the import path and written up at the bottom alongside item 5.
 
+Items 9-12 came from a code review on 2026-09-08, three of them (9-11) real
+data-corruption bugs rather than gaps. Item 9 is fixed already, same day, and
+is written up at the bottom with items 5 and 6. 10-12 lead the list below
+despite the numbering.
+
+## 10. `POST /import` accepts date/archive states the rest of the API refuses
+
+`schemas.BackupSubscriptionImport` (schemas.py:489) only tightens the `name`
+and `cost` it inherits from `BackupSubscription`; unlike
+`SubscriptionCreate._validate`, it has no validator calling `check_dates` or
+`check_archived`. `crud.import_backup` (crud.py:719-754) writes the
+merged/created row straight to the database with no re-check either, unlike
+`create_subscription` and `update_subscription`, which both re-validate the
+assembled row before committing. A hand-edited file posted directly to
+`/import` (bypassing the browser's own pre-flight in `backup.js`) can
+therefore store an active subscription with an `archived_date`, or a
+`cancelled_date` earlier than `started_date` -- states the ordinary write path
+already rejects as 422s, and that quietly corrupt spend-history arithmetic
+that assumes those invariants hold.
+
+Fix: give `BackupSubscriptionImport` a model validator that calls
+`check_dates`/`check_archived` per row, or check each assembled row in
+`crud.import_backup` before commit, the way `create_subscription` and
+`update_subscription` already do.
+
+## 11. Converting a trial through `PUT /subscriptions/{id}` backfills charges for the free period
+
+`crud._sync_status_dates` (crud.py:352) clears `cancelled_date`/`paused_date`
+when a row moves to a running status, but never touches `started_date`.
+`Dashboard.jsx`'s "Convert to paid" button (line 325) works around this by
+explicitly sending `started_date: next_renewal_date` alongside
+`status: "active"`, but the editable row in `SubscriptionTable.jsx` sends
+whatever `started_date` was already on the draft -- the trial's original start
+-- and so does any other client that calls `PUT` with just
+`{status: "active"}`. `_charge_dates` (main.py:982) then anchors billing on
+that original `started_date`, so every month since the trial began, not just
+since it converted, is counted as paid.
+
+Fix needs a decision, not just a null check -- e.g. `_sync_status_dates` could
+stamp `started_date := today()` (or a client-supplied conversion date)
+whenever `came_from_trial` and the new status is a paying one, mirroring what
+it already does with `cancelled_date`/`paused_date` for the opposite
+transition.
+
+## 12. Pre-migration JWTs are rejected, contradicting migration 0004's own compatibility claim
+
+`0004_token_version.py`'s docstring says "nothing already logged in is signed
+out by this migration itself," reasoning that the `server_default '0'`
+backfill matches the version already implied by tokens with no `tv` claim.
+But `auth.get_current_user` (auth.py:114) checks `payload.get("tv") !=
+user.token_version` literally: a token minted before this feature shipped
+carries no `tv` claim at all, so `payload.get("tv")` is `None`, which never
+equals the backfilled `0`. Every session issued before this code deploys is
+signed out the moment it ships, not only after a future password change --
+the opposite of what the migration promises.
+
+Fix: treat a missing `tv` claim as version 0 explicitly, e.g.
+`payload.get("tv", 0) != user.token_version`.
+
 ## 1. Account management
 
 `/register`, `/token` and `/me` used to be the entire account surface.
@@ -162,6 +221,24 @@ turning into a 500 (the trap `schemas.Subscription`'s docstring describes).
 New tests in `test_backup.py::TestImportValidation` cover a negative cost and
 a blank name being refused with 422 and nothing written, plus a check that
 export is untouched by the tightened import schema.
+
+**9. Backup import silently unarchived cancelled subscriptions -- fixed.**
+`frontend/src/backup.js` parsed a backup file's `cancelled_date` and
+`paused_date` but never `archived_date` -- missing from both `CSV_FIELDS` and
+the object `readRow` returned, for the CSV and JSON parsers alike. `GET
+/export` writes `archived_date` correctly, so a round-tripped export lost it
+on the way back in: the parsed row handed to `POST /import` had no
+`archived_date` key at all, `BackupSubscriptionImport` defaulted it to `None`,
+and `crud.import_backup`'s merge path unconditionally overwrites every field
+it's given onto the matched row. Re-importing any export -- merge or replace
+-- un-archived every cancelled-and-archived subscription in the account.
+
+Fixed by adding `archived_date` to `CSV_FIELDS` and to `readRow`'s returned
+object, the same way `cancelled_date` and `paused_date` already round-trip,
+plus `differs()` in the same file, which drives the pre-import diff dialog and
+had the same omission -- an archived row's un-archiving would otherwise not
+even have shown up as a change in the summary the user confirms before
+writing anything.
 
 ## Fixed on 2026-09-06
 
