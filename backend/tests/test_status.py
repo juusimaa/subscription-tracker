@@ -281,6 +281,73 @@ class TestWhatCountsTowardTotals:
         assert spend(client, auth, LAST_YEAR)["total"] == 0.0
 
 
+class TestTrialConversion:
+    """TODO.md item 11: converting a trial has to move started_date forward
+    to the conversion, or main._charge_dates anchors billing on the trial's
+    original start and backfills every month since as though it had been
+    paid for."""
+
+    def test_converting_with_only_status_stamps_todays_started_date(self, client, auth):
+        """The plain `PUT {status: "active"}` case -- no started_date in the
+        request at all."""
+        created = add_subscription(
+            client,
+            auth,
+            cost="10.00",
+            started_date=f"{LAST_YEAR}-01-05",
+            next_renewal_date=f"{LAST_YEAR}-02-05",
+            status="trial",
+        )
+        response = put(client, auth, created["id"], status="active")
+        assert response.status_code == 200, response.text
+        assert response.json()["started_date"] == str(TODAY)
+        # Not backfilled: the conversion happened today, so last year's
+        # months, before the row ever billed, still cost nothing.
+        assert spend(client, auth, LAST_YEAR)["total"] == 0.0
+
+    def test_converting_by_resending_the_unchanged_started_date_still_stamps_today(
+        self, client, auth
+    ):
+        """SubscriptionTable.jsx's editable row always sends the whole draft,
+        so started_date is present in the request but unchanged -- the trial's
+        original start, not a real conversion date. That must not be mistaken
+        for a client deliberately backdating the conversion."""
+        original_start = f"{LAST_YEAR}-01-05"
+        created = add_subscription(
+            client,
+            auth,
+            cost="10.00",
+            started_date=original_start,
+            next_renewal_date=f"{LAST_YEAR}-02-05",
+            status="trial",
+        )
+        response = put(
+            client, auth, created["id"], status="active", started_date=original_start
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["started_date"] == str(TODAY)
+        assert spend(client, auth, LAST_YEAR)["total"] == 0.0
+
+    def test_converting_with_a_genuinely_different_started_date_is_honored(self, client, auth):
+        """A client that actually supplies a different date -- Dashboard.jsx's
+        "Convert to paid" button sends next_renewal_date -- is deliberately
+        backdating the conversion, and that choice is kept."""
+        created = add_subscription(
+            client,
+            auth,
+            cost="10.00",
+            started_date=f"{LAST_YEAR}-01-05",
+            next_renewal_date=f"{LAST_YEAR}-02-05",
+            status="trial",
+        )
+        conversion_date = f"{LAST_YEAR}-02-05"
+        response = put(
+            client, auth, created["id"], status="active", started_date=conversion_date
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["started_date"] == conversion_date
+
+
 class TestTrialsInUpcoming:
     def test_a_trial_is_listed_once_at_no_cost_on_its_conversion_date(self, client, auth):
         """Once, because a trial converts one time; at zero, because nothing
