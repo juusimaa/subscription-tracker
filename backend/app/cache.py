@@ -14,12 +14,16 @@
 
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 import redis
 from dotenv import load_dotenv
 
-load_dotenv()
+# Pinned to backend/.env rather than dotenv's upward search, for the reason
+# spelled out in database.py -- the default escapes this directory and finds
+# the root .env, which belongs to Compose.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 # Same pattern as DATABASE_URL in database.py: a default that matches
 # docker-compose.yml so the app still works if REDIS_URL isn't set, and a
