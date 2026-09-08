@@ -70,8 +70,10 @@ def create_access_token(user_id: int, token_version: int = 0) -> str:
     it was issued, but the row's own token_version moves forward without it.
     """
     expire = datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS)
-    # "sub" (subject) and "exp" (expiry) are standard JWT claim names; the jwt
-    # library enforces exp automatically on decode. sub must be a string.
+    # "sub" (subject) and "exp" (expiry) are standard JWT claim names. exp is
+    # required below at decode time -- nothing else revokes a token short of
+    # a password change, so a token minted without one would work forever.
+    # sub must be a string.
     payload = {"sub": str(user_id), "tv": token_version, "exp": expire}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -90,7 +92,13 @@ def get_current_user(
     )
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        # PyJWT only checks exp if the claim happens to be present, so without
+        # `require` a token minted with no exp at all would decode cleanly and
+        # never expire. Every issuer this codebase has ever had puts exp in
+        # the payload (see create_access_token), so this costs nothing.
+        payload = jwt.decode(
+            token, SECRET_KEY, algorithms=[ALGORITHM], options={"require": ["exp"]}
+        )
     except jwt.PyJWTError:
         # Covers a bad signature and an expired token alike. Deliberately the
         # same error for both, so the response never tells a caller which of
