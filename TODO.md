@@ -34,13 +34,16 @@ day, written up at the bottom alongside them. Item 11 is fixed too, also the
 same day, written up at the bottom alongside them. Item 12 is fixed too, also
 the same day, written up at the bottom alongside them.
 
-Items 13-15 came from a further review the same day, once item 12 had merged,
-and all three are open. They share a shape, so they are grouped rather than
-scattered through the order above: each is a limit that reads as enforced but
-is enforced on the wrong quantity, or not at the point that matters. The
-Minor bullet on `cost` precision is gone rather than struck -- item 13 is
-that bullet, re-filed as a bug once the review showed the truncation it
-described is not always harmless.
+Items 13-15 came from a further review the same day, once item 12 had merged.
+All three are fixed now, also the same day, and are written up at the bottom
+with the rest. They shared a shape: each was a limit that read as enforced
+but was enforced on the wrong quantity, or not at the point that mattered.
+The Minor bullet on `cost` precision is gone rather than struck -- item 13
+was that bullet, re-filed as a bug once the review showed the truncation it
+described is not always harmless. One fix that was never a numbered item is
+written up alongside them, since it landed the same day and out of the same
+work: the backend's `.env` lookup could escape the backend directory and load
+Compose's file instead.
 
 ## 1. Account management
 
@@ -51,69 +54,6 @@ bottom). What's left:
 - **Password reset** and **email verification**, both noted as deliberately
   skipped in PLAN.md milestone 6. They need an email path, so they are a bigger
   step than the first two were. Scheduled as PLAN.md milestone 9.
-
-## Limits that don't hold
-
-Three findings from the 2026-09-08 review of the branch that fixed item 12.
-Each was reproduced before being written down, and each is a bound that looks
-enforced in the schema while the thing it guards measures something else.
-
-### 13. Sub-cent costs pass validation and are stored as zero
-
-`Cost` (`backend/app/schemas.py`) bounds the value -- `gt=0`,
-`le=99999999.99` -- but says nothing about scale, so `0.001` validates
-cleanly (confirmed against the alias itself). Postgres then stores it in
-`Numeric(10, 2)` (`backend/app/models.py`) as `0.00`: a row that passed a
-`gt=0` check sitting in the database at zero, and every total computed over
-it short by the difference.
-
-This was a Minor bullet until now, filed as harmless truncation of
-`10.999999` to `11.00`. Rounding up *is* harmless. What the bullet missed is
-that rounding down through zero breaks the positive-cost invariant the lower
-bound exists to hold -- the same invariant whose absence, in the negative
-direction, the `Cost` comment already calls out as making "a whole month's
-spend read as less than it is."
-
-The fix is the one that bullet named and declined: `decimal_places=2` on
-`Cost`, which covers create, update and `POST /import` at once because all
-three reuse the alias. It turns requests that work today into 422s, which is
-the point of it.
-
-### 14. The password length limit counts characters; bcrypt counts bytes
-
-`UserCreate.password` and `PasswordChange.new_password` are both
-`Field(min_length=8, max_length=72)` -- 72 *characters*. bcrypt's limit is 72
-*bytes*. A 25-character password of `€` is 75 bytes, passes the schema, and
-is silently cut to its first 72 bytes before hashing. Verified against the
-pinned bcrypt 4.2.0: after hashing the 25-character password, `checkpw`
-accepts the 24-character prefix and rejects the 23-character one. Anyone
-whose password isn't pure ASCII can get a shorter password than they typed,
-with no error on either the register or the verify side.
-
-The comment above the field is wrong on precisely the point that would make
-the character limit safe: it says bcrypt "raises on anything longer", so the
-bound is there to turn a 500 into a 422. bcrypt 4.2.0 does not raise -- it
-truncates, quietly. Fix: enforce `len(password.encode("utf-8")) <= 72` in the
-schema (a field validator, since `max_length` can't express a byte bound) for
-both fields, and correct the comment while it's open.
-
-### 15. Token expiry is not required at decode time
-
-`jwt.decode` in `backend/app/auth.py` is called with no `require` option, and
-PyJWT only validates an `exp` that is actually present (confirmed against the
-pinned pyjwt 2.9.0, which decodes an `exp`-less token without complaint). A
-signed token carrying no expiry is therefore accepted indefinitely -- and
-item 12's fix made a claim-light token a supported shape, so
-`test_pre_migration_token_with_no_tv_claim_still_works` in
-`backend/tests/test_account.py` now mints exactly that token and asserts a
-200. The expiry is the only thing that ever revokes a token below a version
-bump, which is what makes an unbounded one worth fixing rather than noting.
-
-Item 12 does not need this latitude. Every issuer this codebase has had put
-`exp` in the payload; migration 0004 added `tv`, not `exp`, so the
-compatibility promise only requires treating a missing `tv` as version 0.
-Fix: pass `options={"require": ["exp"]}` to `jwt.decode`, and add an `exp` to
-the legacy test's token so it tests the one missing claim it is about.
 
 ## Spending dashboard follow-ups
 
@@ -328,6 +268,110 @@ the backfill. New test in
 `test_account.py::TestChangePassword::test_pre_migration_token_with_no_tv_claim_still_works`
 mints a token with no `tv` claim at all (what a pre-migration login would
 have produced) against a fresh account and asserts it's still accepted.
+(Item 15 has since given that token an `exp` -- which a pre-migration login
+would also have produced -- so it still tests exactly the missing `tv`.)
+
+**13. Sub-cent costs passed validation and were stored as zero -- fixed.**
+`Cost` bounded the value (`gt=0`, `le=99999999.99`) but said nothing about
+its scale, so `0.001` validated cleanly and `Numeric(10, 2)` stored it as
+`0.00` -- a row that had passed a `gt=0` check sitting in the database at the
+one value that check exists to forbid, with every total computed over it
+short by the difference.
+
+Fixed as this item's write-up proposed: `decimal_places=2` on the `Cost`
+alias, which covers `POST /subscriptions`, `PUT /subscriptions/{id}` and
+`POST /import` in a single change, because all three reuse it. Pydantic
+strips trailing zeros before counting places, so `0.100` and `10.10` still
+validate -- the bound rejects genuine excess precision, not the way a client
+happens to write a legitimate value. New tests in
+`test_subscriptions.py::TestValidation` (`0.001` and `10.999999` on create,
+plus `0.001` added to the parametrised update list that exists so a rule
+can't be walked around by editing) and in
+`test_backup.py::TestImportValidation`, following the negative-cost case
+already there. The comment above `Cost` now explains the scale bound
+alongside the other two.
+
+This was a Minor bullet before this review, filed as harmless truncation.
+That reading held for `10.999999 -> 11.00` and missed `0.001 -> 0.00`.
+
+**14. The password length limit counted characters; bcrypt counts bytes --
+fixed.** `UserCreate.password` and `PasswordChange.new_password` were both
+`Field(min_length=8, max_length=72)`, counting characters, while bcrypt's
+limit is 72 bytes. 25 `€` characters is 75 bytes: it passed the schema, and
+bcrypt 4.2.0 truncated it to 72 before hashing without raising, so the
+account's real password silently became the first 24 characters of what was
+typed. The comment above the field asserted the opposite -- that bcrypt
+"raises on anything longer" -- which is exactly what would have made a
+character limit safe, and is not true of the pinned version.
+
+Fixed with a shared `Password` alias: `Field(min_length=8)` plus an
+`AfterValidator` checking `len(password.encode("utf-8")) <= 72`, declared
+once and applied to both fields, for the reason the comment above
+`SubscriptionName` and `Cost` already gives. The 422 names both the byte
+count and the character count, so it doesn't read as a bug on a password
+that is visibly under 72 characters.
+
+What the fix deliberately leaves alone: `PasswordChange.current_password`,
+`AccountDelete.password` and `POST /token`. Each of those *verifies* an
+existing password rather than setting a new one, and bcrypt truncates
+identically on hash and on verify -- so an account whose stored password is
+over 72 bytes still authenticates with what its owner originally typed. A
+byte limit on any of the three would have locked exactly those accounts out
+of logging in, changing their password, or deleting themselves: a validation
+fix turned into an outage for the users it was meant to protect. `max_length`
+is gone rather than kept alongside the new check, since a string over 72
+characters is necessarily over 72 bytes -- the byte bound is strictly
+stronger, and keeping the old one would only have produced a worse message
+for that case. New `TestPasswordByteLimit` in `test_account.py` covers the
+422 on both register and change, exactly 72 bytes of multi-byte characters
+registering and then logging in, and the 8-character minimum still applying.
+
+**15. Token expiry was not required at decode time -- fixed.** `jwt.decode`
+passed no `require` option, and PyJWT only validates an `exp` that is
+actually present, so a signed token minted without one was accepted
+indefinitely -- for as long as the account stayed at its current token
+version. `TOKEN_EXPIRE_HOURS` and the comment above it say the expiry is the
+only thing that revokes a token short of a password change, which is what
+made an unbounded one worth fixing rather than noting.
+
+Item 12 is what made this reachable rather than theoretical: its test minted
+a token carrying neither `tv` nor `exp` and asserted a 200, so that shape was
+not merely accepted but pinned in place by a passing test.
+
+Fixed with `options={"require": ["exp"]}` on the decode call. Item 12's
+promise survives untouched -- every issuer this codebase has ever had put
+`exp` in the payload, and migration 0004 backfilled `tv`, not `exp`, so a
+token with no `tv` but a valid `exp` is still accepted as version 0.
+`test_pre_migration_token_with_no_tv_claim_still_works` now mints its token
+with an `exp`, so it tests the one missing claim it is actually about, and a
+new `test_token_with_no_exp_claim_is_rejected` covers the 401.
+
+**Not a numbered item: the backend's `.env` lookup escaped the backend
+directory -- fixed.** Never filed as an item because it was never a gap in
+the API. It surfaced while the three fixes above were built in separate git
+worktrees, and cost all three of them time before being recognised as
+environmental rather than as their own breakage.
+
+`load_dotenv()` was called with no arguments in `database.py` and `cache.py`,
+so dotenv searched upward from the working directory and loaded the first
+`.env` it found. That reads `backend/.env` only when the process happens to
+start from `backend/`. From anywhere else -- or from a worktree, which has no
+`backend/.env` of its own -- the search climbs past the backend directory and
+reaches the root `.env`, which is a different file for a different job:
+Compose's `${VAR}` substitution source, carrying values meant for containers,
+among them a real `INVITE_CODE`. The suite's `register()` helper deliberately
+sends no invite code, so that one stray variable failed dozens of tests at
+once, none of which are about invite codes, with nothing in the output
+pointing at the cause.
+
+Both calls are now pinned to `backend/.env`, derived from `__file__` rather
+than the working directory. Inside the image that resolves to `/app/.env`,
+which does not exist, so the call stays the no-op it already was there --
+Compose injects the real environment, and `load_dotenv` never overrode real
+variables anyway. `conftest.py` also blanks `INVITE_CODE` outright: the pin
+stops a neighbouring file supplying one, but an exported shell variable still
+could, and `load_dotenv` would not have overridden that either.
+
 
 ## Fixed on 2026-09-06
 
