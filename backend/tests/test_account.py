@@ -5,6 +5,9 @@
 
 import uuid
 
+import jwt
+
+from app.auth import ALGORITHM, SECRET_KEY
 from conftest import add_subscription, register
 
 
@@ -54,6 +57,21 @@ class TestChangePassword:
         assert client.get("/me", headers=auth).status_code == 401
         # ...and so is every other device's.
         assert client.get("/me", headers=other_device).status_code == 401
+
+    def test_pre_migration_token_with_no_tv_claim_still_works(self, client):
+        """A token minted before migration 0004 added the "tv" claim carries no
+        such claim at all. The migration backfills token_version as 0 and its
+        docstring promises that backfill doesn't sign anyone out -- so a fresh
+        account (token_version still 0) with a "tv"-less token must be accepted
+        exactly like one carrying an explicit tv=0 (TODO item 12)."""
+        email = f"user-{uuid.uuid4().hex[:12]}@example.com"
+        auth = register(client, email=email, password="password123")
+        user_id = client.get("/me", headers=auth).json()["id"]
+
+        legacy_token = jwt.encode({"sub": str(user_id)}, SECRET_KEY, algorithm=ALGORITHM)
+        legacy_auth = {"Authorization": f"Bearer {legacy_token}"}
+
+        assert client.get("/me", headers=legacy_auth).status_code == 200
 
     def test_wrong_current_password_is_rejected(self, client, auth):
         response = client.put(
