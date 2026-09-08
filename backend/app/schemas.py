@@ -504,6 +504,19 @@ class BackupSubscriptionImport(BackupSubscription):
     name: SubscriptionName
     cost: Cost
 
+    @model_validator(mode="after")
+    def _validate(self):
+        # Runs after BackupSubscription._resolve_status, so self.status is
+        # already resolved (TODO.md item 10). SubscriptionCreate checks the
+        # same two invariants for the same reason: a hand-edited file posted
+        # straight to /import, bypassing backup.js's own pre-flight, could
+        # otherwise store an active row with an archived_date, or a
+        # cancelled_date earlier than started_date -- states the ordinary
+        # write path already rejects as 422s.
+        check_dates(self.started_date, self.cancelled_date, self.paused_date)
+        check_archived(self.status, self.archived_date)
+        return self
+
 
 class Backup(BaseModel):
     """The whole file, in its permissive shape: what GET /export produces.
