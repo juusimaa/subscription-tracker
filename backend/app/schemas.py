@@ -486,8 +486,27 @@ class BackupSubscription(SubscriptionBase):
         return self
 
 
+class BackupSubscriptionImport(BackupSubscription):
+    """The strict counterpart of `BackupSubscription`, used only as the
+    request shape for POST /import (TODO.md item 6).
+
+    `BackupSubscription` has to stay unconstrained because `Backup` doubles as
+    the response model for GET /export: a rule that rejects data would turn
+    one already-stored row that predates that rule into a 500 for every
+    export, the same trap the docstring on `Subscription` describes. Nothing
+    about that reasoning applies to the *import* direction, though, and
+    leaving it just as loose there let a hand-edited file introduce the
+    negative costs and blank names `SubscriptionCreate` and `SubscriptionUpdate`
+    already reject -- reachable only by calling `POST /import` directly, since
+    the browser's own import form enforces these before sending.
+    """
+
+    name: SubscriptionName
+    cost: Cost
+
+
 class Backup(BaseModel):
-    """The whole file: what GET /export produces and POST /import accepts.
+    """The whole file, in its permissive shape: what GET /export produces.
 
     `version` is what makes this survivable. A future change to the fields can
     look at it and decide whether to migrate the file or refuse it, instead of
@@ -506,6 +525,14 @@ class Backup(BaseModel):
         Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
     ] = []
     subscriptions: list[BackupSubscription] = []
+
+
+class BackupImport(Backup):
+    """What POST /import actually accepts. Same shape as `Backup`, except its
+    subscriptions are the constrained `BackupSubscriptionImport` -- see the
+    note there for why the two directions need different rules."""
+
+    subscriptions: list[BackupSubscriptionImport] = []
 
 
 class BackupFormat(str, enum.Enum):

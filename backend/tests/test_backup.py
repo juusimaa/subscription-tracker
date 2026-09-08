@@ -166,6 +166,39 @@ class TestImportMode:
         assert len(client.get("/subscriptions", headers=auth).json()) == 1
 
 
+class TestImportValidation:
+    """POST /import enforces the same name/cost rules POST /subscriptions and
+    PUT do, even though the file it reads is otherwise unconstrained (see the
+    note on schemas.BackupSubscriptionImport and TODO.md item 6). Before this,
+    a hand-edited file could smuggle in a negative cost or a blank name that
+    the browser's own import form already refuses to send.
+    """
+
+    def test_a_negative_cost_is_refused(self, client, auth):
+        add_subscription(client, auth, name="Netflix")
+        file = export(client, auth).json()
+        file["subscriptions"][0]["cost"] = "-5.00"
+        response = client.post("/import", json=file, headers=auth)
+        assert response.status_code == 422
+        assert len(client.get("/subscriptions", headers=auth).json()) == 1
+
+    def test_a_blank_name_is_refused(self, client, auth):
+        add_subscription(client, auth, name="Netflix")
+        file = export(client, auth).json()
+        file["subscriptions"][0]["name"] = "   "
+        response = client.post("/import", json=file, headers=auth)
+        assert response.status_code == 422
+        assert len(client.get("/subscriptions", headers=auth).json()) == 1
+
+    def test_export_still_carries_whatever_is_already_stored(self, client, auth):
+        # GET /export must not gain the same rejection: it serializes rows
+        # that already satisfied POST/PUT when they were written, and a
+        # response model that could 500 on a stored row is the trap
+        # schemas.Subscription's docstring describes.
+        add_subscription(client, auth, name="Netflix")
+        assert export(client, auth).status_code == 200
+
+
 class TestMerge:
     def test_a_matching_name_is_updated_not_skipped(self, client, auth):
         add_subscription(client, auth, name="Netflix", cost="15.99")
