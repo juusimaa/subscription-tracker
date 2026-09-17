@@ -1,4 +1,4 @@
-# Publishes the API reference to GitHub Pages:
+# Publishes the API reference and clickable UI mock to GitHub Pages:
 # https://juusimaa.github.io/subscription-tracker
 #
 # The spec is *generated from the app*, never committed: this workflow imports
@@ -22,6 +22,10 @@ on:
     paths:
       - "backend/**"
       - "docs/**"
+      - "frontend/src/**"
+      - "frontend/ui.html"
+      - "frontend/vite.ui.config.js"
+      - "frontend/package*.json"
       - ".github/workflows/docs.yml"
   # A "Run workflow" button, for republishing without inventing a commit --
   # useful right after enabling Pages in the repository settings.
@@ -62,6 +66,18 @@ jobs:
       - name: Install backend dependencies
         run: pip install -r backend/requirements.txt
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build the UI mock
+        run: |
+          npm ci --prefix frontend
+          npm run build:ui --prefix frontend
+
       # Two environment variables, both throwaway:
       #
       #   DATABASE_URL  database.py builds an engine at import time, which needs
@@ -90,7 +106,10 @@ jobs:
           "
 
       - name: Assemble the site
-        run: cp docs/index.html _site/
+        run: |
+          cp docs/index.html _site/
+          cp frontend/dist-ui/ui.html _site/
+          cp -R frontend/dist-ui/assets _site/
 
       # Fails the run before publishing if the two halves don't line up: the
       # page is useless if the spec is missing or truncated, and a broken
@@ -104,6 +123,7 @@ jobs:
           print(f\"{len(spec['paths'])} paths, {len(spec['components']['schemas'])} schemas\")
           "
           grep -q "openapi.json" _site/index.html
+          grep -q "assets/" _site/ui.html
 
       - name: Upload the site
         uses: actions/upload-pages-artifact@v5
