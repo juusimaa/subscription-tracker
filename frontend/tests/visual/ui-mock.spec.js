@@ -43,3 +43,26 @@ test("mobile mock opens the real add sheet", async ({ page }) => {
   await expect(page.locator(".hero-total")).toHaveText("€30.48");
   await expect(sheet).not.toBeVisible();
 });
+
+test("search filters the current list by name, cost and renewal date", async ({ page }) => {
+  await page.goto("/ui.html");
+  const list = page.locator("#all");
+  const search = list.getByRole("searchbox", { name: "Search subscriptions" });
+
+  await search.fill("spot");
+  await expect(list.getByText("All subscriptions — 1 of 4")).toBeVisible();
+  await expect(list.getByText("Spotify")).toBeVisible();
+  await search.fill("15.99");
+  await expect(list.getByText("All subscriptions — 1 of 4")).toBeVisible();
+  await expect(list.getByText("Netflix")).toBeVisible();
+  await search.fill("2026-09-20");
+  await expect(list.getByText("Netflix")).toBeVisible();
+
+  await search.fill("Dropbox");
+  await expect(list.getByText("No subscriptions match")).toBeVisible();
+  await list.getByRole("button", { name: /Show cancelled/ }).click();
+  await expect(list.getByText("Dropbox")).toBeVisible();
+
+  await list.locator(".subscription-search").getByRole("button", { name: "Clear search" }).click();
+  await expect(list.getByText("All subscriptions — 5")).toBeVisible();
+});

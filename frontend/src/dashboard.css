@@ -588,8 +588,54 @@ body { text-wrap: pretty; }
 /* — subscription table — */
 
 .table-section { padding: 56px 0 28px; }
-.table-section .section-head { gap: 24px; }
+.table-section .section-head { gap: 24px; align-items: center; }
 .table-actions { display: flex; gap: 12px; align-items: center; }
+.subscription-search {
+  position: relative;
+  flex: 0 0 clamp(180px, 20vw, 260px);
+  width: clamp(180px, 20vw, 260px);
+}
+.subscription-search > svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  pointer-events: none;
+}
+.subscription-search .subscription-search-input {
+  min-height: 40px;
+  padding: 8px 34px 8px 36px;
+}
+.subscription-search-input::-webkit-search-cancel-button { display: none; }
+.subscription-search-clear {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+}
+.subscription-search-clear:hover { color: var(--color-accent); }
+.subscription-search-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 0;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+  font-size: 14px;
+}
 
 .table th { padding: 0; }
 .sort-button {
@@ -1386,6 +1432,9 @@ body { text-wrap: pretty; }
      The desktop table markup never mounts at this width, so there's no
      .table to hide; these style the list that replaces it. */
   .table-section { padding: 28px 0 0; border-top: 2px solid var(--color-divider); }
+  .table-section .section-head { margin-bottom: 16px; }
+  .table-section > .subscription-search { width: 100%; margin-bottom: 16px; }
+  .subscription-search .subscription-search-input { min-height: 44px; }
   .mobile-list-toggle { display: inline-flex; min-height: 44px; margin: 0 12px 0 0; }
   .sort-chips {
     display: flex;
