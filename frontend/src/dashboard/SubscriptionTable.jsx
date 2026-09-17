@@ -12,7 +12,7 @@ import { Fragment, useEffect, useState } from "react";
 import { ApiError } from "../api";
 import MonoTile from "../MonoTile";
 import Sheet from "./Sheet";
-import { ChevronRight, TriangleAlert } from "../icons";
+import { ChevronRight, Search, TriangleAlert } from "../icons";
 import { cycleSuffix, longDate, money, perMonth, todayISO } from "../format";
 import { useIsMobile } from "../useMediaQuery";
 
@@ -136,6 +136,47 @@ function sortValue(subscription, key) {
   }
 }
 
+// Search the same facts shown in the list. Keep dates in both display and ISO
+// form so a pasted YYYY-MM-DD date works as well as "20 Sep 2026".
+function matchesSearch(subscription, query) {
+  if (!query) return true;
+  const values = [
+    subscription.name,
+    subscription.category,
+    isScheduled(subscription) ? "Scheduled" : STATUS[subscription.status].label,
+    subscription.billing_cycle,
+    money(subscription.cost),
+    subscription.status === "trial" ? money(0) : null,
+    subscription.status === "active" ? money(perMonth(subscription)) : null,
+    subscription.started_date,
+    longDate(subscription.started_date),
+    subscription.next_renewal_date,
+    longDate(subscription.next_renewal_date),
+  ];
+  return values.some((value) => value?.toLowerCase().includes(query));
+}
+
+function SubscriptionSearch({ value, onChange }) {
+  return (
+    <div className="subscription-search">
+      <Search size={16} />
+      <input
+        type="search"
+        className="input subscription-search-input"
+        aria-label="Search subscriptions"
+        placeholder="Name, cost, date"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      {value && (
+        <button type="button" className="subscription-search-clear" aria-label="Clear search" onClick={() => onChange("")}>
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
 function SubscriptionTable({
   subscriptions,
   categories,
@@ -170,6 +211,7 @@ function SubscriptionTable({
   // Desktop-only: which row's "More" menu is open. At most one at a time --
   // opening a second closes whichever was already open.
   const [menuOpenId, setMenuOpenId] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -224,12 +266,15 @@ function SubscriptionTable({
   );
   const hasCurrentRun = (subscription) =>
     subscription.group_id != null && currentGroupIds.has(subscription.group_id);
-  const visible = subscriptions
+  const query = searchQuery.trim().toLowerCase();
+  const available = subscriptions
     .filter((s) => {
       if (s.status !== "cancelled") return true;
       if (s.archived_date) return showCancelled && showArchived;
       return showCancelled;
-    })
+    });
+  const visible = available
+    .filter((s) => matchesSearch(s, query))
     .slice()
     .sort((a, b) => {
       const direction = sort.dir === "desc" ? -1 : 1;
@@ -245,6 +290,21 @@ function SubscriptionTable({
     setDraft(null);
     setRowError(null);
   }
+
+  function updateSearch(value) {
+    setSearchQuery(value);
+    closeEditor();
+    setMenuOpenId(null);
+  }
+
+  const searchBox = <SubscriptionSearch value={searchQuery} onChange={updateSearch} />;
+  const listCount = query ? `${visible.length} of ${available.length}` : visible.length;
+  const noResults = query && visible.length === 0 && (
+    <div className="subscription-search-empty">
+      <span>No subscriptions match “{searchQuery.trim()}” in this list.</span>
+      <button type="button" className="btn btn-ghost btn-small" onClick={() => updateSearch("")}>Clear search</button>
+    </div>
+  );
 
   // Entering a sort, or toggling cancelled visibility, closes any open editor:
   // the row would otherwise move out from under the cursor mid-edit.
@@ -318,8 +378,10 @@ function SubscriptionTable({
     return (
       <section id="all" className="table-section">
         <div className="section-head">
-          <span className="eyebrow">All subscriptions — {visible.length}</span>
+          <span className="eyebrow">All subscriptions — {listCount}</span>
         </div>
+
+        {searchBox}
 
         {archivedCount > 0 && showCancelled && (
           <button
@@ -357,6 +419,7 @@ function SubscriptionTable({
         </div>
 
         <div className="mobile-list">
+          {noResults}
           {visible.map((subscription) => {
             if (subscription.id === staleId) {
               return (
@@ -600,8 +663,9 @@ function SubscriptionTable({
   return (
     <section id="all" className="table-section">
       <div className="section-head">
-        <span className="eyebrow">All subscriptions — {visible.length}</span>
+        <span className="eyebrow">All subscriptions — {listCount}</span>
         <span className="table-actions">
+          {searchBox}
           {showCancelled && archivedCount > 0 && (
             <button
               type="button"
@@ -654,6 +718,7 @@ function SubscriptionTable({
           </tr>
         </thead>
         <tbody>
+          {noResults && <tr><td colSpan={8}>{noResults}</td></tr>}
           {visible.map((subscription) => {
             // A record removed on another device is replaced, not annotated:
             // leaving the row in place would let it be edited further.

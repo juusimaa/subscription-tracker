@@ -1,4 +1,4 @@
-// The four Lucide icons the design uses, as inline SVG.
+// Small Lucide icons the design uses, as inline SVG.
 //
 // The handoff says to pull these from the codebase's Lucide package; there
 // isn't one, and adding a dependency to draw four glyphs at 14-20px is a worse
@@ -43,6 +43,15 @@ export function ChevronRight({ size = 16 }) {
   return (
     <svg {...base} width={size} height={size}>
       <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
+
+export function Search({ size = 16 }) {
+  return (
+    <svg {...base} width={size} height={size}>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.35-4.35" />
     </svg>
   );
 }
