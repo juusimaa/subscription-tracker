@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:ui": "vite build --config vite.ui.config.js",
     "lint": "oxlint",
     "preview": "vite preview",
     "test:visual": "playwright test",

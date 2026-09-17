@@ -1,0 +1,26 @@
+.mock-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  padding: 10px max(32px, calc((100% - 1240px) / 2 + 32px));
+  border-bottom: 1px solid #aaa;
+  background: #201e1d;
+  color: #f8f4f4;
+  font: 12px/1.5 Archivo, system-ui, sans-serif;
+}
+.mock-toolbar strong { text-transform: uppercase; letter-spacing: .08em; }
+.mock-toolbar span { margin-right: auto; }
+.mock-toolbar button, .mock-toolbar a {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: #ff9783;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.mock-toolbar button:focus-visible, .mock-toolbar a:focus-visible {
+  outline: 2px solid #ff9783;
+  outline-offset: 3px;
+}

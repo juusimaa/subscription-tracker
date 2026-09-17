@@ -11,7 +11,9 @@
 // them: anything prefixed that way is readable by anyone who opens the page.
 const API_URL = window.__API_URL__ || import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-const TOKEN_KEY = "token";
+// The static UI mock has its own token slot so opening it in local Vite dev
+// does not replace a real development session on the same origin.
+const TOKEN_KEY = window.__UI_MOCK__ ? "ui-mock-token" : "token";
 
 // localStorage is scoped to this origin and this browser profile: the token
 // survives a page reload and a browser restart, but a different browser,

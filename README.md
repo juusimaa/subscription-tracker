@@ -550,6 +550,15 @@ screen.
 
 ---
 
+## Current UI mock
+
+The [clickable current UI mock](https://juusimaa.github.io/subscription-tracker/ui.html)
+uses the real React components with sample API responses. Changes remain in
+the browser tab; **Reset sample** restores the fixture. Its clock is fixed at
+15 Sep 2026 so the period, renewals, and figures are stable for design review.
+To run it locally, start `npm run dev` in `frontend/` and open
+`http://localhost:5173/ui.html`.
+
 ## API reference
 
 Everything except the first three requires `Authorization: Bearer <token>`, and
@@ -850,6 +859,7 @@ docs/
   build-and-push.yml  # builds and publishes both images to GHCR
   docs.yml            # publishes the API reference to GitHub Pages
 frontend/
+  ui.html             # entry page for the clickable current UI mock
   Dockerfile          # multi-stage: Node builds, Nginx serves
   src/
     App.jsx           # auth gate, data loading, and the page-level error states
