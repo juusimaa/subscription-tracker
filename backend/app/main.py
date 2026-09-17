@@ -829,6 +829,11 @@ def update_subscription(
         db_subscription = crud.update_subscription(
             db, subscription_id, subscription, current_user.id
         )
+    except crud.CancelledRunTransitionError:
+        raise HTTPException(
+            status_code=409,
+            detail="A cancelled run cannot be reactivated in place; start a new run instead",
+        )
     except ValueError as exc:
         # 422 (not 400) to match what the schemas return for the same mistake
         # caught one layer earlier -- a client sending both dates at once and a
@@ -905,10 +910,10 @@ def restore_subscription(
     current_user: models.User = Depends(auth.get_current_user),
 ):
     """Starts a new run of a cancelled subscription: a new active row that
-    copies name/category/cost/cycle from this one, linked to it by a group so
+    copies name/category and optionally cost/cycle, linked to it by a group so
     the app can say "one Netflix" rather than two unrelated rows (TODO.md
-    item 8). started_date and the renewal anchor default to today and can be
-    overridden in the body. The row being restored is untouched -- it stays
+    item 8). Dates default to the end of the paid term or today, whichever is
+    later, and can be overridden in the body. The old row is untouched -- it stays
     cancelled, with its own history intact."""
     db_subscription = crud.get_subscription(db, subscription_id, current_user.id)
     if db_subscription is None:
@@ -917,7 +922,12 @@ def restore_subscription(
         raise HTTPException(
             status_code=409, detail="Only a cancelled subscription can be restored"
         )
-    result = crud.restore_subscription(db, db_subscription, current_user.id, payload)
+    try:
+        result = crud.restore_subscription(db, db_subscription, current_user.id, payload)
+    except crud.CurrentRunExistsError:
+        raise HTTPException(
+            status_code=409, detail="This subscription already has a current run"
+        )
     cache.invalidate_user(current_user.id)
     return result
 
@@ -1137,5 +1147,9 @@ def monthly_total(
         billing_cycle=billing_cycle,
         active=True,
     )
-    total = sum((_monthly_cost(sub) for sub in subscriptions), Decimal("0"))
+    today = date.today()
+    total = sum(
+        (_monthly_cost(sub) for sub in subscriptions if sub.started_date is None or sub.started_date <= today),
+        Decimal("0"),
+    )
     return {"monthly_total": round(total, 2), "yearly_total": round(total * 12, 2)}

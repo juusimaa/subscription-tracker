@@ -455,25 +455,10 @@ class TestStoppedRenewalDates:
         put(client, auth, created["id"], status="cancelled", cancelled_date=f"{LAST_YEAR}-03-02")
         assert get(client, auth, created["id"])["next_renewal_date"] == f"{LAST_YEAR + 1}-03-01"
 
-    def test_a_backdated_cancellation_before_a_future_anchor_is_not_ignored(self, client, auth):
-        """Regression: cancelled_date is editable after the fact (see
-        test_an_explicit_date_still_wins above), so a stop date can land
-        before the stored anchor -- e.g. the anchor was left at whatever date
-        happened to be current when the plan was added, and the cancellation
-        is then backdated to months earlier. The old code used
-        next_occurrence, whose "an anchor in the future is itself the next
-        occurrence" rule handed that anchor back untouched, reporting access
-        as running until a date that had nothing to do with the actual
-        cancellation.
-
-        The anchor's day-of-month (3) deliberately matches cancelled_date's,
-        rather than using date.today() as the anchor: with a same-day match,
-        occurrence_on_or_after would land exactly on cancelled_date + 1 day
-        for 30 of every 31 days of the year, silently hiding the regression
-        whenever the suite happened to run on the one day it didn't -- which
-        is exactly what made this test flaky (see git history for the day it
-        broke). Pinning both days keeps the "roll forward a full month" case
-        under test every time, independent of what day it is.
+    def test_a_backdated_cancellation_uses_the_paid_schedule(self, client, auth):
+        """The renewal anchor can be in the future when cancellation is
+        backdated. Spend uses started_date as the first charge, so the paid
+        term ends on that schedule's next date, not the unrelated anchor.
         """
         created = add_subscription(
             client,
@@ -482,7 +467,7 @@ class TestStoppedRenewalDates:
             next_renewal_date=f"{LAST_YEAR + 1}-01-03",
         )
         put(client, auth, created["id"], status="cancelled", cancelled_date=f"{LAST_YEAR}-03-03")
-        assert get(client, auth, created["id"])["next_renewal_date"] == f"{LAST_YEAR}-04-03"
+        assert get(client, auth, created["id"])["next_renewal_date"] == f"{LAST_YEAR}-04-01"
 
     def test_a_paused_plan_reports_when_it_would_charge_again(self, client, auth):
         created = add_subscription(

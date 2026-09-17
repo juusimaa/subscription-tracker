@@ -268,17 +268,14 @@ class Subscription(Base):
             # that day back and report the term as running out on the
             # morning it was paid for.
             #
-            # occurrence_on_or_after, not next_occurrence: a stop date can be
-            # backdated to before the stored anchor (cancelled_date is
-            # editable after the fact), and next_occurrence's "an anchor in
-            # the future is itself the next occurrence" rule would then hand
-            # back that future anchor untouched -- reporting access as
-            # running until whatever the anchor happened to be, regardless of
-            # how long ago the plan actually stopped. occurrence_on_or_after
-            # has no such shortcut: it always walks the schedule from the
-            # anchor, forward or backward, to find where the stop date
-            # actually falls.
+            # occurrence_on_or_after also handles a backdated stop before the
+            # anchor. next_occurrence would return that future anchor without
+            # checking the charge schedule around the stop date.
+            # Spend uses started_date as the first charge when it is known.
+            # The end of the paid term must use that same schedule, even if a
+            # client stored a different renewal anchor years ago.
+            charge_anchor = self.started_date or self.renewal_anchor_date
             return renewals.occurrence_on_or_after(
-                self.renewal_anchor_date, self.cycle_months, stopped + timedelta(days=1)
+                charge_anchor, self.cycle_months, stopped + timedelta(days=1)
             )
         return renewals.next_occurrence(self.renewal_anchor_date, self.cycle_months, date.today())

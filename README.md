@@ -575,7 +575,8 @@ http://localhost:8000/docs (Swagger UI) and http://localhost:8000/redoc.
 | `POST` | `/subscriptions` | Create one. |
 | `GET` | `/subscriptions/upcoming` | What is about to be charged: every renewal in the next `days` (default 30), with the full amount due on each day, plus any trial converting in the window. |
 | `GET` | `/subscriptions/{id}` | Fetch one. |
-| `PUT` | `/subscriptions/{id}` | Partial update — send only the fields that change. |
+| `PUT` | `/subscriptions/{id}` | Partial update — send only the fields that change. A cancelled run cannot move to another status in place; use `/restore`. |
+| `POST` | `/subscriptions/{id}/restore` | Reactivate a cancelled service as a linked new run. Optional `cost`, `billing_cycle`, `started_date` and `next_renewal_date` set its new terms. The old run and its spend stay intact. |
 | `DELETE` | `/subscriptions/{id}` | Delete one. |
 | `GET` | `/subscriptions/summary/monthly-total` | What is being paid *now*: active subscriptions normalised to a monthly figure, plus the yearly equivalent. |
 | `GET` | `/subscriptions/summary/spend` | What a period *cost*: month-by-month breakdown for a year, each charge counted in the month it was taken, stopped plans included up to the day they stopped. |
@@ -619,6 +620,12 @@ thing:
   for. Pausing and *then* cancelling keeps the pause date, because that is when
   the money actually stopped.
 
+Reactivating a cancelled service creates a new run. Its cost and cycle can
+change without recalculating the paid run's past charges. The first charge
+defaults to the later of today and the old run's paid-through date; it can be
+chosen explicitly. A future run is excluded from the current monthly total
+until its start date. A group with a current run cannot be reactivated again.
+
 The older `active` boolean still works, on the way in and the way out: it maps
 to active-or-cancelled exactly as it always did, so trial and paused both report
 `false`. Sending `status` and `active` together is fine when they agree and a
@@ -630,9 +637,10 @@ ask for cancelled rows specifically.
 ### Renewal dates
 
 `next_renewal_date` is written like a date and read like a schedule. What a
-client sends is the **anchor** the billing schedule is measured from; what comes
-back is the next renewal *derived* from it — the first one falling on or after
-today. Nothing rolls the stored value forward, so it cannot go stale: a
+client sends is the **anchor** of the upcoming renewal schedule; for a running
+plan, what comes back is the next renewal *derived* from it — the first one
+falling on or after today. Nothing rolls the stored value forward, so it cannot
+go stale: a
 subscription added in 2020 and never touched since still reports the right date
 today, and no scheduled job or write-on-read is involved.
 
@@ -645,7 +653,9 @@ Two consequences worth knowing:
   31st bills on the 28th in February and is back on the 31st in March.
 
 A cancelled subscription is measured from the day it was cancelled rather than
-from today, so it reports the renewal that *would* have come next — the day the
+from today. When its start date is known, the paid-through date uses the same
+charge schedule as `spend`, even if the stored renewal anchor differs. It reports
+the renewal that *would* have come next — the day the
 term already paid for runs out, which is what lets `spend` count a cancelled
 yearly plan to the end of that term. It is never a charge still to come:
 billing is upfront, and cancelling stops it. Measurement starts the day *after*

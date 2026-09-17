@@ -619,9 +619,9 @@ One subscription, several runs:
 - `subscription_groups` (id, user_id) -- the item's own recommendation over a
   self-referencing FK, so deleting any one run never scatters the rest.
 - `POST /subscriptions/{id}/restore` (the route was "leaning towards" in the
-  item's open decisions; decided) copies name/category/cost/cycle onto a new
-  row, defaults `started_date` and the renewal anchor to today -- both
-  overridable in the request body, per "editable" in the original ask --
+  item's open decisions; decided) copies name/category onto a new row. Cost
+  and cycle copy unless overridden. The first charge defaults to the later of
+  today and the old paid-through date; the dates remain overridable --
   and links `group_id`: creating the group on the row's first restore if it
   didn't have one yet, reusing it on every restore after. The row being
   restored is left exactly as it was.
@@ -642,15 +642,14 @@ One subscription, several runs:
 
 Frontend:
 
-- `SubscriptionTable.jsx`: a cancelled row now shows Reactivate / Restore, plus
-  either Archive or (once archived) Restore to list + Delete. Reactivate is
-  the old "Restore" button relabelled -- the design's naming resolution
-  (Reactivate vs Restore to list vs Restore) carried over word for word.
+- `SubscriptionTable.jsx`: a cancelled row shows Reactivate, plus either
+  Archive or (once archived) Restore to list + Delete. Reactivate now starts
+  a linked new run so the previous paid history stays intact.
 - Archived rows stay hidden even with "Show cancelled" on. A second toggle,
   "Show archived -- N", appears only once cancelled rows are shown, mirroring
   the existing `showCancelled` pattern.
-- `RestoreDialog.jsx` (new): the two editable dates the item asked for
-  (start, renewal), both defaulting to today.
+- `ReactivateDialog.jsx`: editable cost, cycle and first charge date. The
+  start and renewal dates of the new run use that first charge date.
 
 Tests: `test_archive.py` and `test_restore.py` (new), plus the hardcoded
 backup-version assertions in `test_backup.py` and `test_status.py` updated for

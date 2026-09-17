@@ -79,19 +79,21 @@ class TestUnarchiveRoute:
 
 
 class TestTheInvariantHoldsEverywhere:
-    def test_reactivating_an_archived_row_un_archives_it_too(self, client, auth):
-        """Reactivate (cancelled -> active) is unrelated to archiving, but an
-        active row can never carry an archived_date -- so bringing a plan
-        back has to clear it as a side effect, not leave a row the API's own
-        rules say cannot exist."""
+    def test_reactivating_an_archived_row_preserves_it(self, client, auth):
+        """An archived paid run remains unchanged when a new one starts."""
         created = add_subscription(client, auth)
         cancel(client, auth, created["id"])
         archive(client, auth, created["id"])
 
         response = put(client, auth, created["id"], status="active")
-        assert response.status_code == 200, response.text
-        assert response.json()["status"] == "active"
-        assert response.json()["archived_date"] is None
+        assert response.status_code == 409, response.text
+        new = client.post(f"/subscriptions/{created['id']}/restore", headers=auth)
+        assert new.status_code == 201, new.text
+        assert new.json()["status"] == "active"
+        assert new.json()["archived_date"] is None
+        old = get(client, auth, created["id"])
+        assert old["status"] == "cancelled"
+        assert old["archived_date"] == str(TODAY)
 
     def test_an_explicit_archived_date_is_accepted_on_a_cancelled_row(self, client, auth):
         created = add_subscription(client, auth)

@@ -255,13 +255,13 @@ class Subscription(SubscriptionBase):
 
 
 class SubscriptionRestore(BaseModel):
-    """What POST /subscriptions/{id}/restore accepts. Both fields default to
-    today in crud.restore_subscription when omitted -- "starts today" is the
-    common case, and TODO.md item 8 asks for it to stay editable rather than
-    forcing a second call to move the date."""
+    """New run of a cancelled subscription. Unsent terms copy the old run;
+    unsent dates start when the old paid period ends, or today if later."""
 
     started_date: date | None = None
     next_renewal_date: date | None = None
+    cost: Cost | None = None
+    billing_cycle: BillingCycle | None = None
 
 
 # --- Spend summaries ---
