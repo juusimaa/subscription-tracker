@@ -27,6 +27,14 @@ class DuplicateError(Exception):
     """
 
 
+class CancelledRunTransitionError(Exception):
+    """A cancelled run must stay intact when the service starts again."""
+
+
+class CurrentRunExistsError(Exception):
+    """A linked run of the same subscription is still active or paused."""
+
+
 # --- Users ---
 
 
@@ -413,7 +421,11 @@ def _sync_status_dates(
     if came_from_trial and status == models.SubscriptionStatus.active and not started_date_was_sent:
         db_subscription.started_date = date.today()
     if status == models.SubscriptionStatus.cancelled:
-        if db_subscription.cancelled_date is None:
+        if db_subscription.cancelled_date is None and (
+            db_subscription.started_date is None or db_subscription.started_date <= date.today()
+        ):
+            # A scheduled run cancelled before its first charge keeps NULL:
+            # the spend summary then counts no charges for it.
             db_subscription.cancelled_date = db_subscription.paused_date or date.today()
         db_subscription.paused_date = None
     elif status == models.SubscriptionStatus.paused:
@@ -492,7 +504,14 @@ def update_subscription(
         # exclude_unset=True skips fields the client didn't include in the
         # request, so a partial update doesn't overwrite existing values with None.
         fields = subscription.model_dump(exclude_unset=True)
-        for field, value in _columns(fields).items():
+        columns = _columns(fields)
+        if (
+            row.status == models.SubscriptionStatus.cancelled
+            and columns.get("status", models.SubscriptionStatus.cancelled)
+            != models.SubscriptionStatus.cancelled
+        ):
+            raise CancelledRunTransitionError
+        for field, value in columns.items():
             setattr(row, field, value)
         # A client converting a trial to paid either omits started_date
         # entirely, or -- like SubscriptionTable.jsx's editable row, which
@@ -513,14 +532,9 @@ def update_subscription(
         _sync_status_dates(
             row, came_from_trial=came_from_trial, started_date_was_sent=started_date_was_changed
         )
-        # A status change that moves the row off cancelled un-archives it as a
-        # side effect -- this is what lets Reactivate work on an archived row
-        # with a plain `PUT {status: "active"}`, no separate unarchive call
-        # needed. Skipped when the request itself set archived_date: that is a
-        # client asking to archive a row that (after the rest of this update)
-        # turns out not to be cancelled, which is exactly what check_archived
-        # below is for -- silently clearing it here would launder that into a
-        # silent no-op instead of the 422 it should be.
+        # A cancelled run cannot move to another status through this route.
+        # Keep the archived-date check for edits to running rows and explicit
+        # archive requests, which still need the merged-row validation below.
         if "archived_date" not in fields and row.status != models.SubscriptionStatus.cancelled:
             row.archived_date = None
         # The merged row, not the request. SubscriptionUpdate can only compare the
@@ -575,14 +589,48 @@ def restore_subscription(
     payload: schemas.SubscriptionRestore | None,
 ) -> models.Subscription:
     """Starts a new run of the same service: a fresh, active row copying
-    name/category/cost/cycle from `db_subscription`, linked to it by a
+    name/category and optionally cost/cycle from `db_subscription`, linked by a
     SubscriptionGroup. The old row is left exactly as it was -- still
     cancelled, its own dates intact -- which is what keeps its history (what
     it cost, when it stopped) correct in the spend summary (TODO.md item 8).
     """
+    # Lock the source row so two concurrent restore requests cannot both see
+    # an ungrouped cancelled run and create two active successors.
+    db_subscription = (
+        db.query(models.Subscription)
+        .filter(
+            models.Subscription.id == db_subscription.id,
+            models.Subscription.user_id == user_id,
+        )
+        .populate_existing()
+        .with_for_update()
+        .one()
+    )
+    if db_subscription.group_id is not None:
+        current_run = (
+            db.query(models.Subscription.id)
+            .filter(
+                models.Subscription.user_id == user_id,
+                models.Subscription.group_id == db_subscription.group_id,
+                models.Subscription.status != models.SubscriptionStatus.cancelled,
+            )
+            .first()
+        )
+        if current_run is not None:
+            raise CurrentRunExistsError
+
     today = date.today()
-    started = (payload.started_date if payload else None) or today
-    anchor = (payload.next_renewal_date if payload else None) or today
+    # A cancelled run may already be paid through a later date. The next run
+    # must not add another charge inside that paid term unless the caller
+    # explicitly chooses one.
+    if db_subscription.cancelled_date is None:
+        # A run stopped before it ever charged has no paid-through date. Keep
+        # its planned first charge if it is still ahead; otherwise use today.
+        default_start = max(today, db_subscription.started_date or today)
+    else:
+        default_start = max(today, db_subscription.next_renewal_date)
+    started = (payload.started_date if payload else None) or default_start
+    anchor = (payload.next_renewal_date if payload else None) or started
 
     if db_subscription.group_id is None:
         # The old row has never been restored before, so it isn't in a group
@@ -595,8 +643,12 @@ def restore_subscription(
 
     new_subscription = models.Subscription(
         name=db_subscription.name,
-        cost=db_subscription.cost,
-        billing_cycle=db_subscription.billing_cycle,
+        cost=(payload.cost if payload and payload.cost is not None else db_subscription.cost),
+        billing_cycle=(
+            payload.billing_cycle
+            if payload and payload.billing_cycle is not None
+            else db_subscription.billing_cycle
+        ),
         renewal_anchor_date=anchor,
         started_date=started,
         category=db_subscription.category,

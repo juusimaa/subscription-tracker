@@ -892,12 +892,13 @@ body { text-wrap: pretty; }
    pushed to the far side of the row so it is never the button under the cursor. */
 .dialog-actions .destructive { margin-left: auto; font-size: 13px; }
 
-.restore-dates {
+.reactivation-fields {
   display: flex;
   gap: 16px;
   margin: 20px 0 0;
 }
-.restore-dates .field { flex: 1; }
+.reactivation-fields .field { flex: 1; }
+.reactivation-note { margin: 12px 0 0; font-size: 13px; }
 
 .cat-row {
   display: grid;
@@ -1280,7 +1281,7 @@ body { text-wrap: pretty; }
      (the category list's name+button row, the import ledger) holds up. */
   .cat-row { grid-template-columns: 1fr; gap: 6px; padding: 14px 0; }
   .cat-row .actions { justify-content: flex-start; margin-top: 4px; }
-  .restore-dates { flex-direction: column; gap: 16px; }
+  .reactivation-fields { flex-direction: column; gap: 16px; }
 
   /* Account dialog's own layout, on top of the general dialog rules above. */
   .account-heading { font-size: 16px; line-height: 22px; }

@@ -1,4 +1,4 @@
-// Same shape as RestoreDialog: cancelling stamps "today" by default, but the
+// Cancelling stamps "today" by default, but the
 // date is editable so a plan cancelled last month can be recorded as such --
 // otherwise its charges between the real cancel date and today would count
 // toward totals that already stopped happening.
@@ -9,11 +9,12 @@ import { todayISO } from "../format";
 function CancelDialog({ subscription, onConfirm, onClose, destructive }) {
   const [cancelledDate, setCancelledDate] = useState(todayISO());
   const [busy, setBusy] = useState(false);
+  const notStarted = subscription.started_date && subscription.started_date > todayISO();
 
   async function confirm() {
     setBusy(true);
     try {
-      await onConfirm({ cancelled_date: cancelledDate });
+      await onConfirm(notStarted ? {} : { cancelled_date: cancelledDate });
     } finally {
       setBusy(false);
     }
@@ -23,7 +24,9 @@ function CancelDialog({ subscription, onConfirm, onClose, destructive }) {
   // plainly in the title, since "Cancel?" alone reads as ambiguous right at
   // the moment that distinction is the whole point.
   const title =
-    subscription.status === "trial"
+    notStarted
+      ? `Cancel ${subscription.name} before it starts?`
+      : subscription.status === "trial"
       ? `Cancel ${subscription.name} before it charges?`
       : `Cancel ${subscription.name}?`;
 
@@ -38,10 +41,11 @@ function CancelDialog({ subscription, onConfirm, onClose, destructive }) {
       >
         <p className="dialog-title">{title}</p>
         <p className="dialog-body">
-          It stops counting toward your totals and moves to your cancelled list, where its past
-          charges stay on record. You can reactivate it any time.
+          {notStarted
+            ? "The new run has not charged yet. Cancelling it keeps the earlier paid run in your history."
+            : "It stops counting toward your totals and moves to your cancelled list, where its past charges stay on record. You can reactivate it any time."}
         </p>
-        <label className="field">
+        {!notStarted && <label className="field">
           <span className="field-label">Cancelled date</span>
           <input
             className="input tnum"
@@ -50,7 +54,7 @@ function CancelDialog({ subscription, onConfirm, onClose, destructive }) {
             min={subscription.started_date || undefined}
             onChange={(e) => setCancelledDate(e.target.value)}
           />
-        </label>
+        </label>}
         <div className="dialog-actions">
           <button type="button" className="btn btn-primary" disabled={busy} onClick={confirm}>
             Cancel plan

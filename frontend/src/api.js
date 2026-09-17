@@ -188,8 +188,8 @@ export const createSubscription = (data) =>
   request("/subscriptions", { method: "POST", body: JSON.stringify(data) });
 // PUT rather than PATCH, and that is all the difference is: the route already
 // has PATCH semantics via exclude_unset=True, so sending one field changes one
-// field. Cancelling and reactivating go through this same call, with
-// { status: "cancelled" } and { status: "active" }; archiving, unarchiving
+// field. Cancelling goes through this call with { status: "cancelled" };
+// reactivation starts a linked run through /restore. Archiving, unarchiving
 // and starting a new run each have their own dedicated route below, because
 // each carries an invariant the server enforces (TODO.md items 7 and 8).
 export const updateSubscription = (id, data) =>

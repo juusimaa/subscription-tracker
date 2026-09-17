@@ -13,7 +13,7 @@ import { ApiError } from "../api";
 import MonoTile from "../MonoTile";
 import Sheet from "./Sheet";
 import { ChevronRight, TriangleAlert } from "../icons";
-import { cycleSuffix, longDate, money, perMonth } from "../format";
+import { cycleSuffix, longDate, money, perMonth, todayISO } from "../format";
 import { useIsMobile } from "../useMediaQuery";
 
 // The sort chip row (mobile only) offers five of the desktop table's seven
@@ -63,21 +63,21 @@ const STATUS = {
 // towards costing nothing, which is the thing worth grouping by.
 const STATUS_ORDER = { active: 0, trial: 1, paused: 2, cancelled: 3 };
 
-// Every row's secondary actions, described rather than left as bare verbs --
-// "Reactivate" and "Start over" read as synonyms until the hint says one
-// keeps the original dates and the other starts a fresh run from today.
+function isScheduled(subscription) {
+  return subscription.status === "active" && subscription.started_date > todayISO();
+}
+
+// Every row's secondary actions, described rather than left as bare verbs.
 const MENU_LABELS = {
   cancel: "Cancel plan",
   reactivate: "Reactivate",
-  restore: "Start over",
   archive: "Archive",
   unarchive: "Restore to list",
   delete: "Delete permanently",
 };
 const MENU_HINTS = {
   cancel: "Stops counting toward your totals. The record stays.",
-  reactivate: "Back on your active plans with its original dates.",
-  restore: "Begins a fresh run from today; the cancelled one stays in your history.",
+  reactivate: "Starts a new run; the paid history stays unchanged.",
   archive: "Hides it from the list. Your totals don't change.",
   unarchive: "Puts it back among your cancelled plans.",
   delete: "Removes it and its history. No undo.",
@@ -85,18 +85,22 @@ const MENU_HINTS = {
 
 // The primary control next to "More" -- Edit for a live row, otherwise
 // whichever action a cancelled row is most likely to want next.
-function primaryFor(subscription) {
+function primaryFor(subscription, hasCurrentRun) {
   if (subscription.status !== "cancelled") return { key: null, label: "Edit" };
+  if (hasCurrentRun && !subscription.archived_date) {
+    return { key: null, label: "Current run exists", disabled: true };
+  }
   if (!subscription.archived_date) return { key: "reactivate", label: "Reactivate" };
   return { key: "unarchive", label: "Restore to list" };
 }
 
 // The "More" menu's contents -- never including whichever action is already
 // the primary control, so nothing appears twice.
-function menuKeysFor(subscription) {
+function menuKeysFor(subscription, hasCurrentRun) {
   if (subscription.status !== "cancelled") return ["cancel", "delete"];
-  if (!subscription.archived_date) return ["restore", "archive", "delete"];
-  return ["reactivate", "restore", "delete"];
+  if (!subscription.archived_date) return ["archive", "delete"];
+  if (hasCurrentRun) return ["delete"];
+  return ["reactivate", "delete"];
 }
 
 const COLUMNS = [
@@ -120,7 +124,9 @@ function sortValue(subscription, key) {
     case "cost": return perMonth(subscription);
     // Non-charging rows sort together at one end rather than being scattered
     // through the numbers by a cost they are not paying.
-    case "perMonth": return subscription.status === "active" ? perMonth(subscription) : -1;
+    case "perMonth": return subscription.status === "active" && !isScheduled(subscription)
+      ? perMonth(subscription)
+      : -1;
     // Rows restored from a backup taken before this column existed have no
     // start date; "" groups those together at one end rather than scattering
     // them, the same idea as the -1 above.
@@ -144,7 +150,6 @@ function SubscriptionTable({
   onSave,
   onCancelPlan,
   onReactivate,
-  onRestore,
   onArchive,
   onUnarchive,
   onDelete,
@@ -179,7 +184,6 @@ function SubscriptionTable({
   const actionHandlers = {
     cancel: onCancelPlan,
     reactivate: onReactivate,
-    restore: onRestore,
     archive: onArchive,
     unarchive: onUnarchive,
     delete: onDelete,
@@ -214,6 +218,12 @@ function SubscriptionTable({
     (s) => s.status === "cancelled" && !s.archived_date,
   ).length;
   const archivedCount = subscriptions.filter((s) => s.archived_date).length;
+  const currentGroupIds = new Set(
+    subscriptions.filter((s) => s.group_id != null && s.status !== "cancelled")
+      .map((s) => s.group_id),
+  );
+  const hasCurrentRun = (subscription) =>
+    subscription.group_id != null && currentGroupIds.has(subscription.group_id);
   const visible = subscriptions
     .filter((s) => {
       if (s.status !== "cancelled") return true;
@@ -383,8 +393,8 @@ function SubscriptionTable({
                 <span className="mobile-row-main">
                   <span className="mobile-row-title">
                     <span className="mobile-row-name">{subscription.name}</span>
-                    {subscription.status !== "active" && (
-                      <span className={status.tag}>{status.label}</span>
+                    {(subscription.status !== "active" || isScheduled(subscription)) && (
+                      <span className={status.tag}>{isScheduled(subscription) ? "Scheduled" : status.label}</span>
                     )}
                     {archived && <span className="tag tag-outline">Archived</span>}
                   </span>
@@ -416,7 +426,7 @@ function SubscriptionTable({
           >
             <div className="row-detail-facts">
               {[
-                ["Status", STATUS[detailSub.status].label + (detailSub.archived_date ? " · Archived" : "")],
+                ["Status", (isScheduled(detailSub) ? "Scheduled" : STATUS[detailSub.status].label) + (detailSub.archived_date ? " · Archived" : "")],
                 ["Category", detailSub.category || "—"],
                 [
                   "Cost",
@@ -429,7 +439,7 @@ function SubscriptionTable({
                     ? "—"
                     : longDate(detailSub.next_renewal_date),
                 ],
-                ["Counts toward", detailSub.status === "active" ? "Your totals" : "Nothing right now"],
+                ["Counts toward", detailSub.status === "active" && !isScheduled(detailSub) ? "Your totals" : "Nothing right now"],
               ].map(([label, value]) => (
                 <div className="row-detail-fact" key={label}>
                   <span className="field-label">{label}</span>
@@ -444,7 +454,9 @@ function SubscriptionTable({
                     the row button above), so its primary action -- Reactivate,
                     or Restore to list once archived -- has no button of its
                     own up top; it's just the first item here instead. */}
-                {[primaryFor(detailSub).key, ...menuKeysFor(detailSub)].map((key) => (
+                {hasCurrentRun(detailSub) && <p>A newer run is already current.</p>}
+                {[primaryFor(detailSub, hasCurrentRun(detailSub)).key,
+                  ...menuKeysFor(detailSub, hasCurrentRun(detailSub))].filter(Boolean).map((key) => (
                   <button
                     key={key}
                     type="button"
@@ -796,7 +808,7 @@ function SubscriptionTable({
                   {/* Archived is a flag on top of cancelled, not a status of
                       its own (TODO.md item 7), so it rides along as a second
                       tag rather than replacing "Cancelled". */}
-                  <span className={status.tag}>{status.label}</span>
+                  <span className={status.tag}>{isScheduled(subscription) ? "Scheduled" : status.label}</span>
                   {archived && <span className="tag tag-outline">Archived</span>}
                 </td>
                 <td className="tnum">
@@ -844,14 +856,15 @@ function SubscriptionTable({
                 </td>
                 <td className="row-actions">
                   {(() => {
-                    const primary = primaryFor(subscription);
-                    const menuKeys = menuKeysFor(subscription);
+                    const primary = primaryFor(subscription, hasCurrentRun(subscription));
+                    const menuKeys = menuKeysFor(subscription, hasCurrentRun(subscription));
                     const menuOpen = menuOpenId === subscription.id;
                     return (
                       <>
                         <button
                           type="button"
                           className="btn btn-ghost"
+                          disabled={primary.disabled}
                           onClick={
                             primary.key
                               ? () => actionHandlers[primary.key](subscription)

@@ -123,13 +123,17 @@ class TestCancellation:
         ).json()
         assert cancelled["cancelled_date"] == "2024-05-05"
 
-    def test_reactivating_clears_the_date(self, client, auth):
+    def test_reactivating_a_cancelled_run_in_place_is_refused(self, client, auth):
         created = add_subscription(client, auth)
-        client.put(f"/subscriptions/{created['id']}", json={"active": False}, headers=auth)
-        revived = client.put(
-            f"/subscriptions/{created['id']}", json={"active": True}, headers=auth
+        cancelled = client.put(
+            f"/subscriptions/{created['id']}", json={"active": False}, headers=auth
         ).json()
-        assert revived["cancelled_date"] is None
+        response = client.put(
+            f"/subscriptions/{created['id']}", json={"active": True}, headers=auth
+        )
+        assert response.status_code == 409
+        unchanged = client.get(f"/subscriptions/{created['id']}", headers=auth).json()
+        assert unchanged == cancelled
 
     def test_a_cancelled_date_on_a_running_subscription_is_cleared(self, client, auth):
         """`active` is what says whether a subscription is running; a date sent

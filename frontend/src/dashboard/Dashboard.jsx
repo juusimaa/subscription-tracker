@@ -7,7 +7,7 @@
 // answers into the figures the design asks for.
 
 import { useState } from "react";
-import { MAX_YEAR, MIN_YEAR, SHORT_MONTHS, longDate, money, signed } from "../format";
+import { MAX_YEAR, MIN_YEAR, SHORT_MONTHS, longDate, money, signed, todayISO } from "../format";
 import { chargeCountInYear, chargesInMonth } from "../renewals";
 import { useIsMobile } from "../useMediaQuery";
 import AddForm from "./AddForm";
@@ -20,7 +20,7 @@ import EmptyState from "./EmptyState";
 import Hero from "./Hero";
 import ImportExport from "./ImportExport";
 import KpiBand from "./KpiBand";
-import RestoreDialog from "./RestoreDialog";
+import ReactivateDialog from "./ReactivateDialog";
 import Sheet from "./Sheet";
 import SubscriptionTable from "./SubscriptionTable";
 import TrendStrip from "./TrendStrip";
@@ -43,7 +43,7 @@ function Dashboard({
   const [showCancelled, setShowCancelled] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [cancelTarget, setCancelTarget] = useState(null);
-  const [restoreTarget, setRestoreTarget] = useState(null);
+  const [reactivationTarget, setReactivationTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [catPanelOpen, setCatPanelOpen] = useState(false);
   const [prefill, setPrefill] = useState(null);
@@ -78,7 +78,9 @@ function Dashboard({
     : yearTotal(year - 1);
   const change = previous == null ? null : total - previous;
 
-  const activeSubs = subscriptions.filter((s) => s.status === "active");
+  const activeSubs = subscriptions.filter(
+    (s) => s.status === "active" && (!s.started_date || s.started_date <= todayISO()),
+  );
   const trials = subscriptions.filter((s) => s.status === "trial");
   // Same count SubscriptionTable computes for itself -- needed here too for
   // the mobile fixed action bar's label, which sits outside that component.
@@ -348,8 +350,7 @@ function Dashboard({
           setEditingId={setEditingId}
           onSave={actions.update}
           onCancelPlan={setCancelTarget}
-          onReactivate={(subscription) => actions.update(subscription.id, { status: "active" })}
-          onRestore={setRestoreTarget}
+          onReactivate={setReactivationTarget}
           onArchive={(subscription) => actions.archive(subscription.id)}
           onUnarchive={(subscription) => actions.unarchive(subscription.id)}
           onDelete={setDeleteTarget}
@@ -438,15 +439,14 @@ function Dashboard({
         />
       )}
 
-      {restoreTarget && (
-        <RestoreDialog
-          subscription={restoreTarget}
+      {reactivationTarget && (
+        <ReactivateDialog
+          subscription={reactivationTarget}
           onConfirm={async (payload) => {
-            const target = restoreTarget;
-            await actions.restore(target.id, payload).catch(() => {});
-            setRestoreTarget(null);
+            await actions.restore(reactivationTarget.id, payload);
+            setReactivationTarget(null);
           }}
-          onClose={() => setRestoreTarget(null)}
+          onClose={() => setReactivationTarget(null)}
         />
       )}
 
