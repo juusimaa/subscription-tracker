@@ -136,8 +136,10 @@ function sortValue(subscription, key) {
   }
 }
 
-// Search the same facts shown in the list. Keep dates in both display and ISO
-// form so a pasted YYYY-MM-DD date works as well as "20 Sep 2026".
+// Match one subscription against the list's searchable facts. Each value is
+// checked separately, so text from adjacent columns cannot form a false match.
+// Dates have both display and ISO forms: users can type "20 Sep 2026" or paste
+// "2026-09-20". The caller has already trimmed and lowercased the query.
 function matchesSearch(subscription, query) {
   if (!query) return true;
   const values = [
@@ -156,6 +158,9 @@ function matchesSearch(subscription, query) {
   return values.some((value) => value?.toLowerCase().includes(query));
 }
 
+// The input is controlled by SubscriptionTable. Both responsive layouts pass
+// through the same onChange callback, including the clear button, so they use
+// the same query and filtering behavior.
 function SubscriptionSearch({ value, onChange }) {
   return (
     <div className="subscription-search">
@@ -267,6 +272,9 @@ function SubscriptionTable({
   const hasCurrentRun = (subscription) =>
     subscription.group_id != null && currentGroupIds.has(subscription.group_id);
   const query = searchQuery.trim().toLowerCase();
+  // Apply the existing cancelled/archived visibility switches first. Search
+  // narrows only the rows the user has chosen to show, then sorting keeps its
+  // usual order within the results.
   const available = subscriptions
     .filter((s) => {
       if (s.status !== "cancelled") return true;
@@ -291,6 +299,8 @@ function SubscriptionTable({
     setRowError(null);
   }
 
+  // A new query may remove an open row from the results. Close its editor and
+  // action menu before React renders the filtered list with the new query.
   function updateSearch(value) {
     setSearchQuery(value);
     closeEditor();

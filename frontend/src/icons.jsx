@@ -47,6 +47,7 @@ export function ChevronRight({ size = 16 }) {
   );
 }
 
+// Magnifier used in the subscription list's search field.
 export function Search({ size = 16 }) {
   return (
     <svg {...base} width={size} height={size}>
