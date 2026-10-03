@@ -10,6 +10,7 @@
 const subscriptions = [
   {
     id: 1,
+    group_id: 1,
     name: "Netflix",
     cost: "15.99",
     billing_cycle: "monthly",
@@ -19,9 +20,11 @@ const subscriptions = [
     next_renewal_date: "2026-09-20",
     cancelled_date: null,
     archived_date: null,
+    paid_total: "527.67",
   },
   {
     id: 2,
+    group_id: null,
     name: "Spotify",
     cost: "9.99",
     billing_cycle: "monthly",
@@ -31,9 +34,11 @@ const subscriptions = [
     next_renewal_date: "2026-09-05",
     cancelled_date: null,
     archived_date: null,
+    paid_total: "409.59",
   },
   {
     id: 3,
+    group_id: null,
     name: "Adobe Creative Cloud",
     cost: "239.88",
     billing_cycle: "yearly",
@@ -43,9 +48,11 @@ const subscriptions = [
     next_renewal_date: "2027-03-12",
     cancelled_date: null,
     archived_date: null,
+    paid_total: "479.76",
   },
   {
     id: 4,
+    group_id: null,
     name: "Notion",
     cost: "8.00",
     billing_cycle: "monthly",
@@ -55,9 +62,11 @@ const subscriptions = [
     next_renewal_date: "2026-09-25",
     cancelled_date: null,
     archived_date: null,
+    paid_total: "0.00",
   },
   {
     id: 5,
+    group_id: null,
     name: "Dropbox",
     cost: "11.99",
     billing_cycle: "monthly",
@@ -67,6 +76,38 @@ const subscriptions = [
     next_renewal_date: "2026-07-01",
     cancelled_date: "2026-07-01",
     archived_date: null,
+    paid_total: "635.47",
+  },
+  // Two earlier runs of Netflix (issue #49): it was cancelled and
+  // reactivated twice, so all three rows share group 1. The oldest one is
+  // archived, which hides it inside the group until Show archived is on.
+  {
+    id: 6,
+    group_id: 1,
+    name: "Netflix",
+    cost: "12.99",
+    billing_cycle: "monthly",
+    status: "cancelled",
+    category: "Entertainment",
+    started_date: "2022-08-10",
+    next_renewal_date: "2023-12-10",
+    cancelled_date: "2023-11-10",
+    archived_date: null,
+    paid_total: "207.84",
+  },
+  {
+    id: 7,
+    group_id: 1,
+    name: "Netflix",
+    cost: "9.99",
+    billing_cycle: "monthly",
+    status: "cancelled",
+    category: "Entertainment",
+    started_date: "2020-03-01",
+    next_renewal_date: "2021-07-01",
+    cancelled_date: "2021-06-01",
+    archived_date: "2021-08-01",
+    paid_total: "159.84",
   },
 ];
 

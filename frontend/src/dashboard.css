@@ -677,6 +677,78 @@ body { text-wrap: pretty; }
 .row-actions .btn + .btn { margin-left: 8px; }
 .tag { white-space: nowrap; }
 
+/* — grouped runs (issue #49) —
+   A group's earlier runs fold away under its head row. An open group reads
+   as one item: no rules inside it, closed by the lifetime row's 2px rule. */
+.disclosure {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  cursor: pointer;
+  font: inherit;
+}
+.disclosure svg { transition: transform 0.15s ease; }
+.disclosure[aria-expanded="true"] svg { transform: rotate(90deg); }
+.disclosure:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.disclosure-spacer { display: inline-block; width: 24px; flex: 0 0 24px; }
+.name-stack { display: flex; flex-direction: column; }
+.runs-link {
+  display: inline;
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.row-group-open > td { border-bottom: 0; }
+.row-earlier td {
+  background: color-mix(in srgb, var(--color-text) 3.5%, transparent);
+  color: color-mix(in srgb, var(--color-text) 45%, transparent);
+  border-bottom: 0;
+}
+.row-earlier td:first-child { padding-left: 40px; }
+.earlier-name {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 16px;
+}
+/* The elbow that ties a run to the head row above it. */
+.earlier-name::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: -14px;
+  bottom: 50%;
+  width: 10px;
+  border-left: 1px solid var(--color-divider);
+  border-bottom: 1px solid var(--color-divider);
+}
+.row-earlier.match td { background: color-mix(in srgb, var(--color-accent) 9%, transparent); }
+.row-lifetime td {
+  background: color-mix(in srgb, var(--color-text) 3.5%, transparent);
+  font-size: 12px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  padding-top: 6px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--color-divider);
+}
+.row-lifetime td:first-child { padding-left: 56px; }
+.row-lifetime strong { color: var(--color-text); font-weight: 600; }
+
 /* — row actions menu —
    Anchored to the cell it opens from, not the row or the table, so it never
    drifts as neighbouring rows come and go. The scrim is transparent and only
@@ -1512,6 +1584,53 @@ body { text-wrap: pretty; }
     margin-top: 2px;
   }
   .mobile-row svg { color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+  /* Grouped runs: the toggle under a head row, then its earlier runs on a
+     tinted panel, indented under a rule. */
+  .mobile-row.has-runs { border-bottom: 0; }
+  .mobile-runs-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 0 0 34px;
+    margin: 0;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--color-divider);
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 1.2;
+    color: var(--color-accent);
+    text-align: left;
+  }
+  .mobile-runs-toggle svg { color: inherit; transition: transform 0.15s ease; }
+  .mobile-runs-toggle[aria-expanded="true"] { border-bottom-color: transparent; }
+  .mobile-runs-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+  .mobile-earlier {
+    background: color-mix(in srgb, var(--color-text) 3.5%, transparent);
+    border-bottom: 1px solid var(--color-divider);
+    padding: 0 0 4px 34px;
+  }
+  .mobile-earlier .mobile-row {
+    grid-template-columns: minmax(0, 1fr) auto 16px;
+    min-height: 56px;
+    padding: 10px 12px;
+    border-left: 1px solid var(--color-divider);
+    color: color-mix(in srgb, var(--color-text) 45%, transparent);
+  }
+  .mobile-earlier .mobile-row-name,
+  .mobile-earlier .mobile-row-amount { font-size: 14px; }
+  .mobile-earlier .mobile-row:last-of-type { border-bottom: 0; }
+  .mobile-earlier .mobile-row.match { background: color-mix(in srgb, var(--color-accent) 9%, transparent); }
+  .mobile-lifetime {
+    padding: 6px 12px 8px;
+    font-size: 12px;
+    color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  }
+  .mobile-lifetime strong { color: var(--color-text); font-weight: 600; }
   .mobile-row-stale {
     display: grid;
     grid-template-columns: 16px minmax(0, 1fr);

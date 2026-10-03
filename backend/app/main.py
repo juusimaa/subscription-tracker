@@ -5,7 +5,6 @@
 import os
 import time
 from calendar import monthrange
-from collections.abc import Iterator
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -950,61 +949,9 @@ def _monthly_cost(subscription: models.Subscription) -> Decimal:
     renewal month, which is what makes every cycle's figures comparable.
 
     Only /summary/monthly-total wants this. /summary/spend counts each charge
-    in the month it was actually made (see _charge_dates), because it is
+    in the month it was actually made (see models.Subscription.charge_dates), because it is
     reporting money that moved rather than a rate."""
     return subscription.cost / Decimal(subscription.cycle_months)
-
-
-def _charge_dates(
-    subscription: models.Subscription, start: date, end: date
-) -> Iterator[date]:
-    """Every day this subscription was actually billed between `start` and
-    `end`, both ends included.
-
-    This is the cash view: a yearly plan is billed once, on one day, for the
-    whole amount. It is not spread across the twelve months it covers -- the
-    money left the account in one month, and that is the month the summary
-    puts it in. (`_monthly_cost` still does the spreading for
-    /summary/monthly-total, which asks the different question of what is being
-    paid per month right now.)
-
-    What sets the billing days:
-
-    - A trial has none. It is free until it converts, and converting is what
-      moves it off `trial`, so as long as it carries that status the answer is
-      "never billed" for past months as well as future ones.
-    - The schedule is anchored on `started_date` -- the day it began costing
-      money, which is the day of the first charge -- and repeats every
-      `cycle_months` from there. `renewal_anchor_date` is deliberately not the
-      anchor here: it is the *next* renewal the client last told us about, and
-      a plan added with a stale or defaulted one would otherwise have its
-      first year's charge land in the wrong month, or be missed entirely
-      because the schedule it implies begins before the subscription did.
-    - A row with no `started_date` -- only possible for one that predates the
-      column -- falls back to the renewal anchor, extended backwards through
-      it (see renewals.charges_between), which keeps such a row counting for
-      every month asked about as it did before the column existed.
-    - A stopped subscription -- cancelled or paused -- is billed up to and
-      including the day it stopped, and not after. A charge taken on the
-      stopping day itself still happened; the pause did not refund it. A
-      stopped row with no date to stop at counts for nothing rather than
-      inventing charges that may never have been made.
-    """
-    if subscription.status == models.SubscriptionStatus.trial:
-        return iter(())
-    if subscription.started_date is not None:
-        anchor = subscription.started_date
-        start = max(start, subscription.started_date)
-    else:
-        anchor = subscription.renewal_anchor_date
-    if not subscription.active:
-        stopped = subscription.stopped_date
-        if stopped is None:
-            return iter(())
-        end = min(end, stopped)
-    if start > end:
-        return iter(())
-    return renewals.charges_between(anchor, subscription.cycle_months, start, end)
 
 
 @app.get(
@@ -1052,7 +999,7 @@ def spend(
     exactly that much in 2025, and the summary says so rather than reporting
     the three months' worth that an amortized figure would leave in the year.
     Every billing day is derived from the subscription's own schedule -- see
-    _charge_dates, which is also where trials, unknown start dates and stopped
+    Subscription.charge_dates, which is also where trials, unknown start dates and stopped
     plans are decided.
 
     This is the historical/projected view, and it deliberately does not filter
@@ -1089,7 +1036,7 @@ def spend(
     charged = dict.fromkeys(months, Decimal("0"))
     charged_ids: dict[int, set[int]] = {m: set() for m in months}
     for sub in subscriptions:
-        for charge in _charge_dates(sub, window_start, window_end):
+        for charge in sub.charge_dates(window_start, window_end):
             charged[charge.month] += sub.cost
             charged_ids[charge.month].add(sub.id)
 

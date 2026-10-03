@@ -25,6 +25,7 @@ import Sheet from "./Sheet";
 import SubscriptionTable from "./SubscriptionTable";
 import TrendStrip from "./TrendStrip";
 import TrialBanner from "./TrialBanner";
+import { buildGroups, cancelledGroupCount } from "./groups";
 
 function Dashboard({
   subscriptions,
@@ -84,9 +85,7 @@ function Dashboard({
   const trials = subscriptions.filter((s) => s.status === "trial");
   // Same count SubscriptionTable computes for itself -- needed here too for
   // the mobile fixed action bar's label, which sits outside that component.
-  const cancelledCount = subscriptions.filter(
-    (s) => s.status === "cancelled" && !s.archived_date,
-  ).length;
+  const cancelledCount = cancelledGroupCount(buildGroups(subscriptions));
   const usedCategories = [...new Set(activeSubs.map((s) => s.category).filter(Boolean))];
 
   // --- by category ---

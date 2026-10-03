@@ -55,16 +55,22 @@ test("an older run cannot be reactivated while a linked run is current", async (
     },
   ] }));
   await page.reload();
-  await page.getByRole("button", { name: /Show cancelled/ }).first().click();
 
-  const mobileRow = page.locator(".mobile-row.cancelled").filter({ hasText: "Dropbox" });
-  if (await mobileRow.isVisible()) {
-    await mobileRow.click();
+  // The older run is nested under the current one (issue #49) rather than
+  // listed on its own, and it only offers Archive and Delete.
+  const toggle = page.locator(".mobile-runs-toggle");
+  if (await toggle.isVisible()) {
+    await toggle.click();
+    await page.locator(".mobile-earlier .mobile-row").click();
     const detail = page.locator(".dialog-detail");
-    await expect(detail.getByText("A newer run is already current.")).toBeVisible();
+    await expect(detail.getByRole("button", { name: /Archive/ })).toBeVisible();
     await expect(detail.getByRole("button", { name: /Reactivate/ })).toHaveCount(0);
   } else {
-    const oldRow = page.getByRole("row").filter({ hasText: "Current run exists" });
-    await expect(oldRow.getByRole("button", { name: "Current run exists" })).toBeDisabled();
+    await page.getByRole("button", { name: "Show 1 earlier run of Dropbox" }).click();
+    const oldRow = page.locator(".row-earlier");
+    await oldRow.getByRole("button", { name: /More/ }).click();
+    await expect(oldRow.getByRole("menuitem", { name: /Archive/ })).toBeVisible();
+    await expect(oldRow.getByRole("menuitem", { name: /Reactivate/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Current run exists" })).toHaveCount(0);
   }
 });

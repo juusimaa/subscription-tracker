@@ -388,17 +388,17 @@ def _sync_status_dates(
     case: a trial that stops without ever converting. It never had a first
     charge, so `started_date` -- the day it began costing money -- describes
     the trial, not any billing, and letting stopped_date read the date it
-    stopped here would make main._charge_dates walk that anchor forward as
+    stopped here would make models.Subscription.charge_dates walk that anchor forward as
     though every month since had been paid for. No stop date is stamped for
     it instead, the same "unknown, so it counts for nothing" rule
-    main._charge_dates already applies to
+    models.Subscription.charge_dates already applies to
     a row whose stop date predates the column -- and the UI already renders
     that as "--" rather than a date.
 
     A trial that *does* convert needs the opposite kind of fix, to
     `started_date` rather than `cancelled_date`/`paused_date`. That column is
     still carrying the day the trial began, not the day it started costing
-    money, and main._charge_dates anchors billing on it -- left alone, every
+    money, and models.Subscription.charge_dates anchors billing on it -- left alone, every
     month since the trial began gets charged retroactively the moment it
     converts, not just the months since. `started_date_was_sent` (set by
     update_subscription only when the request's started_date genuinely
