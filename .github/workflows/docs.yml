@@ -91,6 +91,11 @@ jobs:
       #
       # Neither reaches the published page: the OpenAPI document describes the
       # routes, and holds no configuration.
+      #
+      # The `servers:` entry is added here rather than in main.py on purpose.
+      # In the app, an absolute server URL would make /docs on a local or
+      # preview backend send its "Try it out" requests to production. Only the
+      # published copy should name the production host.
       - name: Generate openapi.json
         working-directory: backend
         env:
@@ -101,8 +106,10 @@ jobs:
           python -c "
           import json
           from app.main import app
+          spec = app.openapi()
+          spec['servers'] = [{'url': 'https://api.subscriptionstrack.com', 'description': 'Production'}]
           with open('../_site/openapi.json', 'w') as f:
-              json.dump(app.openapi(), f, indent=2)
+              json.dump(spec, f, indent=2)
           "
 
       - name: Assemble the site
@@ -121,6 +128,7 @@ jobs:
           import json
           spec = json.load(open('_site/openapi.json'))
           assert spec['paths'], 'spec has no paths'
+          assert spec['servers'][0]['url'].startswith('https://'), 'spec has no production server'
           print(f\"{len(spec['paths'])} paths, {len(spec['components']['schemas'])} schemas\")
           "
           grep -q "openapi.json" _site/index.html

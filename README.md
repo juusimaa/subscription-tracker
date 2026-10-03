@@ -574,7 +574,10 @@ full API, browsable without running anything. It is generated from the app
 itself: `.github/workflows/docs.yml` imports the FastAPI application on every
 push to `main`, dumps its `openapi.json`, and publishes it with the Redoc page
 in [`docs/index.html`](docs/index.html). Nothing there is written by hand, so it
-cannot drift from the routes it describes.
+cannot drift from the routes it describes. It is read-only: to send requests,
+use the live API's own Swagger UI at https://api.subscriptionstrack.com/docs.
+(A Swagger UI on GitHub Pages could not do that -- the API's CORS settings only
+allow the app's frontend.)
 
 Running locally, the same spec is served interactively at
 http://localhost:8000/docs (Swagger UI) and http://localhost:8000/redoc.

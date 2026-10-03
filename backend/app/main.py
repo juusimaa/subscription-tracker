@@ -49,8 +49,9 @@ app = FastAPI(
         "Track recurring subscriptions and what they cost.\n\n"
         "Every route except `/health`, `/register` and `/token` needs a Bearer "
         "token, and only ever sees the calling user's own data. To try them "
-        "out here: register, then use **Authorize** above (the OAuth2 password "
-        "flow posts to `/token`, where the email goes in the `username` field)."
+        "out in the Swagger UI at `/docs`: register, then use **Authorize** "
+        "(the OAuth2 password flow posts to `/token`, where the email goes in "
+        "the `username` field)."
     ),
     openapi_tags=[
         {"name": "Health", "description": "Liveness check. No authentication."},
