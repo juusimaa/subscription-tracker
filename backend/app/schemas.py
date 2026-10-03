@@ -252,6 +252,11 @@ class Subscription(SubscriptionBase):
     # crud.restore_subscription). Also absent from the backup format -- see
     # the note on BackupSubscription.
     group_id: int | None = None
+    # Everything this run has been billed so far (models.Subscription.
+    # paid_total), or None when its start date is unknown. Read-only, and
+    # what the list sums into a group's lifetime total. Serialized as a number
+    # for the same reason as Money below.
+    paid_total: Annotated[Decimal, PlainSerializer(float, return_type=float)] | None = None
 
 
 class SubscriptionRestore(BaseModel):
