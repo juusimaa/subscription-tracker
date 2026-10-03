@@ -559,6 +559,11 @@ the browser tab; **Reset sample** restores the fixture. Its clock is fixed at
 To run it locally, start `npm run dev` in `frontend/` and open
 `http://localhost:5173/ui.html`.
 
+Design proposals for open issues live in [`docs/mocks/`](docs/mocks/) as
+standalone pages that need no build, and are published next to the UI mock:
+
+- [Issue #49 — group subscriptions](https://juusimaa.github.io/subscription-tracker/mocks/issue-49-group-subscriptions.html)
+
 ## API reference
 
 Everything except the first three requires `Authorization: Bearer <token>`, and
