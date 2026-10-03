@@ -193,8 +193,10 @@
         text-decoration: underline; text-underline-offset: 3px;
       }
       .name-stack { display: flex; flex-direction: column; }
-      .row-group-open > td { border-bottom-color: transparent; }
-      .row-earlier td { background: var(--earlier-bg); color: var(--dim); }
+      .row-group-open > td { border-bottom: 0; }
+      /* No rules inside an open group: it reads as one item, closed by the
+         lifetime row's 2px rule. */
+      .row-earlier td { background: var(--earlier-bg); color: var(--dim); border-bottom: 0; }
       .row-earlier td:first-child { padding-left: 40px; }
       .row-earlier .earlier-name {
         position: relative; display: inline-flex; align-items: center; gap: 8px; padding-left: 16px;
