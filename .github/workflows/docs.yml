@@ -108,6 +108,7 @@ jobs:
       - name: Assemble the site
         run: |
           cp docs/index.html _site/
+          cp -R docs/mocks _site/
           cp frontend/dist-ui/ui.html _site/
           cp -R frontend/dist-ui/assets _site/
 

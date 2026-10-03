@@ -1,0 +1,734 @@
+<!doctype html>
+<!--
+  Design mock for issue #49, "Group subscriptions":
+  https://github.com/juusimaa/subscription-tracker/issues/49
+
+  A proposal, not the app. It is a single static page so it can be reviewed
+  before any component changes: the styles are copied from modernist.css and
+  dashboard.css, and the data is a fixed sample with the clock at 15 Sep 2026,
+  the same as the clickable current UI mock (frontend/ui.html).
+
+  Grouping relies on what #44 already stores: every reactivation creates a new
+  row with the same group_id. Nothing here needs a backend change.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Grouped subscriptions mock</title>
+    <meta name="description" content="Design mock for issue #49: group reactivated runs of the same subscription under the current one." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet" />
+    <style>
+      /* — tokens (modernist.css) — */
+      :root {
+        --color-bg: #f3f2f2;
+        --color-surface: #eae9e9;
+        --color-text: #201e1d;
+        --color-accent: #ec3013;
+        --color-divider: color-mix(in srgb, #201e1d 40%, transparent);
+        --color-neutral-100: #f8f4f4;
+        --color-neutral-800: #444141;
+        --color-accent-100: #fff2ef;
+        --color-accent-600: #dd2b0f;
+        --color-accent-700: #ae1800;
+        --color-accent-800: #7c1405;
+        --shadow-lg: 0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent);
+        --font: "Archivo", system-ui, sans-serif;
+        --muted: color-mix(in srgb, var(--color-text) 55%, transparent);
+        --dim: color-mix(in srgb, var(--color-text) 45%, transparent);
+        --earlier-bg: color-mix(in srgb, var(--color-text) 3.5%, transparent);
+        color-scheme: light dark;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          color-scheme: dark;
+          --color-bg: #16151a;
+          --color-surface: #201f24;
+          --color-text: #f1efee;
+          --color-divider: color-mix(in srgb, #f1efee 30%, transparent);
+          --color-neutral-100: #2d2b2b;
+          --color-neutral-800: #eae7e7;
+          --color-accent-100: #4d170e;
+          --color-accent-600: #ff9783;
+          --color-accent-700: #ffc4b8;
+          --color-accent-800: #ffe0d9;
+          --shadow-lg: 0 0 0 1px color-mix(in srgb, #f1efee 16%, transparent), 0 22px 50px rgba(0, 0, 0, .7);
+        }
+      }
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --color-bg: #16151a;
+        --color-surface: #201f24;
+        --color-text: #f1efee;
+        --color-divider: color-mix(in srgb, #f1efee 30%, transparent);
+        --color-neutral-100: #2d2b2b;
+        --color-neutral-800: #eae7e7;
+        --color-accent-100: #4d170e;
+        --color-accent-600: #ff9783;
+        --color-accent-700: #ffc4b8;
+        --color-accent-800: #ffe0d9;
+        --shadow-lg: 0 0 0 1px color-mix(in srgb, #f1efee 16%, transparent), 0 22px 50px rgba(0, 0, 0, .7);
+      }
+
+      *, *::before, *::after { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--color-bg);
+        color: var(--color-text);
+        font: 400 15px/1.55 var(--font);
+      }
+      :focus { outline: none; }
+      :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+      a { color: var(--color-accent); text-underline-offset: 3px; }
+      .tnum { font-feature-settings: "tnum" 1; }
+
+      /* — mock toolbar (ui-mock.css) — */
+      .mock-toolbar {
+        display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px;
+        padding: 10px max(16px, calc((100% - 1240px) / 2 + 32px));
+        background: #201e1d; color: #f8f4f4;
+        font: 12px/1.5 var(--font);
+      }
+      .mock-toolbar strong { text-transform: uppercase; letter-spacing: .08em; }
+      .mock-toolbar .spacer { margin-right: auto; }
+      .mock-toolbar a { color: #ff9783; }
+      .mock-seg { display: inline-flex; border: 1px solid #6b6767; }
+      .mock-seg button {
+        border: 0; padding: 4px 10px; background: none; color: #f8f4f4;
+        font: inherit; cursor: pointer;
+      }
+      .mock-seg button + button { border-left: 1px solid #6b6767; }
+      .mock-seg button[aria-pressed="true"] { background: #ec3013; color: #fff; }
+      .mock-seg button:focus-visible { outline: 2px solid #ff9783; outline-offset: -2px; }
+
+      .page { max-width: 1240px; margin: 0 auto; padding: 0 32px 64px; }
+      @media (max-width: 760px) { .page { padding: 0 16px 48px; } }
+
+      /* — buttons, tags, eyebrows — */
+      .btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+        cursor: pointer; font: 800 14px/1.2 var(--font); color: var(--color-text);
+        background: transparent; border: 1px solid transparent;
+        padding: 8px 14px; border-radius: 0;
+      }
+      .btn-primary { background: var(--color-accent); color: var(--color-bg); }
+      .btn-primary:hover { background: var(--color-accent-600); }
+      .btn-ghost { color: var(--color-accent); padding-inline: 4px; }
+      .btn-ghost:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+      .btn-small { font-size: 13px; }
+      .tag {
+        display: inline-flex; align-items: center; font-size: 10px; letter-spacing: .02em;
+        padding: 2px 8px; white-space: nowrap;
+      }
+      .tag + .tag { margin-left: 4px; }
+      .tag-accent { background: var(--color-accent-100); color: var(--color-accent-800); }
+      .tag-neutral { background: var(--color-neutral-100); color: var(--color-neutral-800); }
+      .tag-outline { border: 1px solid var(--color-accent); color: var(--color-accent); }
+      .eyebrow {
+        display: block; font-size: 13px; line-height: 14px; letter-spacing: .08em;
+        text-transform: uppercase; color: var(--color-accent-700);
+      }
+      .mono-tile {
+        width: 20px; height: 20px; flex: 0 0 20px;
+        display: inline-flex; align-items: center; justify-content: center;
+        font: 800 11px/1 var(--font);
+      }
+
+      /* — section head and search (dashboard.css) — */
+      .table-section { padding: 40px 0 28px; }
+      .section-head {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 24px; margin: 0 0 28px;
+      }
+      .table-actions { display: flex; gap: 12px; align-items: center; }
+      .subscription-search { position: relative; width: clamp(180px, 20vw, 260px); }
+      .subscription-search svg {
+        position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+        color: var(--muted); pointer-events: none;
+      }
+      .input {
+        width: 100%; min-height: 40px; padding: 8px 12px 8px 36px;
+        font: inherit; font-size: 14px; color: var(--color-text);
+        background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: 0;
+      }
+      .input:focus-visible { border-color: var(--color-accent); outline-offset: 0; }
+      .input::-webkit-search-cancel-button { display: none; }
+
+      /* — table — */
+      .table-scroll { overflow-x: auto; }
+      .table { width: 100%; min-width: 980px; border-collapse: collapse; font-size: 14px; }
+      .table th {
+        text-align: left; font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+        color: color-mix(in srgb, var(--color-text) 60%, transparent);
+        padding: 14px 12px 14px 0; border-bottom: 2px solid var(--color-divider);
+        font-weight: 400; white-space: nowrap;
+      }
+      .table th .sort-arrow { font-size: 12px; margin-left: 8px; color: color-mix(in srgb, var(--color-text) 35%, transparent); }
+      .table th.on { color: var(--color-accent); }
+      .table th.on .sort-arrow { color: var(--color-accent); }
+      .table td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--color-divider); vertical-align: middle; }
+      .table td:first-child, .table th:first-child { padding-left: 8px; }
+      .table tbody tr:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+      .row-name { display: inline-flex; align-items: center; gap: 8px; }
+      .row-cancelled { color: var(--dim); }
+      .sub-note { display: block; font-size: 12px; line-height: 16px; color: var(--muted); }
+      .row-actions { position: relative; text-align: right; white-space: nowrap; }
+      .row-actions .btn + .btn { margin-left: 8px; }
+
+      /* — new: the group disclosure — */
+      .disclosure {
+        display: inline-grid; place-items: center; width: 24px; height: 24px; flex: 0 0 24px;
+        padding: 0; border: 0; background: transparent; color: var(--color-accent);
+        cursor: pointer; font: inherit;
+      }
+      .disclosure svg { transition: transform .15s ease; }
+      .disclosure[aria-expanded="true"] svg { transform: rotate(90deg); }
+      .disclosure:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+      .disclosure-spacer { display: inline-block; width: 24px; flex: 0 0 24px; }
+      .runs-link {
+        display: inline; padding: 0; border: 0; background: none; cursor: pointer;
+        font: inherit; font-size: 12px; line-height: 16px; color: var(--color-accent);
+        text-decoration: underline; text-underline-offset: 3px;
+      }
+      .name-stack { display: flex; flex-direction: column; }
+      .row-group-open > td { border-bottom: 0; }
+      /* No rules inside an open group: it reads as one item, closed by the
+         lifetime row's 2px rule. */
+      .row-earlier td { background: var(--earlier-bg); color: var(--dim); border-bottom: 0; }
+      .row-earlier td:first-child { padding-left: 40px; }
+      .row-earlier .earlier-name {
+        position: relative; display: inline-flex; align-items: center; gap: 8px; padding-left: 16px;
+      }
+      .row-earlier .earlier-name::before {
+        content: ""; position: absolute; left: 0; top: -14px; bottom: 50%;
+        width: 10px; border-left: 1px solid var(--color-divider); border-bottom: 1px solid var(--color-divider);
+      }
+      .row-earlier.match td { background: color-mix(in srgb, var(--color-accent) 9%, transparent); }
+      .row-lifetime td {
+        background: var(--earlier-bg); font-size: 12px; color: var(--muted);
+        padding-top: 6px; padding-bottom: 10px; border-bottom: 2px solid var(--color-divider);
+      }
+      .row-lifetime td:first-child { padding-left: 56px; }
+      .row-lifetime strong { color: var(--color-text); font-weight: 600; }
+
+      /* — row menu — */
+      .row-menu {
+        position: absolute; right: 8px; top: 100%; z-index: 21; width: 290px;
+        text-align: left; white-space: normal; background: var(--color-surface);
+        border: 2px solid var(--color-divider); box-shadow: var(--shadow-lg);
+        display: flex; flex-direction: column;
+      }
+      .row-menu-item {
+        display: block; width: 100%; padding: 12px 16px; background: transparent;
+        border: 0; text-align: left; cursor: pointer; font: inherit; color: inherit;
+      }
+      .row-menu-item + .row-menu-item { border-top: 1px solid var(--color-divider); }
+      .row-menu-item:hover { background: var(--color-accent-100); }
+      .row-menu-label { display: block; font: 800 14px/1.3 var(--font); color: var(--color-text); }
+      .row-menu-item.destructive .row-menu-label { color: var(--color-accent-700); }
+      .row-menu-hint { display: block; font-size: 12px; line-height: 16px; margin-top: 2px; color: var(--muted); }
+      .menu-scrim { position: fixed; inset: 0; z-index: 20; }
+
+      .empty {
+        display: flex; align-items: center; justify-content: space-between; gap: 16px;
+        padding: 20px 0; color: color-mix(in srgb, var(--color-text) 70%, transparent); font-size: 14px;
+      }
+
+      /* — mobile list (dashboard.css @media max-width 760px) — */
+      .phone {
+        width: min(390px, 100%); margin: 0 auto; padding: 24px 16px 32px;
+        border: 2px solid var(--color-divider); background: var(--color-bg);
+      }
+      .phone .section-head { flex-direction: column; align-items: stretch; gap: 12px; margin-bottom: 12px; }
+      .phone .subscription-search { width: 100%; }
+      .mobile-toggles { display: flex; flex-wrap: wrap; gap: 0 12px; }
+      .mobile-toggles .btn { min-height: 44px; }
+      .mobile-list { margin: 12px 0 0; border-top: 2px solid var(--color-divider); }
+      .mobile-row {
+        display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 16px; gap: 0 12px;
+        align-items: center; width: 100%; min-height: 64px; padding: 12px 0;
+        background: transparent; border: 0; border-bottom: 1px solid var(--color-divider);
+        text-align: left; font-family: var(--font); color: var(--color-text); cursor: pointer;
+      }
+      .mobile-row:hover { background: var(--color-accent-100); }
+      .mobile-row.cancelled { color: color-mix(in srgb, var(--color-text) 48%, transparent); }
+      .mobile-row-main { min-width: 0; }
+      .mobile-row-title { display: flex; align-items: center; gap: 8px; }
+      .mobile-row-name {
+        font: 800 15px/22px var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .mobile-row-meta { display: block; font-size: 12px; line-height: 18px; margin-top: 2px; color: color-mix(in srgb, var(--color-text) 62%, transparent); }
+      .mobile-row-cost { text-align: right; }
+      .mobile-row-amount { display: block; font: 800 15px/22px var(--font); font-feature-settings: "tnum" 1; }
+      .mobile-row-permonth { display: block; font-size: 12px; line-height: 18px; margin-top: 2px; color: var(--muted); }
+      .mobile-row > svg { color: var(--dim); }
+      .mobile-row.has-runs { border-bottom: 0; }
+      .mobile-runs-toggle {
+        display: flex; align-items: center; gap: 6px; width: 100%; min-height: 44px;
+        padding: 0 0 0 34px; margin: 0; background: transparent; border: 0;
+        border-bottom: 1px solid var(--color-divider); cursor: pointer;
+        font: 600 13px/1.2 var(--font); color: var(--color-accent); text-align: left;
+      }
+      .mobile-runs-toggle svg { transition: transform .15s ease; }
+      .mobile-runs-toggle[aria-expanded="true"] { border-bottom-color: transparent; }
+      .mobile-runs-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+      .mobile-earlier { background: var(--earlier-bg); border-bottom: 1px solid var(--color-divider); padding: 0 0 4px 34px; }
+      .mobile-earlier .mobile-row {
+        grid-template-columns: minmax(0, 1fr) auto 16px; min-height: 56px; padding: 10px 12px 10px 12px;
+        border-left: 1px solid var(--color-divider); color: var(--dim);
+      }
+      .mobile-earlier .mobile-row:last-of-type { border-bottom: 0; }
+      .mobile-earlier .mobile-row.match { background: color-mix(in srgb, var(--color-accent) 9%, transparent); }
+      .mobile-lifetime { padding: 6px 12px 8px; font-size: 12px; color: var(--muted); }
+      .mobile-lifetime strong { color: var(--color-text); font-weight: 600; }
+
+      /* — notes — */
+      .notes {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px;
+        padding-top: 32px; border-top: 2px solid var(--color-divider);
+      }
+      .notes h2 { font: 800 20px/1.2 var(--font); margin: 0 0 12px; letter-spacing: -.01em; }
+      .notes ol, .notes ul { margin: 0; padding-left: 20px; font-size: 14px; }
+      .notes li + li { margin-top: 8px; }
+      .notes li strong { font-weight: 600; }
+      .intro { max-width: 760px; padding-top: 32px; }
+      .intro h1 { font: 800 32px/1.12 var(--font); letter-spacing: -.015em; margin: 8px 0 12px; }
+      .intro p { margin: 0; color: color-mix(in srgb, var(--color-text) 75%, transparent); }
+      .callout {
+        margin: 0 0 20px; padding: 10px 14px; font-size: 13px;
+        border-left: 3px solid var(--color-accent); background: var(--color-accent-100);
+      }
+      @media (max-width: 760px) {
+        .intro h1 { font-size: 26px; }
+        .section-head { flex-direction: column; align-items: stretch; }
+        .table-actions { flex-wrap: wrap; }
+        .subscription-search { width: 100%; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="mock-toolbar" role="region" aria-label="Mock controls">
+      <strong>Issue #49 mock</strong>
+      <span class="spacer">Sample data · 15 Sep 2026 · Nothing is saved</span>
+      <span class="mock-seg" role="group" aria-label="Version">
+        <button type="button" data-version="proposed" aria-pressed="true">Proposed</button>
+        <button type="button" data-version="current" aria-pressed="false">Current</button>
+      </span>
+      <span class="mock-seg" role="group" aria-label="Layout">
+        <button type="button" data-layout="desktop" aria-pressed="true">Desktop</button>
+        <button type="button" data-layout="mobile" aria-pressed="false">Mobile</button>
+      </span>
+      <a href="https://github.com/juusimaa/subscription-tracker/issues/49">Issue #49</a>
+    </div>
+
+    <main class="page">
+      <header class="intro">
+        <span class="eyebrow">Design proposal · Issue #49</span>
+        <h1>Group runs of the same subscription</h1>
+        <p>
+          Reactivating a cancelled plan starts a new run with its own row. Today every run
+          shows up as a separate subscription. In this proposal the list shows one row per
+          subscription, which is its current run, and the earlier runs fold away underneath it.
+          Use <strong>Current</strong> in the toolbar to compare with today's list.
+        </p>
+      </header>
+
+      <section class="table-section" id="list" aria-live="polite"></section>
+
+      <section class="notes" aria-label="Design notes">
+        <div>
+          <h2>Rules</h2>
+          <ol>
+            <li><strong>One row per group.</strong> Runs that share a <code>group_id</code> collapse into one row. The row is the run that isn't cancelled (active, trial, paused or scheduled). If every run is cancelled, it's the most recent one.</li>
+            <li><strong>Earlier runs fold away.</strong> A chevron and an "N earlier runs" link open them under the head row, newest first. Each one shows the price and dates it had then.</li>
+            <li><strong>Totals stay the same.</strong> This only changes the list. KPIs, spend and Coming up already count each run on its own, and they keep doing that.</li>
+            <li><strong>"Show cancelled" counts groups.</strong> A group is hidden only when its head is cancelled. Earlier runs of a live subscription can always be reached through its chevron.</li>
+            <li><strong>Search looks inside groups.</strong> If only an earlier run matches, for example a past price, the group opens and that run is highlighted. Try <em>12.99</em> or <em>2023</em>.</li>
+            <li><strong>Sorting uses the head row.</strong> Earlier runs stay attached to their group, so sorting never splits a group up.</li>
+          </ol>
+        </div>
+        <div>
+          <h2>Actions</h2>
+          <ul>
+            <li>The head row keeps today's actions: <strong>Edit</strong> on a live run, <strong>Reactivate</strong> on a cancelled one.</li>
+            <li>Earlier runs get only <strong>Archive</strong> and <strong>Delete permanently</strong>. They can't be reactivated while a newer run exists, which is the same rule the backend enforces today.</li>
+            <li>The disabled "Current run exists" button goes away, because its row is now nested under the run it refers to.</li>
+          </ul>
+          <h2 style="margin-top: 28px">Open questions</h2>
+          <ul>
+            <li>Should the lifetime line ("€610.53 across 3 runs") ship in the first version, or wait? It needs a per-run paid total that the list endpoint doesn't return yet.</li>
+            <li>Archived earlier runs: hide them inside the group, or show them with the Archived tag? The mock shows them, tagged.</li>
+            <li>Should a group remember whether it's open after a reload? The mock doesn't.</li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const TODAY = "2026-09-15";
+      const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const CYCLE_MONTHS = { monthly: 1, quarterly: 3, yearly: 12 };
+      const BRANDS = {
+        Netflix: ["N", "#e50914", "#fff"], Spotify: ["S", "#1db954", "#fff"],
+        "Disney+": ["D+", "#113ccf", "#fff", 9], "HBO Max": ["HBO", "#7b2bf9", "#fff", 7],
+      };
+
+      // Three groups with history: Netflix (two cancelled runs, then active),
+      // Disney+ (cancelled, then a run scheduled to start in October) and
+      // Dropbox (cancelled twice, so the whole group counts as cancelled).
+      const SUBSCRIPTIONS = [
+        { id: 1, group_id: 1, name: "Netflix", category: "Entertainment", status: "cancelled", cost: 9.99, billing_cycle: "monthly", started_date: "2022-03-01", cancelled_date: "2023-06-01", next_renewal_date: "2023-07-01" },
+        { id: 6, group_id: 1, name: "Netflix", category: "Entertainment", status: "cancelled", cost: 12.99, billing_cycle: "monthly", started_date: "2023-11-10", cancelled_date: "2025-01-10", next_renewal_date: "2025-02-10", archived_date: "2025-03-01" },
+        { id: 9, group_id: 1, name: "Netflix", category: "Entertainment", status: "active", cost: 15.99, billing_cycle: "monthly", started_date: "2025-06-01", next_renewal_date: "2026-10-01" },
+        { id: 2, group_id: 2, name: "Spotify", category: "Entertainment", status: "active", cost: 9.99, billing_cycle: "monthly", started_date: "2023-05-01", next_renewal_date: "2026-10-01" },
+        { id: 3, group_id: 3, name: "Adobe Creative Cloud", category: "Work", status: "active", cost: 239.88, billing_cycle: "yearly", started_date: "2025-03-12", next_renewal_date: "2027-03-12" },
+        { id: 4, group_id: 4, name: "Notion", category: "Work", status: "trial", cost: 8, billing_cycle: "monthly", started_date: "2026-09-01", next_renewal_date: "2026-09-25" },
+        { id: 5, group_id: 5, name: "Disney+", category: "Entertainment", status: "cancelled", cost: 89.9, billing_cycle: "yearly", started_date: "2024-01-15", cancelled_date: "2025-06-02", next_renewal_date: "2026-01-15" },
+        { id: 10, group_id: 5, name: "Disney+", category: "Entertainment", status: "active", cost: 9.99, billing_cycle: "monthly", started_date: "2026-10-01", next_renewal_date: "2026-10-01" },
+        { id: 7, group_id: 7, name: "Dropbox", category: "Work", status: "cancelled", cost: 9.99, billing_cycle: "monthly", started_date: "2021-02-14", cancelled_date: "2022-08-14", next_renewal_date: "2022-09-14" },
+        { id: 8, group_id: 7, name: "Dropbox", category: "Work", status: "cancelled", cost: 11.99, billing_cycle: "monthly", started_date: "2024-04-01", cancelled_date: "2026-07-01", next_renewal_date: "2026-08-01" },
+        { id: 11, group_id: 11, name: "HBO Max", category: "Entertainment", status: "cancelled", cost: 9.99, billing_cycle: "monthly", started_date: "2025-09-20", cancelled_date: "2026-02-20", next_renewal_date: "2026-03-20" },
+      ];
+
+      const STATUS = {
+        active: ["Active", "tag tag-neutral"], trial: ["Trial", "tag tag-accent"],
+        paused: ["Paused", "tag tag-outline"], cancelled: ["Cancelled", "tag tag-outline"],
+      };
+      const STATUS_ORDER = { active: 0, trial: 1, paused: 2, cancelled: 3 };
+      const COLUMNS = [
+        ["name", "Name"], ["category", "Category"], ["status", "Status"], ["cost", "Cost"],
+        ["perMonth", "Per month"], ["started", "Started"], ["renewal", "Next renewal"],
+      ];
+
+      const state = {
+        version: "proposed",
+        layout: window.matchMedia("(max-width: 760px)").matches ? "mobile" : "desktop",
+        showCancelled: false,
+        query: "",
+        sort: { key: "renewal", dir: "asc" },
+        open: new Set(),
+        menu: null,
+      };
+
+      // — formatting, as in frontend/src/format.js —
+      const money = (n) => "€" + Math.abs(Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const longDate = (iso) => { if (!iso) return ""; const [y, m, d] = iso.split("-"); return `${d} ${MONTHS[m - 1]} ${y}`; };
+      const monthYear = (iso) => { const [y, m] = iso.split("-"); return `${MONTHS[m - 1]} ${y}`; };
+      const perMonth = (s) => Number(s.cost) / CYCLE_MONTHS[s.billing_cycle];
+      const cycleSuffix = (c) => ({ monthly: "/mo", quarterly: "/qtr", yearly: "/yr" })[c];
+      const isScheduled = (s) => s.status === "active" && s.started_date > TODAY;
+      const statusLabel = (s) => (isScheduled(s) ? "Scheduled" : STATUS[s.status][0]);
+      const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+      function addMonths(iso, count) {
+        const [y, m, d] = iso.split("-").map(Number);
+        const target = new Date(y, m - 1 + count, 1);
+        const last = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(Math.min(d, last))}`;
+      }
+
+      // Charges are taken upfront on each cycle date from the start, up to the
+      // day the run stopped (or today for a live one) -- the spend rule.
+      function paid(s) {
+        if (s.status === "trial" || s.started_date > TODAY) return 0;
+        const stop = s.cancelled_date || TODAY;
+        let total = 0;
+        for (let n = 0; n < 600; n += 1) {
+          const date = addMonths(s.started_date, n * CYCLE_MONTHS[s.billing_cycle]);
+          if (date > stop) break;
+          total += Number(s.cost);
+        }
+        return Math.round(total * 100) / 100;
+      }
+
+      function tile(name, dim) {
+        const [mono, bg, fg, size] = BRANDS[name] || [name[0], "var(--color-neutral-800)", "var(--color-bg)"];
+        return `<span class="mono-tile" aria-hidden="true" style="background:${bg};color:${fg};font-size:${size || 11}px;opacity:${dim ? 0.4 : 1}">${esc(mono)}</span>`;
+      }
+      const chevron = (size = 16) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>`;
+      const searchIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>`;
+
+      function sortValue(s, key) {
+        switch (key) {
+          case "category": return (s.category || "").toLowerCase();
+          case "status": return STATUS_ORDER[s.status];
+          case "cost": return perMonth(s);
+          case "perMonth": return s.status === "active" && !isScheduled(s) ? perMonth(s) : -1;
+          case "started": return s.started_date || "";
+          case "renewal": return s.next_renewal_date;
+          default: return s.name.toLowerCase();
+        }
+      }
+      function compare(a, b) {
+        const dir = state.sort.dir === "desc" ? -1 : 1;
+        const va = sortValue(a, state.sort.key), vb = sortValue(b, state.sort.key);
+        if (va < vb) return -dir;
+        if (va > vb) return dir;
+        return a.name.localeCompare(b.name);
+      }
+
+      function matches(s, q) {
+        if (!q) return true;
+        return [
+          s.name, s.category, statusLabel(s), s.billing_cycle, money(s.cost),
+          s.started_date, longDate(s.started_date), s.next_renewal_date, longDate(s.next_renewal_date),
+          s.cancelled_date, longDate(s.cancelled_date), s.archived_date ? "Archived" : null,
+        ].some((v) => v && v.toLowerCase().includes(q));
+      }
+
+      // The proposal: one entry per group, its head the run that isn't
+      // cancelled, otherwise the newest; earlier runs newest first.
+      function buildGroups() {
+        const byGroup = new Map();
+        for (const s of SUBSCRIPTIONS) {
+          if (!byGroup.has(s.group_id)) byGroup.set(s.group_id, []);
+          byGroup.get(s.group_id).push(s);
+        }
+        return [...byGroup.values()].map((runs) => {
+          const newestFirst = runs.slice().sort((a, b) => b.started_date.localeCompare(a.started_date));
+          const head = newestFirst.find((s) => s.status !== "cancelled") || newestFirst[0];
+          const earlier = newestFirst.filter((s) => s !== head);
+          return {
+            id: head.group_id, head, earlier, runs: newestFirst,
+            lifetime: Math.round(runs.reduce((sum, s) => sum + paid(s), 0) * 100) / 100,
+            since: runs.reduce((min, s) => (s.started_date < min ? s.started_date : min), head.started_date),
+          };
+        });
+      }
+
+      function render() {
+        const root = document.getElementById("list");
+        const q = state.query.trim().toLowerCase();
+        let rows, available, cancelledCount, matchedEarlier = new Set(), autoOpen = new Set();
+
+        if (state.version === "current") {
+          // Today's list: every run is its own row.
+          cancelledCount = SUBSCRIPTIONS.filter((s) => s.status === "cancelled").length;
+          available = SUBSCRIPTIONS.filter((s) => s.status !== "cancelled" || state.showCancelled);
+          rows = available.filter((s) => matches(s, q)).sort(compare).map((s) => ({ head: s, earlier: [] }));
+        } else {
+          const groups = buildGroups();
+          cancelledCount = groups.filter((g) => g.head.status === "cancelled").length;
+          available = groups.filter((g) => g.head.status !== "cancelled" || state.showCancelled);
+          rows = available.filter((g) => {
+            if (!q) return true;
+            const headHit = matches(g.head, q);
+            const hits = g.earlier.filter((s) => matches(s, q));
+            hits.forEach((s) => matchedEarlier.add(s.id));
+            if (hits.length && !headHit) autoOpen.add(g.id);
+            return headHit || hits.length > 0;
+          }).sort((a, b) => compare(a.head, b.head));
+        }
+
+        const count = q ? `${rows.length} of ${available.length}` : rows.length;
+        const isOpen = (g) => state.open.has(g.id) || autoOpen.has(g.id);
+        const ctx = { q, rows, count, cancelledCount, matchedEarlier, isOpen };
+        root.innerHTML = state.layout === "mobile" ? renderMobile(ctx) : renderDesktop(ctx);
+      }
+
+      function headerHTML(ctx, mobile) {
+        const unit = state.version === "proposed" ? "subscriptions" : "rows";
+        const callout = state.version === "current"
+          ? `<p class="callout">${state.showCancelled
+            ? "This is today's list: Netflix shows up three times, and Disney+ and Dropbox twice each."
+            : "This is today's list. Turn on <strong>Show cancelled</strong> to see the problem: every earlier run is a row of its own."}</p>`
+          : "";
+        const search = `<label class="subscription-search">${searchIcon}<input class="input" type="search" aria-label="Search subscriptions" placeholder="Name, cost, date" value="${esc(state.query)}" data-search></label>`;
+        const toggle = `<button type="button" class="btn btn-ghost btn-small" data-toggle-cancelled>${state.showCancelled ? "Hide cancelled" : `Show cancelled — ${ctx.cancelledCount}`}</button>`;
+        const head = mobile
+          ? `<div class="section-head"><span class="eyebrow">All subscriptions — ${ctx.count}</span>${search}<div class="mobile-toggles">${toggle}</div></div>`
+          : `<div class="section-head"><span class="eyebrow">All subscriptions — ${ctx.count}</span><span class="table-actions">${search}${toggle}<button type="button" class="btn btn-primary">Add subscription</button></span></div>`;
+        const empty = ctx.q && !ctx.rows.length
+          ? `<div class="empty"><span>No ${unit} match “${esc(state.query.trim())}” in this list.</span><button type="button" class="btn btn-ghost btn-small" data-clear>Clear search</button></div>`
+          : "";
+        return { callout, head, empty };
+      }
+
+      function costCell(s) {
+        const trial = s.status === "trial";
+        return `<span>${trial ? money(0) : money(s.cost)}</span><span class="sub-note">${trial ? `then ${money(s.cost)}${cycleSuffix(s.billing_cycle)}` : s.billing_cycle}</span>`;
+      }
+      function renewalCell(s) {
+        const cancelled = s.status === "cancelled";
+        // A cancelled run's date is when its paid term runs out, as today.
+        const note = s.status === "trial" ? "trial ends"
+          : isScheduled(s) ? "first charge"
+          : cancelled ? (s.next_renewal_date >= TODAY ? "access ends" : "access ended")
+          : "";
+        return `<span>${longDate(s.next_renewal_date)}</span><span class="sub-note">${note}</span>`;
+      }
+      function statusTags(s) {
+        const [, cls] = STATUS[s.status];
+        return `<span class="${cls}">${statusLabel(s)}</span>${s.archived_date ? `<span class="tag tag-outline">Archived</span>` : ""}`;
+      }
+      function menuHTML(id, items) {
+        if (state.menu !== id) return "";
+        return `<div class="row-menu" role="menu">${items.map(([label, hint, destructive]) =>
+          `<button type="button" role="menuitem" class="row-menu-item${destructive ? " destructive" : ""}" data-menu-close><span class="row-menu-label">${label}</span><span class="row-menu-hint">${hint}</span></button>`).join("")}</div>`;
+      }
+      const HEAD_MENU = {
+        live: [["Cancel plan", "Stops counting toward your totals. The record stays."], ["Delete permanently", "Removes it and its history. No undo.", true]],
+        cancelled: [["Archive", "Hides it from the list. Your totals don't change."], ["Delete permanently", "Removes it and its history. No undo.", true]],
+      };
+      const EARLIER_MENU = [
+        ["Archive", "Hides this run inside the group. Your totals don't change."],
+        ["Delete permanently", "Removes this run and what it cost. No undo.", true],
+      ];
+
+      function renderDesktop(ctx) {
+        const { callout, head, empty } = headerHTML(ctx, false);
+        const proposed = state.version === "proposed";
+        const th = COLUMNS.map(([key, label]) => {
+          const on = state.sort.key === key;
+          return `<th class="${on ? "on" : ""}" aria-sort="${on ? (state.sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="btn" style="padding:0;font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit" data-sort="${key}">${label}<span class="sort-arrow">${on ? (state.sort.dir === "asc" ? "↑" : "↓") : "↕"}</span></button></th>`;
+        }).join("");
+
+        const body = ctx.rows.map((g) => {
+          const s = g.head;
+          const cancelled = s.status === "cancelled";
+          const open = proposed && g.earlier.length && ctx.isOpen(g);
+          const n = g.earlier.length;
+          const disclosure = !proposed ? "" : n
+            ? `<button type="button" class="disclosure" aria-expanded="${open ? "true" : "false"}" aria-label="${open ? "Hide" : "Show"} ${n} earlier ${n === 1 ? "run" : "runs"} of ${esc(s.name)}" data-group="${g.id}">${chevron()}</button>`
+            : `<span class="disclosure-spacer"></span>`;
+          const runsLink = proposed && n
+            ? `<button type="button" class="runs-link" data-group="${g.id}" tabindex="-1">${n} earlier ${n === 1 ? "run" : "runs"}</button>`
+            : "";
+          // Today a cancelled run with a newer live run gets a dead button.
+          const hasCurrentRun = !proposed && cancelled
+            && SUBSCRIPTIONS.some((r) => r.group_id === s.group_id && r.status !== "cancelled");
+          const primary = hasCurrentRun ? "Current run exists" : cancelled ? "Reactivate" : "Edit";
+          const headRow = `
+            <tr class="${[cancelled ? "row-cancelled" : "", open ? "row-group-open" : ""].join(" ")}">
+              <td><span class="row-name">${disclosure}${tile(s.name, cancelled)}<span class="name-stack"><span>${esc(s.name)}</span>${runsLink}</span></span></td>
+              <td>${esc(s.category || "")}</td>
+              <td>${statusTags(s)}</td>
+              <td class="tnum">${costCell(s)}</td>
+              <td class="tnum">${s.status === "active" && !isScheduled(s) ? money(perMonth(s)) : "—"}</td>
+              <td class="tnum">${longDate(s.started_date)}</td>
+              <td class="tnum">${renewalCell(s)}</td>
+              <td class="row-actions"><button type="button" class="btn btn-ghost"${hasCurrentRun ? " disabled style=\"opacity:.45;cursor:not-allowed\"" : ""}>${primary}</button><button type="button" class="btn btn-ghost" aria-haspopup="menu" aria-expanded="${state.menu === `h${s.id}`}" data-menu="h${s.id}">More ▾</button>${menuHTML(`h${s.id}`, HEAD_MENU[cancelled ? "cancelled" : "live"])}</td>
+            </tr>`;
+          if (!open) return headRow;
+
+          const earlierRows = g.earlier.map((r, i) => `
+            <tr class="row-earlier${ctx.matchedEarlier.has(r.id) ? " match" : ""}">
+              <td><span class="earlier-name"><span class="name-stack"><span>Earlier run</span><span class="sub-note">Run ${g.runs.length - 1 - i} of ${g.runs.length}</span></span></span></td>
+              <td></td>
+              <td>${statusTags(r)}</td>
+              <td class="tnum">${costCell(r)}</td>
+              <td class="tnum">—</td>
+              <td class="tnum">${longDate(r.started_date)}</td>
+              <td class="tnum"><span>${longDate(r.cancelled_date)}</span><span class="sub-note">cancelled · paid ${money(paid(r))}</span></td>
+              <td class="row-actions"><button type="button" class="btn btn-ghost" aria-haspopup="menu" aria-expanded="${state.menu === `e${r.id}`}" data-menu="e${r.id}">More ▾</button>${menuHTML(`e${r.id}`, EARLIER_MENU)}</td>
+            </tr>`).join("");
+          const lifetime = `<tr class="row-lifetime"><td colspan="8">Lifetime with ${esc(s.name)}: <strong>${money(g.lifetime)}</strong> across ${g.runs.length} runs since ${monthYear(g.since)}</td></tr>`;
+          return headRow + earlierRows + lifetime;
+        }).join("");
+
+        return `${head}${callout}<div class="table-scroll"><table class="table"><thead><tr>${th}<th></th></tr></thead><tbody>${empty ? `<tr><td colspan="8">${empty}</td></tr>` : body}</tbody></table></div>${state.menu ? `<div class="menu-scrim" data-menu-close></div>` : ""}`;
+      }
+
+      function mobileMeta(s) {
+        let date;
+        if (s.status === "cancelled") date = `ended ${longDate(s.next_renewal_date)}`;
+        else if (s.status === "trial") date = `trial ends ${longDate(s.next_renewal_date)}`;
+        else if (isScheduled(s)) date = `starts ${longDate(s.started_date)}`;
+        else date = longDate(s.next_renewal_date);
+        return s.category ? `${esc(s.category)} · ${date}` : date;
+      }
+      function mobileNote(s) {
+        if (s.status === "trial") return `then ${money(s.cost)}${cycleSuffix(s.billing_cycle)}`;
+        if (s.status === "active" && !isScheduled(s)) return `${money(perMonth(s))}/mo`;
+        return s.billing_cycle;
+      }
+
+      function renderMobile(ctx) {
+        const { callout, head, empty } = headerHTML(ctx, true);
+        const proposed = state.version === "proposed";
+        const list = ctx.rows.map((g) => {
+          const s = g.head;
+          const cancelled = s.status === "cancelled";
+          const n = g.earlier.length;
+          const open = proposed && n && ctx.isOpen(g);
+          const showTag = s.status !== "active" || isScheduled(s);
+          const row = `
+            <button type="button" class="mobile-row${cancelled ? " cancelled" : ""}${proposed && n ? " has-runs" : ""}">
+              ${tile(s.name, cancelled)}
+              <span class="mobile-row-main">
+                <span class="mobile-row-title"><span class="mobile-row-name">${esc(s.name)}</span>${showTag ? `<span class="${STATUS[s.status][1]}">${statusLabel(s)}</span>` : ""}</span>
+                <span class="mobile-row-meta tnum">${mobileMeta(s)}</span>
+              </span>
+              <span class="mobile-row-cost"><span class="mobile-row-amount">${s.status === "trial" ? money(0) : money(s.cost)}</span><span class="mobile-row-permonth tnum">${mobileNote(s)}</span></span>
+              ${chevron()}
+            </button>`;
+          if (!proposed || !n) return row;
+          const toggle = `<button type="button" class="mobile-runs-toggle" aria-expanded="${open ? "true" : "false"}" data-group="${g.id}">${chevron(14)}${open ? "Hide" : "Show"} ${n} earlier ${n === 1 ? "run" : "runs"}</button>`;
+          if (!open) return row + toggle;
+          const earlier = g.earlier.map((r, i) => `
+            <button type="button" class="mobile-row${ctx.matchedEarlier.has(r.id) ? " match" : ""}">
+              <span class="mobile-row-main">
+                <span class="mobile-row-title"><span class="mobile-row-name" style="font-size:14px">Run ${g.runs.length - 1 - i} of ${g.runs.length}</span>${r.archived_date ? `<span class="tag tag-outline">Archived</span>` : ""}</span>
+                <span class="mobile-row-meta tnum">${longDate(r.started_date)} – ${longDate(r.cancelled_date)}</span>
+              </span>
+              <span class="mobile-row-cost"><span class="mobile-row-amount" style="font-size:14px">${money(r.cost)}</span><span class="mobile-row-permonth tnum">paid ${money(paid(r))}</span></span>
+              ${chevron()}
+            </button>`).join("");
+          return `${row}${toggle}<div class="mobile-earlier">${earlier}<div class="mobile-lifetime">Lifetime: <strong>${money(g.lifetime)}</strong> across ${g.runs.length} runs since ${monthYear(g.since)}</div></div>`;
+        }).join("");
+
+        return `<div class="phone">${head}${callout}<div class="mobile-list">${empty || list}</div></div>`;
+      }
+
+      // — events —
+      document.addEventListener("click", (event) => {
+        const t = event.target.closest("button, [data-menu-close]");
+        if (!t) return;
+        if (t.dataset.version) state.version = t.dataset.version;
+        else if (t.dataset.layout) state.layout = t.dataset.layout;
+        else if (t.dataset.group) {
+          const id = Number(t.dataset.group);
+          state.open.has(id) ? state.open.delete(id) : state.open.add(id);
+        } else if ("toggleCancelled" in t.dataset) state.showCancelled = !state.showCancelled;
+        else if (t.dataset.sort) {
+          const key = t.dataset.sort;
+          state.sort = { key, dir: state.sort.key === key && state.sort.dir === "asc" ? "desc" : "asc" };
+        } else if (t.dataset.menu) state.menu = state.menu === t.dataset.menu ? null : t.dataset.menu;
+        else if ("menuClose" in t.dataset) state.menu = null;
+        else if ("clear" in t.dataset) state.query = "";
+        else return;
+        // Any other control closes an open menu, as in the app.
+        if (!t.dataset.menu) state.menu = null;
+        syncToolbar();
+        const focusKey = t.dataset.group ? `[data-group="${t.dataset.group}"].${t.className.split(" ")[0]}` : null;
+        render();
+        if (focusKey) document.querySelector(focusKey)?.focus();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && state.menu) { state.menu = null; render(); }
+      });
+      document.addEventListener("input", (event) => {
+        if (!event.target.matches("[data-search]")) return;
+        state.query = event.target.value;
+        state.menu = null;
+        const pos = event.target.selectionStart;
+        render();
+        const input = document.querySelector("[data-search]");
+        input.focus();
+        input.setSelectionRange(pos, pos);
+      });
+
+      function syncToolbar() {
+        document.querySelectorAll("[data-version]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.version === state.version)));
+        document.querySelectorAll("[data-layout]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.layout === state.layout)));
+      }
+
+      state.open.add(1);
+      syncToolbar();
+      render();
+    </script>
+  </body>
+</html>
