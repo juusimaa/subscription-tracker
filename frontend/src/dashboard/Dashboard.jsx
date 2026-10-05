@@ -21,6 +21,7 @@ import EmptyState from "./EmptyState";
 import Hero from "./Hero";
 import ImportExport from "./ImportExport";
 import KpiBand from "./KpiBand";
+import NextCharge from "./NextCharge";
 import ReactivateDialog from "./ReactivateDialog";
 import Sheet from "./Sheet";
 import SubscriptionTable from "./SubscriptionTable";
@@ -247,6 +248,17 @@ function Dashboard({
   // this rethrows). The exception is a 404: the record is gone, App has
   // already marked its row "removed on another device", and that row, not
   // the dialog, is where the explanation belongs.
+  // Shared by the trial banner and the next-charge strip.
+  function convertTrial(subscription) {
+    return thenClose(() => actions.update(subscription.id, {
+      status: "active",
+      // The conversion date becomes the first charge -- it's what the trial
+      // was going to do anyway.
+      started_date: subscription.next_renewal_date,
+      next_renewal_date: subscription.next_renewal_date,
+    }), () => {});
+  }
+
   async function thenClose(write, close) {
     try {
       await write();
@@ -326,7 +338,9 @@ function Dashboard({
           onChange={changePeriod}
           pickerOpen={pickerOpen}
           setPickerOpen={setPickerOpen}
-        />
+        >
+          <NextCharge subscriptions={subscriptions} onConvert={convertTrial} onCancel={setCancelTarget} />
+        </Hero>
 
         <hr className="rule" />
 
@@ -359,15 +373,7 @@ function Dashboard({
             year={year}
             month={month}
             onReview={() => setSort({ key: "status", dir: "asc" })}
-            onConvert={(subscription) =>
-              thenClose(() => actions.update(subscription.id, {
-                status: "active",
-                // The conversion date becomes the first charge -- it's what
-                // the trial was going to do anyway.
-                started_date: subscription.next_renewal_date,
-                next_renewal_date: subscription.next_renewal_date,
-              }), () => {})
-            }
+            onConvert={convertTrial}
             onCancel={setCancelTarget}
           />
         )}

@@ -254,7 +254,8 @@ below). The sticky header aligns its brand with the column's left edge at any
 width.
 
 The dashboard is a vertical statement: hero (total plus period controls) →
-trend strip → four-up KPI band → a 7/5 split of categories and coming-up →
+next-charge strip (the soonest charge, plus the next trial conversion when
+that comes later, each with its keep or cancel action) → trend strip → four-up KPI band → a 7/5 split of categories and coming-up →
 trial banner → subscription table → add form → import/export. Major sections
 are separated by 2px rules and spacing on the 14px cadence: 14px inside rows,
 28px between sub-blocks, 42px around bands, 56px between major sections, and
