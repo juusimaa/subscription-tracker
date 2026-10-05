@@ -1000,7 +1000,8 @@ body { text-wrap: pretty; }
 /* A warning, not a refusal: two Netflix accounts in one household are an
    ordinary thing to track, so a duplicate name is worth saying and never
    worth blocking (TODO.md D4). */
-.field-warning {
+.field-warning,
+.field-hint {
   display: block;
   font-size: 13px;
   line-height: 18px;
@@ -1926,6 +1927,7 @@ body { text-wrap: pretty; }
 .dialog-body,
 .cat-row .name,
 .field-warning,
+.field-hint,
 .form-error,
 .dialog-error,
 .row-message-inner,
