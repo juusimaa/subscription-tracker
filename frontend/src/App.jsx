@@ -151,14 +151,12 @@ function App() {
   // Per-category totals for the selected year, one request each, cached by
   // (year, category). The API has no grouped breakdown for a period
   // (TODO.md D3), and summing the categories in the browser would only be
-  // right for the current month.
+  // right for the current month. Cancelled plans count too: the server bills
+  // them up to the day they stopped, so a category holding only cancelled
+  // plans still has real spend in the periods before that (issue #54).
   useEffect(() => {
     if (!data) return undefined;
-    const names = [
-      ...new Set(
-        data.subscriptions.filter((s) => s.status !== "cancelled").map((s) => s.category).filter(Boolean),
-      ),
-    ];
+    const names = [...new Set(data.subscriptions.map((s) => s.category).filter(Boolean))];
     const missing = names.filter((name) => !(`${period.year}|${name}` in catSpend));
     if (missing.length === 0) return undefined;
 
