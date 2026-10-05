@@ -156,7 +156,17 @@ function Dashboard({
 
   // --- coming up ---
 
-  const charges = chargesInMonth(subscriptions, year, month);
+  // A month is the current one, already over or still ahead, judged against
+  // today. Only the current month has charges on both sides of today, and
+  // only there does "coming up" need splitting: a charge from the 2nd is
+  // not coming up on the 5th.
+  const today = todayISO();
+  const selectedMonth = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const monthKind =
+    selectedMonth === today.slice(0, 7) ? "current" : selectedMonth < today ? "past" : "future";
+  const monthCharges = chargesInMonth(subscriptions, year, month);
+  const chargesToCome = monthKind === "current" ? monthCharges.filter((c) => c.iso >= today) : monthCharges;
+  const chargesTaken = monthKind === "current" ? monthCharges.filter((c) => c.iso < today) : [];
   const nextYearly = activeSubs
     .filter((s) => s.billing_cycle === "yearly")
     .sort((a, b) => a.next_renewal_date.localeCompare(b.next_renewal_date))[0];
@@ -200,7 +210,7 @@ function Dashboard({
       label: monthly ? "Charging in the next 30 days" : "Average per month",
     },
     {
-      figure: String(monthly ? charges.length : chargeCountInYear(subscriptions, year)),
+      figure: String(monthly ? monthCharges.length : chargeCountInYear(subscriptions, year)),
       label: monthly ? "Renewals this month" : "Renewals this year",
     },
     {
@@ -332,7 +342,13 @@ function Dashboard({
 
         <section className="split">
           <CategoryBars rows={categoryRows} total={total} onManage={() => setCatPanelOpen(true)} />
-          <ComingUp charges={charges} note={comingUpNote} />
+          <ComingUp
+            kind={monthKind}
+            monthLabel={`${MONTHS[month]} ${year}`}
+            charges={chargesToCome}
+            charged={chargesTaken}
+            note={comingUpNote}
+          />
         </section>
 
         <hr className="rule" />

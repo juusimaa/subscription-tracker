@@ -515,6 +515,25 @@ body { text-wrap: pretty; }
   font-weight: 800;
   font-feature-settings: 'tnum' 1;
 }
+/* Charges already taken this month sit below the ones still to come, set
+   in the label style and the hint ink step so they read as record, not as
+   something to act on. */
+.coming-up-label {
+  margin: 28px 0 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-divider);
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 13px;
+  line-height: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.coming-up.charged > span {
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+}
+.coming-up.charged .amount { font-weight: 600; }
 .trial-note {
   font-size: 12px;
   color: var(--color-accent-700);
