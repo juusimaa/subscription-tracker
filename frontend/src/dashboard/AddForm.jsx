@@ -102,6 +102,9 @@ function AddForm({
     setFormError(null);
     if (Object.keys(found).length > 0) return;
 
+    // The values this save sends, kept so the reset below can tell them apart
+    // from anything typed while it was in flight (issue #64).
+    const submitted = form;
     setBusy(true);
     try {
       await onSubmit({
@@ -117,9 +120,18 @@ function AddForm({
         category: form.category || null,
         status: form.is_trial ? "trial" : "active",
       });
-      // Adding two trials in a row is a real sequence, so the plan-type
-      // choice survives the reset; every other field goes back to blank.
-      setForm({ ...blank, is_trial: form.is_trial });
+      // Only fields that still hold what was sent go back to blank: on a cold
+      // start the save can take seconds, and the next subscription typed in
+      // the meantime is not this one's to clear. Adding two trials in a row is
+      // a real sequence, so the plan-type choice always survives the reset.
+      setForm((current) =>
+        Object.fromEntries(
+          Object.entries(current).map(([key, value]) => [
+            key,
+            key === "is_trial" || value !== submitted[key] ? value : blank[key],
+          ]),
+        ),
+      );
       onSuccess?.();
     } catch (err) {
       if (err instanceof ApiError) {
