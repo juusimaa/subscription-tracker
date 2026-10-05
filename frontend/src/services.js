@@ -16,8 +16,8 @@
 
 export const SERVICES = [
   { name: "Netflix", mono: "N", brandBg: "#e50914", brandFg: "#fff", monoSize: 11, monthlyCost: "13.99" },
-  { name: "Spotify", mono: "S", brandBg: "#1db954", brandFg: "#fff", monoSize: 11, monthlyCost: "11.99" },
-  { name: "Spotify Family", mono: "S", brandBg: "#1db954", brandFg: "#fff", monoSize: 11, monthlyCost: "17.99" },
+  { name: "Spotify", mono: "S", brandBg: "#1db954", brandFg: "#000", monoSize: 11, monthlyCost: "11.99" },
+  { name: "Spotify Family", mono: "S", brandBg: "#1db954", brandFg: "#000", monoSize: 11, monthlyCost: "17.99" },
   { name: "Disney+", mono: "D+", brandBg: "#113ccf", brandFg: "#fff", monoSize: 9, monthlyCost: "9.99" },
   { name: "HBO Max", mono: "HBO", brandBg: "#7b2bf9", brandFg: "#fff", monoSize: 7, monthlyCost: "9.99" },
   { name: "iCloud+", mono: "i", monthlyCost: "2.99" },
