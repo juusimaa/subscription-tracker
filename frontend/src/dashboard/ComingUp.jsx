@@ -10,7 +10,7 @@ import { money, shortDate } from "../format";
 function ComingUp({ charges, note }) {
   return (
     <div className="split-right">
-      <span className="eyebrow" style={{ margin: "0 0 28px" }}>Coming up</span>
+      <h2 className="eyebrow" style={{ margin: "0 0 28px" }}>Coming up</h2>
       {/* A three-column grid rather than three stacked lists, so date, name
           and amount share one baseline and one set of row rules. */}
       <div className="coming-up">
@@ -21,7 +21,7 @@ function ComingUp({ charges, note }) {
               <span className={`date${first}`}>{shortDate(charge.iso)}</span>
               <span className={`name${first}`}>
                 {charge.subscription.name}
-                {charge.isTrialConversion && <span className="trial-note">trial converts</span>}
+                {charge.isTrialConversion && <>{" "}<span className="trial-note">trial converts</span></>}
               </span>
               <span className={`amount${first}`}>{money(charge.cost)}</span>
             </Fragment>

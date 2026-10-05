@@ -20,7 +20,7 @@ test("published UI mock uses the app and updates sample figures", async ({ page 
 
   const form = page.locator("#add");
   await form.getByRole("textbox", { name: "Service" }).fill("Test plan");
-  await form.getByRole("spinbutton", { name: "Cost" }).fill("4.50");
+  await form.getByRole("textbox", { name: "Cost" }).fill("4.50");
   await form.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.locator(".hero-total")).toHaveText("€30.48");
   await expect(page.getByText("Test plan").first()).toBeVisible();
@@ -38,7 +38,7 @@ test("mobile mock opens the real add sheet", async ({ page }) => {
   const sheet = page.getByRole("dialog", { name: "Add a subscription" });
   await expect(sheet).toBeVisible();
   await sheet.getByRole("textbox", { name: "Service" }).fill("Test plan");
-  await sheet.getByRole("spinbutton", { name: "Cost" }).fill("4.50");
+  await sheet.getByRole("textbox", { name: "Cost" }).fill("4.50");
   await sheet.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.locator(".hero-total")).toHaveText("€30.48");
   await expect(sheet).not.toBeVisible();

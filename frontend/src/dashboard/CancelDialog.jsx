@@ -4,20 +4,38 @@
 // toward totals that already stopped happening.
 
 import { useState } from "react";
+import { describeWriteError } from "../api";
 import { todayISO } from "../format";
+import { TriangleAlert } from "../icons";
+import { useModal } from "../useModal";
 
 function CancelDialog({ subscription, onConfirm, onClose, destructive }) {
   const [cancelledDate, setCancelledDate] = useState(todayISO());
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const ref = useModal(busy ? undefined : onClose);
   const notStarted = subscription.started_date && subscription.started_date > todayISO();
 
-  async function confirm() {
+  // The dialog closes itself only by going away: the parent unmounts it once
+  // the write has landed. A failure keeps it open with the reason, and the
+  // date the user picked still in the field.
+  async function run(action) {
     setBusy(true);
+    setError(null);
     try {
-      await onConfirm(notStarted ? {} : { cancelled_date: cancelledDate });
-    } finally {
+      await action();
+    } catch (err) {
+      setError(describeWriteError(err));
       setBusy(false);
     }
+  }
+
+  function confirm() {
+    if (!notStarted && !cancelledDate) {
+      setError("Choose the date it was cancelled.");
+      return;
+    }
+    run(() => onConfirm(notStarted ? {} : { cancelled_date: cancelledDate }));
   }
 
   // A trial that cancels here never gets to its first charge -- worth saying
@@ -31,12 +49,14 @@ function CancelDialog({ subscription, onConfirm, onClose, destructive }) {
       : `Cancel ${subscription.name}?`;
 
   return (
-    <div className="dialog-backdrop confirm" onClick={onClose}>
+    <div className="dialog-backdrop confirm" onClick={busy ? undefined : onClose}>
       <div
+        ref={ref}
         className="dialog dialog-confirm"
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        aria-busy={busy || undefined}
         onClick={(event) => event.stopPropagation()}
       >
         <p className="dialog-title">{title}</p>
@@ -55,15 +75,26 @@ function CancelDialog({ subscription, onConfirm, onClose, destructive }) {
             onChange={(e) => setCancelledDate(e.target.value)}
           />
         </label>}
+        {error && (
+          <p role="alert" className="dialog-error">
+            <TriangleAlert size={16} />
+            <span>{error}</span>
+          </p>
+        )}
         <div className="dialog-actions">
           <button type="button" className="btn btn-primary" disabled={busy} onClick={confirm}>
             Cancel plan
           </button>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>
+          <button type="button" className="btn btn-secondary" disabled={busy} onClick={onClose}>
             Keep it
           </button>
           {destructive && (
-            <button type="button" className="btn btn-ghost destructive" onClick={destructive.onClick}>
+            <button
+              type="button"
+              className="btn btn-ghost destructive"
+              disabled={busy}
+              onClick={() => run(destructive.onClick)}
+            >
               {destructive.label}
             </button>
           )}

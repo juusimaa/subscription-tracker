@@ -19,7 +19,7 @@ function EmptyState({ categories, onSubmit, prefill, onQuickAdd, actions, onOpen
   return (
     <>
       <section className="empty-hero">
-        <span className="eyebrow">Nothing tracked yet</span>
+        <h1 className="eyebrow">Nothing tracked yet</h1>
         <p className="empty-total">€0.00 a month.</p>
         <p className="empty-body">
           Add the first subscription and this page fills in — monthly and yearly totals, spend by
@@ -28,7 +28,7 @@ function EmptyState({ categories, onSubmit, prefill, onQuickAdd, actions, onOpen
       </section>
 
       <section aria-label="Common subscriptions" className="quick-add-section">
-        <span className="eyebrow">One tap to add</span>
+        <h2 className="eyebrow">One tap to add</h2>
         <div className="quick-add">
           {QUICK_ADD.map((service) => (
             <button key={service.name} type="button" onClick={() => onQuickAdd(service)}>
@@ -41,7 +41,7 @@ function EmptyState({ categories, onSubmit, prefill, onQuickAdd, actions, onOpen
       </section>
 
       <section aria-label="Add a subscription manually" className="manual-add-section">
-        <span className="eyebrow">Or add it yourself</span>
+        <h2 className="eyebrow">Or add it yourself</h2>
         {isMobile ? (
           <button type="button" className="btn btn-secondary btn-block" onClick={onOpenAddSheet}>
             Add it yourself

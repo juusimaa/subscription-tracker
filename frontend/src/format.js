@@ -34,8 +34,39 @@ export function money(amount) {
   );
 }
 
+// Rounded to the cent before the sign is chosen, so a difference that prints
+// as €0.00 never carries a sign it does not have ("−€0.00" from a float
+// remainder, or "+€0.00" for no change at all).
 export function signed(amount) {
-  return (Number(amount) < 0 ? "−" : "+") + money(amount);
+  const cents = Math.round((Number(amount) || 0) * 100);
+  if (cents === 0) return money(0);
+  return (cents < 0 ? "−" : "+") + money(cents / 100);
+}
+
+// A typed cost, as a number, or NaN when it is not one. Every figure on this
+// page is in euros, and most people who pay in euros write a decimal comma:
+// "9,99" is accepted as 9.99 rather than refused as "not greater than 0".
+// A thousands separator is not guessed at -- "1.299,00" and "1,299.00" are
+// both NaN, so the form asks again instead of saving a price off by 1000x.
+// More than two decimals is NaN too, matching what the server accepts.
+export function parseAmount(text) {
+  const trimmed = String(text ?? "").trim().replace(/\s/g, "");
+  if (!/^(\d+([.,]\d{1,2})?|[.,]\d{1,2})$/.test(trimmed)) return NaN;
+  return Number(trimmed.replace(",", "."));
+}
+
+// The server's ceiling on a cost: Numeric(10, 2), see schemas.Cost.
+export const MAX_COST = 99999999.99;
+
+// The check every cost field runs before saving: the message for what is
+// wrong with it, or null when it is a cost the server will take.
+export function costProblem(text) {
+  if (!String(text ?? "").trim()) return "Required — enter what it charges.";
+  const value = parseAmount(text);
+  if (Number.isNaN(value)) return "Enter an amount like 9.99 or 9,99.";
+  if (!(value > 0)) return "Must be greater than 0.";
+  if (value > MAX_COST) return "Must be under €100,000,000.";
+  return null;
 }
 
 // "2026-09-04" -> "04 Sep 2026". Split on the string rather than parsed as a

@@ -87,6 +87,11 @@ body { text-wrap: pretty; }
 
 .eyebrow {
   display: block;
+  /* Section eyebrows are the page's h1/h2s (so a screen reader can move by
+     heading); these undo the heading defaults so they still read as labels. */
+  margin: 0;
+  font-family: var(--font-body);
+  font-weight: 400;
   font-size: 13px;
   line-height: 14px;
   letter-spacing: 0.08em;
@@ -515,7 +520,9 @@ body { text-wrap: pretty; }
   color: var(--color-accent-700);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  margin-left: 8px;
+  /* With the space before it in the markup, so the name and the note read as
+     two words to a screen reader and in copied text, not "Notiontrial". */
+  margin-left: 4px;
 }
 .panel-note {
   font-size: 13px;
@@ -571,6 +578,18 @@ body { text-wrap: pretty; }
   gap: 8px;
 }
 .trial-review { margin-top: 20px; }
+/* A failed conversion, said on the trial it was for, under both columns. */
+.trial-row-error {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 0 12px;
+  align-items: center;
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-accent-900);
+}
 
 /* — the mono tile — */
 
@@ -1781,4 +1800,61 @@ body { text-wrap: pretty; }
   .io-export-controls .btn { width: 100%; min-height: 48px; }
   .io-drop { grid-template-columns: 1fr; text-align: left; }
   .io-drop .btn { width: 100%; min-height: 44px; margin-top: 12px; }
+}
+
+/* — resilience —
+   Names are user-typed, up to 100 characters, and sometimes one unbroken
+   string (a URL, a product code). Wherever one is printed in running layout
+   it may break mid-word rather than push its column, or the page, wider.
+   `anywhere` only breaks when nothing else fits, so ordinary names wrap
+   exactly as before. The mobile row and detail-sheet names truncate instead
+   (see their own rules); those are single-line by design. */
+.name-stack,
+.trial-headline,
+.trial-row-name,
+.cat-name,
+.cat-members,
+.coming-up .name,
+.panel-note,
+.kpi-label,
+.dialog-title,
+.dialog-body,
+.cat-row .name,
+.field-warning,
+.form-error,
+.dialog-error,
+.row-message-inner,
+.server-banner-detail {
+  overflow-wrap: anywhere;
+}
+.name-stack { min-width: 0; }
+
+/* The dialog itself takes focus when it opens (useModal.js), only so that a
+   screen reader starts at its label; it is not a control, so it draws no
+   ring. Every control inside keeps its own. */
+.dialog:focus { outline: none; }
+
+/* A failed archive or restore on the mobile list, under the row it was for. */
+.mobile-row-error {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 0 12px;
+  align-items: center;
+  margin: 0;
+  padding: 12px 0 14px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-accent-900);
+  overflow-wrap: anywhere;
+}
+
+/* A figure too long for its column (a cost in the millions) breaks after a
+   thousands separator rather than overflowing into the next cell -- see
+   Figure in KpiBand.jsx. Each group is unbreakable on its own, so the sign
+   never wraps away from the number. */
+.figure-group { white-space: nowrap; }
+.kpi { min-width: 0; }
+.kpi-figure.long { font-size: 26px; line-height: 32px; }
+@media (max-width: 760px) {
+  .kpi-figure.long { font-size: 22px; line-height: 28px; }
 }

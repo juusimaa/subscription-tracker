@@ -52,11 +52,19 @@ export class ApiError extends Error {
 // export download wants the response itself -- a .csv is not JSON, and
 // parsing it as JSON to hand it straight back to a Blob would be a detour
 // through a shape it does not have.
+// Generous, because both apps scale to zero and a cold start alone can take
+// most of half a minute -- but finite, so a request that never answers ends
+// as an error the page can show instead of a button left disabled forever.
+const TIMEOUT_MS = 45_000;
+const timeoutSignal = () =>
+  typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(TIMEOUT_MS) : undefined;
+
 async function send(path, options = {}) {
   const token = getToken();
   let res;
   try {
     res = await fetch(`${API_URL}${path}`, {
+      signal: timeoutSignal(),
       headers: {
         "Content-Type": "application/json",
         // The whole client side of JWT auth is this one header. No cookies
@@ -66,7 +74,10 @@ async function send(path, options = {}) {
       },
       ...options,
     });
-  } catch {
+  } catch (err) {
+    if (err?.name === "TimeoutError") {
+      throw new ApiError("The server took too long to answer.", 0);
+    }
     // A network failure has no status at all. 0 stands in for "never reached
     // the server", which the banner reports the same way as a 5xx: something
     // the user cannot fix, with the last good data left on screen.
@@ -262,3 +273,16 @@ export async function exportBackup(format = "json") {
 // confirmed was computed from this same parsed file (see backup.js).
 export const importBackup = (backup, mode = "merge") =>
   request(`/import?mode=${mode}`, { method: "POST", body: JSON.stringify(backup) });
+
+// One sentence for a write that failed, for the place the write was asked
+// for: a dialog, a row, the trial banner. The server's own words first, then
+// the status (support triages from a screenshot), then what it means for the
+// user's data -- which for every write here is that nothing changed. A
+// request that never reached the server has no status to give, so it says
+// what to do instead.
+export function describeWriteError(err) {
+  const said = (err?.message || "Something went wrong.").replace(/[.\s]*$/, ".");
+  if (!(err instanceof ApiError)) return said;
+  if (err.status === 0) return `${said} Nothing was saved — check your connection and try again.`;
+  return `${said} ${err.status} — nothing was saved.`;
+}

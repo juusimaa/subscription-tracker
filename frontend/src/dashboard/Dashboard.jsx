@@ -7,7 +7,8 @@
 // answers into the figures the design asks for.
 
 import { useState } from "react";
-import { MAX_YEAR, MIN_YEAR, SHORT_MONTHS, longDate, money, signed, todayISO } from "../format";
+import { ApiError } from "../api";
+import { MAX_YEAR, MIN_YEAR, MONTHS, SHORT_MONTHS, longDate, money, signed, todayISO } from "../format";
 import { chargeCountInYear, chargesInMonth } from "../renewals";
 import { useIsMobile } from "../useMediaQuery";
 import AddForm from "./AddForm";
@@ -168,6 +169,7 @@ function Dashboard({
   const bars = monthly
     ? SHORT_MONTHS.map((tick, index) => ({
         tick,
+        label: `${MONTHS[index]} ${year}`,
         // Mobile's 12-column tick row has no room for three letters (see
         // TrendStrip.jsx) -- a year has only three columns and keeps its
         // full label there too, so this is monthly-only.
@@ -228,6 +230,24 @@ function Dashboard({
   async function handleCreate(payload) {
     await actions.create(payload);
     setPrefill(null);
+  }
+
+  // A dialog's write, then the dialog closes -- in that order, so a failure
+  // can be said inside the dialog that asked for it (the dialog catches what
+  // this rethrows). The exception is a 404: the record is gone, App has
+  // already marked its row "removed on another device", and that row, not
+  // the dialog, is where the explanation belongs.
+  async function thenClose(write, close) {
+    try {
+      await write();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        close();
+        return;
+      }
+      throw err;
+    }
+    close();
   }
 
   function quickAdd(service) {
@@ -324,13 +344,13 @@ function Dashboard({
             month={month}
             onReview={() => setSort({ key: "status", dir: "asc" })}
             onConvert={(subscription) =>
-              actions.update(subscription.id, {
+              thenClose(() => actions.update(subscription.id, {
                 status: "active",
                 // The conversion date becomes the first charge -- it's what
                 // the trial was going to do anyway.
                 started_date: subscription.next_renewal_date,
                 next_renewal_date: subscription.next_renewal_date,
-              })
+              }), () => {})
             }
             onCancel={setCancelTarget}
           />
@@ -359,7 +379,7 @@ function Dashboard({
         />
 
         <section id="add" aria-label="Add a subscription" className="add-section">
-          <span className="eyebrow" style={{ margin: "0 0 28px" }}>Add a subscription</span>
+          <h2 className="eyebrow" style={{ margin: "0 0 28px" }}>Add a subscription</h2>
           <AddForm
             categories={categories}
             existing={subscriptions}
@@ -421,19 +441,16 @@ function Dashboard({
       {cancelTarget && (
         <CancelDialog
           subscription={cancelTarget}
-          onConfirm={async (payload) => {
-            const target = cancelTarget;
-            setCancelTarget(null);
-            await actions.update(target.id, { status: "cancelled", ...payload }).catch(() => {});
-          }}
+          onConfirm={(payload) =>
+            thenClose(
+              () => actions.update(cancelTarget.id, { status: "cancelled", ...payload }),
+              () => setCancelTarget(null),
+            )
+          }
           onClose={() => setCancelTarget(null)}
           destructive={{
             label: "Delete permanently",
-            onClick: async () => {
-              const target = cancelTarget;
-              setCancelTarget(null);
-              await actions.remove(target.id).catch(() => {});
-            },
+            onClick: () => thenClose(() => actions.remove(cancelTarget.id), () => setCancelTarget(null)),
           }}
         />
       )}
@@ -441,10 +458,9 @@ function Dashboard({
       {reactivationTarget && (
         <ReactivateDialog
           subscription={reactivationTarget}
-          onConfirm={async (payload) => {
-            await actions.restore(reactivationTarget.id, payload);
-            setReactivationTarget(null);
-          }}
+          onConfirm={(payload) =>
+            thenClose(() => actions.restore(reactivationTarget.id, payload), () => setReactivationTarget(null))
+          }
           onClose={() => setReactivationTarget(null)}
         />
       )}
@@ -454,11 +470,7 @@ function Dashboard({
           title={`Delete ${deleteTarget.name} permanently?`}
           body="This removes the subscription and its past charges for good. There is no undoing this from here."
           confirmLabel="Delete permanently"
-          onConfirm={async () => {
-            const target = deleteTarget;
-            setDeleteTarget(null);
-            await actions.remove(target.id).catch(() => {});
-          }}
+          onConfirm={() => thenClose(() => actions.remove(deleteTarget.id), () => setDeleteTarget(null))}
           onClose={() => setDeleteTarget(null)}
         />
       )}

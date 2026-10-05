@@ -4,6 +4,7 @@
 // that estimates is worse than none, because it is believed.
 
 import { TriangleAlert } from "../icons";
+import { useModal } from "../useModal";
 
 // Enough names to recognise the file, then a count. The full list of fourteen
 // tells the user nothing the number above it did not.
@@ -25,14 +26,18 @@ function Row({ kind, detail, count }) {
 function ImportSummary({ filename, diff, busy, error, onConfirm, onCancel, onAnotherFile }) {
   const replace = diff.mode === "replace";
   const plural = diff.subscriptions === 1 ? "" : "s";
+  // Like the backdrop, Escape does nothing while the import is being written.
+  const ref = useModal(busy ? undefined : onCancel);
 
   return (
     <div className="dialog-backdrop confirm" onClick={busy ? undefined : onCancel}>
       <div
+        ref={ref}
         className="dialog dialog-import"
         role="dialog"
         aria-modal="true"
         aria-labelledby="import-title"
+        aria-busy={busy || undefined}
         onClick={(event) => event.stopPropagation()}
       >
         <p className="dialog-title" id="import-title">Import {filename}?</p>

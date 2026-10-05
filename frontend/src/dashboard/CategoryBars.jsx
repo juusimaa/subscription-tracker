@@ -14,7 +14,7 @@ function CategoryBars({ rows, total, onManage }) {
   return (
     <div className="split-left">
       <div className="section-head">
-        <span className="eyebrow">By category</span>
+        <h2 className="eyebrow">By category</h2>
         <button type="button" className="btn btn-ghost btn-small" onClick={onManage}>
           Manage
         </button>

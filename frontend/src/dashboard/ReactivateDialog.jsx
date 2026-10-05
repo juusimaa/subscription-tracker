@@ -2,9 +2,10 @@
 // history and terms; only the new row receives the values entered here.
 
 import { useState } from "react";
-import { ApiError } from "../api";
-import { longDate, todayISO } from "../format";
+import { describeWriteError } from "../api";
+import { costProblem, longDate, parseAmount, todayISO } from "../format";
 import { TriangleAlert } from "../icons";
+import { useModal } from "../useModal";
 
 function ReactivateDialog({ subscription, onConfirm, onClose }) {
   const paidThrough = subscription.cancelled_date ? subscription.next_renewal_date : null;
@@ -18,10 +19,12 @@ function ReactivateDialog({ subscription, onConfirm, onClose }) {
   const [cycle, setCycle] = useState(subscription.billing_cycle);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const ref = useModal(busy ? undefined : onClose);
 
   async function confirm() {
-    if (!(Number(cost) > 0)) {
-      setError("Cost must be greater than 0.");
+    const costError = costProblem(cost);
+    if (costError) {
+      setError(`Cost: ${costError}`);
       return;
     }
     if (!firstChargeDate) {
@@ -32,21 +35,22 @@ function ReactivateDialog({ subscription, onConfirm, onClose }) {
     setBusy(true);
     try {
       await onConfirm({
-        cost: Number(cost),
+        cost: parseAmount(cost),
         billing_cycle: cycle,
         started_date: firstChargeDate,
         next_renewal_date: firstChargeDate,
       });
     } catch (err) {
-      setError(err instanceof ApiError ? `${err.message} ${err.status} — nothing was saved.` : err.message);
+      setError(describeWriteError(err));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="dialog-backdrop confirm" onClick={onClose}>
+    <div className="dialog-backdrop confirm" onClick={busy ? undefined : onClose}>
       <div
+        ref={ref}
         className="dialog dialog-confirm"
         role="dialog"
         aria-modal="true"
@@ -62,9 +66,9 @@ function ReactivateDialog({ subscription, onConfirm, onClose }) {
             <span className="field-label">Cost</span>
             <input
               className="input tnum"
-              type="number"
-              min="0.01"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
               value={cost}
               onChange={(event) => setCost(event.target.value)}
             />
