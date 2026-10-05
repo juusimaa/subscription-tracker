@@ -324,7 +324,8 @@ Heavy type with no softening. Neutral unless the button is the main action.
 - **Secondary:** transparent with a 1px Stroke border and Ink text. Hover fills
   with Ink at 7%.
 - **Ghost:** Ink text with minimal padding. Hover fills with Ink at 7%. Used
-  for "Edit", "More", "Manage" and "Show archived". A destructive ghost
+  for "Edit", "More", "Manage" and "Show archived". "Review trials in the
+  table" is a standalone ghost and gets 12px side padding. A destructive ghost
   (`.destructive`) is the one exception and keeps Signal Red Deep text.
 - **Disabled:** 45% opacity.
 - **Focus:** a 2px Signal Red outline, offset 2px, on every interactive
@@ -336,7 +337,7 @@ frame. The selected option fills with Signal Red Deep and Paper text. Used for m
 yearly view, plan type, export format and conflict mode.
 
 ### Tags
-Square, 10px text, 2px by 8px padding. **Trial** is Signal Red Wash with Signal
+Square, 12px text, 2px by 8px padding. **Trial** is Signal Red Wash with Signal
 Red Ink text. **Active** is neutral wash with neutral ink. **Outline** has a
 1px Stroke border with Ink text and is used for "Beta", "Paused", "Cancelled"
 and "Archived".
