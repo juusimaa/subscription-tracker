@@ -30,6 +30,15 @@ backend/test.db
 # generating it was meant to avoid.
 _site/
 
+# Claude Code local state: personal permissions and agent worktrees
+.claude/settings.local.json
+.claude/worktrees/
+.claude/skills/
+.github/skills/
+.claude/agents/impeccable-*.md
+.github/agents/impeccable-*.agent.md
+.github/hooks/impeccable.json
+
 # OS
 .DS_Store
 
