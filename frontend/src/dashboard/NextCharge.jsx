@@ -61,6 +61,7 @@ function NextCharge({ subscriptions, onConvert, onCancel }) {
               <span className="next-charge-amount">
                 {money(s.cost)}
                 {isTrial && cycleSuffix(s.billing_cycle)}
+                {isTrial && <>{" "}<span className="if-kept">if kept</span></>}
               </span>{" "}
               <span className="next-charge-when">
                 {shortDate(s.next_renewal_date)}, {daysUntil(s.next_renewal_date, today)}

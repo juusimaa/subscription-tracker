@@ -54,7 +54,7 @@ function TrialBanner({ trials, year, month, onReview, onConvert, onCancel }) {
               <p className="trial-row-detail tnum">
                 {money(trial.cost)}
                 {cycleSuffix(trial.billing_cycle)} from{" "}
-                {longDate(trial.next_renewal_date)}
+                {longDate(trial.next_renewal_date)} if kept
               </p>
             </div>
             <div className="trial-row-actions">
