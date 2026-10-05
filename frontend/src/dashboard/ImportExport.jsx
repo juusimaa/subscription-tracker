@@ -17,6 +17,7 @@ import { ApiError, describeWriteError } from "../api";
 import { BackupFileError, diffBackup, exportFilename, parseBackup } from "../backup";
 import { TriangleAlert } from "../icons";
 import ImportSummary from "./ImportSummary";
+import SectionToggle from "./SectionToggle";
 
 // The drop zone's own limit, checked before the file is read rather than
 // after. A backup of a personal subscription list is a few kilobytes; a
@@ -35,6 +36,10 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
   const [candidate, setCandidate] = useState(null);
   const [writeError, setWriteError] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Folded until asked for: a backup is something done now and then, and
+  // two columns of controls at the foot of every visit is a lot of page for
+  // it.
+  const [open, setOpen] = useState(false);
   const fileInput = useRef(null);
 
   const live = subscriptions.filter((s) => s.status !== "cancelled").length;
@@ -185,13 +190,18 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
   }
 
   return (
-    <section id="io" className="io-section" aria-label="Import and export">
+    <section id="io" className={open ? "io-section" : "io-section folded"} aria-label="Import and export">
       <div className="section-head">
-        <h2 className="eyebrow">Import &amp; export</h2>
-        <span className="hint">Maintenance — moving your list in and out in one go</span>
+        <SectionToggle
+          title="Import & export"
+          open={open}
+          onToggle={() => setOpen((current) => !current)}
+          controls="io-body"
+        />
+        <span className="hint">Back up your list to a file, or read one back</span>
       </div>
 
-      <div className="io-cols">
+      <div id="io-body" className="io-cols" hidden={!open}>
         <div className="io-col io-export">
           <h3>Export</h3>
           <p className="io-body">
