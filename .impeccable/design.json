@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-05T00:00:00Z",
+  "title": "Design System: Subscription Tracker",
+  "extensions": {
+    "colorMeta": {
+      "signal-red": { "role": "primary", "displayName": "Signal Red", "canonical": "#ec3013", "tonalRamp": ["#4d170e", "#7c1405", "#ae1800", "#dd2b0f", "#ff563c", "#ff9783", "#ffc4b8", "#fff2ef"] },
+      "signal-red-pressed": { "role": "primary", "displayName": "Signal Red Pressed", "canonical": "#dd2b0f" },
+      "signal-red-deep": { "role": "primary", "displayName": "Signal Red Deep", "canonical": "#ae1800" },
+      "signal-red-wash": { "role": "primary", "displayName": "Signal Red Wash", "canonical": "#fff2ef", "dark": "#4d170e" },
+      "signal-red-ink": { "role": "primary", "displayName": "Signal Red Ink", "canonical": "#4d170e", "dark": "#fff2ef" },
+      "paper": { "role": "neutral", "displayName": "Paper", "canonical": "#f3f2f2", "dark": "#16151a", "tonalRamp": ["#2d2b2b", "#444141", "#605d5d", "#7d7979", "#9b9797", "#bab6b6", "#d7d3d3", "#f8f4f4"] },
+      "paper-raised": { "role": "neutral", "displayName": "Paper Raised", "canonical": "#eae9e9", "dark": "#201f24" },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#201e1d", "dark": "#f1efee" },
+      "rule": { "role": "neutral", "displayName": "Rule", "canonical": "color-mix(in srgb, #201e1d 40%, transparent)", "dark": "color-mix(in srgb, #f1efee 30%, transparent)" },
+      "idle-bar": { "role": "neutral", "displayName": "Idle Bar", "canonical": "#d7d3d3", "dark": "#605d5d" },
+      "tile-neutral": { "role": "neutral", "displayName": "Tile Neutral", "canonical": "#605d5d", "dark": "#d7d3d3" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The hero total only, in Signal Red. One per page." },
+      "headline": { "displayName": "Headline", "purpose": "KPI figures." },
+      "title": { "displayName": "Title", "purpose": "Category names and amounts, trial headline, section headings in dialogs." },
+      "body": { "displayName": "Body", "purpose": "Table cells, lists, general text." },
+      "lead": { "displayName": "Lead", "purpose": "The hero's explanation of how the total was counted; max 52ch." },
+      "label": { "displayName": "Label", "purpose": "Uppercase eyebrows, field labels, KPI labels." }
+    },
+    "shadows": [
+      { "name": "shadow-sm", "value": "0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent)", "purpose": "Available, rarely used." },
+      { "name": "shadow-md", "value": "0 3px 10px color-mix(in srgb, #2d2b2b 16%, transparent)", "purpose": "Available, rarely used." },
+      { "name": "shadow-lg", "value": "0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent)", "purpose": "Popover, row menu and dialogs only. Dark mode: 1px light hairline plus 0 22px 50px rgba(0,0,0,.7)." }
+    ],
+    "motion": [
+      { "name": "disclosure", "value": "transform 0.15s ease", "purpose": "Chevron rotation on grouped-run disclosure. The only motion in the system." }
+    ],
+    "breakpoints": [
+      { "name": "mobile", "value": "760px" },
+      { "name": "content-max", "value": "1240px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The main action in a region. Use at most one per region.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Add subscription</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; font-family: var(--font-heading, 'Archivo', system-ui, sans-serif); font-weight: 800; font-size: 14px; line-height: 1.2; border: 1px solid transparent; border-radius: 0; padding: 8px 14.4px; } .ds-btn-primary { background: var(--color-accent, #ec3013); color: var(--color-bg, #f3f2f2); } .ds-btn-primary:hover { background: var(--color-accent-600, #dd2b0f); } .ds-btn-primary:active { background: var(--color-accent-700, #ae1800); } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-accent, #ec3013); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Neutral actions: Log out, Cancel before it charges, Download export.",
+      "html": "<button class=\"ds-btn-secondary\">Cancel before it charges</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; cursor: pointer; font-family: var(--font-heading, 'Archivo', system-ui, sans-serif); font-weight: 800; font-size: 14px; line-height: 1.2; color: var(--color-text, #201e1d); background: transparent; border: 1px solid var(--color-divider, color-mix(in srgb, #201e1d 40%, transparent)); border-radius: 0; padding: 8px 14.4px; } .ds-btn-secondary:hover { background: color-mix(in srgb, var(--color-text, #201e1d) 7%, transparent); } .ds-btn-secondary:active { background: color-mix(in srgb, var(--color-text, #201e1d) 14%, transparent); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--color-accent, #ec3013); outline-offset: 2px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Inline row and section actions: Edit, More, Manage, Show archived.",
+      "html": "<button class=\"ds-btn-ghost\">Edit</button>",
+      "css": ".ds-btn-ghost { cursor: pointer; font-family: var(--font-heading, 'Archivo', system-ui, sans-serif); font-weight: 800; font-size: 14px; line-height: 1.2; color: var(--color-accent, #ec3013); background: transparent; border: 1px solid transparent; border-radius: 0; padding: 8px 4px; } .ds-btn-ghost:hover { background: color-mix(in srgb, var(--color-accent, #ec3013) 10%, transparent); } .ds-btn-ghost:focus-visible { outline: 2px solid var(--color-accent, #ec3013); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Every text, number, date and select field.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Service</span><input class=\"ds-input\" placeholder=\"Netflix, Spotify, …\"></label>",
+      "css": ".ds-field { display: block; } .ds-field-label { display: block; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: color-mix(in srgb, var(--color-text, #201e1d) 70%, transparent); margin-bottom: 8px; } .ds-input { width: 100%; min-height: 36px; padding: 6px 10px; font: inherit; font-size: 14px; color: var(--color-text, #201e1d); caret-color: var(--color-accent, #ec3013); background: var(--color-surface, #eae9e9); border: 1px solid var(--color-divider, color-mix(in srgb, #201e1d 40%, transparent)); border-radius: 0; } .ds-input:hover { border-color: color-mix(in srgb, var(--color-text, #201e1d) 45%, transparent); } .ds-input:focus-visible { border-color: var(--color-accent, #ec3013); outline: 2px solid var(--color-accent, #ec3013); outline-offset: 0; }"
+    },
+    {
+      "name": "Segmented Control",
+      "kind": "chip",
+      "refersTo": "segment-selected",
+      "description": "Mutually exclusive views and modes: Monthly/Yearly, Paid plan/Free trial, JSON/CSV.",
+      "html": "<div class=\"ds-seg\" role=\"group\"><button class=\"ds-seg-opt\" aria-pressed=\"true\">Monthly</button><button class=\"ds-seg-opt\" aria-pressed=\"false\">Yearly</button></div>",
+      "css": ".ds-seg { display: inline-flex; border: 1px solid var(--color-divider, color-mix(in srgb, #201e1d 40%, transparent)); border-radius: 0; } .ds-seg-opt { padding: 7px 12px; font-family: inherit; font-size: 13px; cursor: pointer; border: 0; background: transparent; color: var(--color-text, #201e1d); } .ds-seg-opt + .ds-seg-opt { border-left: 1px solid var(--color-divider, color-mix(in srgb, #201e1d 40%, transparent)); } .ds-seg-opt[aria-pressed='true'] { background: var(--color-accent, #ec3013); color: var(--color-bg, #f3f2f2); } .ds-seg-opt[aria-pressed='false']:hover { background: color-mix(in srgb, var(--color-text, #201e1d) 7%, transparent); } .ds-seg-opt:focus-visible { outline: 2px solid var(--color-accent, #ec3013); outline-offset: -2px; }"
+    },
+    {
+      "name": "Status Tags",
+      "kind": "chip",
+      "refersTo": "tag-trial",
+      "description": "Row status and labels: Trial (accent wash), Active (neutral wash), Beta/Archived (outline).",
+      "html": "<span class=\"ds-tag ds-tag-accent\">Trial</span> <span class=\"ds-tag ds-tag-neutral\">Active</span> <span class=\"ds-tag ds-tag-outline\">Archived</span>",
+      "css": ".ds-tag { display: inline-flex; align-items: center; font-size: 10px; letter-spacing: 0.02em; padding: 2px 8px; border-radius: 0; white-space: nowrap; } .ds-tag-accent { background: var(--color-accent-100, #fff2ef); color: var(--color-accent-800, #7c1405); } .ds-tag-neutral { background: var(--color-neutral-100, #f8f4f4); color: var(--color-neutral-800, #444141); } .ds-tag-outline { border: 1px solid var(--color-accent, #ec3013); color: var(--color-accent, #ec3013); }"
+    },
+    {
+      "name": "App Navigation",
+      "kind": "nav",
+      "refersTo": "nav",
+      "description": "Sticky header: brand with Beta tag, text links, account email, Log out.",
+      "html": "<nav class=\"ds-nav\"><span class=\"ds-nav-brand\">Subscriptions <span class=\"ds-nav-beta\">Beta</span></span><a href=\"#\" aria-current=\"page\">Overview</a><a href=\"#\">All subscriptions</a><span class=\"ds-nav-email\">demo@example.com</span><button class=\"ds-nav-out\">Log out</button></nav>",
+      "css": ".ds-nav { display: flex; align-items: center; gap: 16px; padding: 12px 16px; background: var(--color-bg, #f3f2f2); border-bottom: 2px solid var(--color-divider, color-mix(in srgb, #201e1d 40%, transparent)); } .ds-nav-brand { font-family: var(--font-heading, 'Archivo', system-ui, sans-serif); font-weight: 800; font-size: 18px; margin-right: auto; color: var(--color-text, #201e1d); } .ds-nav-beta { font-size: 10px; font-weight: 400; padding: 2px 8px; border: 1px solid var(--color-accent, #ec3013); color: var(--color-accent, #ec3013); vertical-align: middle; } .ds-nav a { color: var(--color-text, #201e1d); text-decoration: none; font-size: 14px; } .ds-nav a:hover, .ds-nav a[aria-current='page'] { color: var(--color-accent, #ec3013); } .ds-nav a:focus-visible { outline: 2px solid var(--color-accent, #ec3013); outline-offset: 2px; } .ds-nav-email { font-size: 13px; color: color-mix(in srgb, var(--color-text, #201e1d) 60%, transparent); font-feature-settings: 'tnum' 1; } .ds-nav-out { font-family: var(--font-heading, 'Archivo', system-ui, sans-serif); font-weight: 800; font-size: 14px; padding: 8px 14.4px; background: transparent; color: var(--color-text, #201e1d); border: 1px solid var(--color-divider, color-mix(in srgb, #201e1d 40%, transparent)); border-radius: 0; cursor: pointer; } .ds-nav-out:hover { background: color-mix(in srgb, var(--color-text, #201e1d) 7%, transparent); }"
+    },
+    {
+      "name": "Hero Total",
+      "kind": "custom",
+      "refersTo": "display",
+      "description": "The statement headline: eyebrow, the period total in Signal Red, and the plain-prose rule for how it was counted.",
+      "html": "<section class=\"ds-hero\"><span class=\"ds-eyebrow\">Monthly spend · September 2026</span><p class=\"ds-hero-total\">€25.98</p><p class=\"ds-hero-body\">Across 3 active subscriptions in 2 categories. A yearly plan counts in full in the month it renews; trials, paused and cancelled plans are excluded until they charge.</p></section>",
+      "css": ".ds-hero { padding: 56px 0 42px; font-family: var(--font-body, 'Archivo', system-ui, sans-serif); } .ds-eyebrow { display: block; font-size: 13px; line-height: 14px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-accent-700, #ae1800); margin: 0 0 20px; font-feature-settings: 'tnum' 1; } .ds-hero-total { font-family: var(--font-heading, 'Archivo', system-ui, sans-serif); font-weight: 800; font-size: clamp(52px, 7vw, 92px); line-height: 1.02; letter-spacing: -0.03em; color: var(--color-accent, #ec3013); margin: 0 0 0 -0.045em; font-feature-settings: 'tnum' 1; } .ds-hero-body { font-size: 17px; line-height: 28px; margin: 20px 0 0; max-width: 52ch; color: color-mix(in srgb, var(--color-text, #201e1d) 78%, transparent); }"
+    },
+    {
+      "name": "Attention Banner",
+      "kind": "custom",
+      "refersTo": "attention-banner",
+      "description": "Trial-conversion and server-error surface: accent wash, 2px accent top rule, per-item actions. Never a toast.",
+      "html": "<section class=\"ds-banner\"><p class=\"ds-banner-head\">Notion converts to a paid plan on 25 Sep 2026</p><div class=\"ds-banner-row\"><div><p class=\"ds-banner-name\">Notion</p><p class=\"ds-banner-detail\">€8.00/mo from 25 Sep 2026</p></div><button class=\"ds-banner-cta\">Convert to paid</button></div></section>",
+      "css": ".ds-banner { border-top: 2px solid var(--color-accent, #ec3013); background: var(--color-accent-100, #fff2ef); padding: 28px 16px; color: var(--color-accent-900, #4d170e); font-family: var(--font-body, 'Archivo', system-ui, sans-serif); } .ds-banner-head { font-family: var(--font-heading, 'Archivo', system-ui, sans-serif); font-weight: 800; font-size: 17px; line-height: 24px; margin: 0; } .ds-banner-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 24px; align-items: center; padding: 16px 0; margin-top: 20px; border-top: 1px solid color-mix(in srgb, var(--color-accent-900, #4d170e) 22%, transparent); } .ds-banner-name { font-family: var(--font-heading, 'Archivo', system-ui, sans-serif); font-weight: 800; font-size: 15px; margin: 0; } .ds-banner-detail { font-size: 13px; line-height: 18px; margin: 4px 0 0; font-feature-settings: 'tnum' 1; } .ds-banner-cta { font-family: var(--font-heading, 'Archivo', system-ui, sans-serif); font-weight: 800; font-size: 13px; padding: 8px 14.4px; border: 1px solid transparent; border-radius: 0; background: var(--color-accent, #ec3013); color: var(--color-bg, #f3f2f2); cursor: pointer; } .ds-banner-cta:hover { background: var(--color-accent-600, #dd2b0f); } .ds-banner-cta:focus-visible { outline: 2px solid var(--color-accent, #ec3013); outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Statement",
+    "overview": "The interface reads like a well-typeset bank statement. The total is the headline, every figure sits in a tabular column, and every number explains how it was counted in plain prose close to it. Nothing is decorative. Grey paper, near-black ink, ruled lines and one red do all the work, in the tradition of Swiss modernist print: a single grotesque (Archivo), flush-left text, square corners and generous vertical air between sections.\n\nThe system is quiet until something matters. Neutral is the default state of every component. Red and the heavy 800 weight are spent only where money or an action is. The hero total is red because it is the reason you opened the page. The trial banner is red because a trial is about to cost money. A selected segment is red because it says which view you are reading. When red appears anywhere else, the meaning gets diluted.\n\nDensity is moderate and desktop-first. A 1240px column, 32px gutters, and section spacing on a 14px cadence (14 / 28 / 42 / 56 / 112) give a statement-like rhythm. Below 760px the layout reflows into a single column and every dialog becomes a bottom sheet. Dark mode is a full reversal of the same system. Today it follows the OS setting only; an in-app theme toggle is planned but not built.",
+    "keyCharacteristics": [
+      "One typeface (Archivo 400/600/800), with 800 reserved for figures, names and actions.",
+      "One accent (Signal Red), spent on money, deadlines and the current selection.",
+      "Zero border radius everywhere, including tags, inputs, dialogs and brand tiles.",
+      "Rules, not cards: 2px rules between major sections, 1px between peer rows.",
+      "Flat at rest. Only popovers, menus and dialogs cast a shadow.",
+      "Tabular figures on every number."
+    ],
+    "rules": [
+      { "name": "The One Signal Rule", "body": "Signal Red marks money, deadlines and the current selection, and nothing else. If an element is red, the user should be able to say which of those three it is.", "section": "colors" },
+      { "name": "The Mixed-Ink Rule", "body": "Never introduce a new grey hex. Secondary text and fills are Ink mixed toward transparent at the established percentages, so they track the theme automatically.", "section": "colors" },
+      { "name": "The Tabular Rule", "body": "Every figure on the page uses font-feature-settings: 'tnum' 1, including money, dates, counts and email addresses. A column of money that changes width as its digits change reads as noise.", "section": "typography" },
+      { "name": "The Weight Carries Meaning Rule", "body": "800 marks things you read as values or act on: figures, names, buttons. Prose is never bold to add emphasis.", "section": "typography" },
+      { "name": "The Rules-Organise Rule", "body": "Structure comes from ruled lines, not boxes: 2px between major sections, 1px between peer rows and inside control groups. Do not wrap sections in cards.", "section": "layout" },
+      { "name": "The Only-Floaters-Lift Rule", "body": "A shadow means \"this is above the page and will go away\". Inline content never casts one.", "section": "elevation" },
+      { "name": "The Zero-Radius Rule", "body": "No border radius anywhere. Do not soften it.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do use Signal Red only for money, deadlines and the current selection (The One Signal Rule).",
+      "Do set every figure with tabular numerals.",
+      "Do separate sections with 2px rules and peer rows with 1px rules.",
+      "Do derive secondary text from Ink at the established percentages (78 / 70 / 60 / 55 / 45).",
+      "Do use Signal Red Deep, not Signal Red, for small red text.",
+      "Do put an explanation of how a number was counted next to the number, in Lead or note-size prose.",
+      "Do keep errors at the field and transport problems in a banner at the top of the page.",
+      "Do make every dialog a bottom sheet below 760px, with targets at least 44px tall."
+    ],
+    "donts": [
+      "Don't use any border radius (The Zero-Radius Rule).",
+      "Don't wrap sections in cards or bordered boxes. Rules do the organising.",
+      "Don't add shadows to inline content. Only popovers, menus and dialogs lift.",
+      "Don't introduce a second accent colour or a new grey hex.",
+      "Don't use toasts. Problems live where they happened, or in a top-of-page banner.",
+      "Don't blank the page on a failed fetch. Keep the last known good data under a banner.",
+      "Don't introduce a second typeface or use bold for emphasis in prose."
+    ]
+  }
+}
