@@ -62,7 +62,7 @@ function PeriodControls({ view, year, month, onChange, pickerOpen, setPickerOpen
     <div className="period" ref={root}>
       <span className="field-label">View</span>
       <div className="period-controls">
-        <div className="seg" role="group" aria-label="Spending period">
+        <div className="seg seg-view" role="group" aria-label="Spending period">
           <button
             type="button"
             className="seg-opt"

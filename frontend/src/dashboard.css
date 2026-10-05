@@ -283,11 +283,20 @@ body { text-wrap: pretty; }
 /* Re-asserted at a specificity that beats modernist's
    `.seg-opt:not(:has(input:checked)):hover`, which is written for the radio
    version of this control and would otherwise paint a hover tint over the
-   selected option's accent fill. */
+   selected option's fill.
+   A selected option is Ink: plan type, export format and conflict mode are
+   form answers, not something to look at, and painting them red spent the
+   signal on choices that cost nothing. The period selector is the one
+   segment that says which view you are reading, so .seg-view alone keeps
+   Signal Red (the One Signal Rule's "current selection"). */
 .seg .seg-opt[aria-pressed='true'],
 .seg .seg-opt[aria-pressed='true']:hover {
-  background: var(--color-accent-fill);
+  background: var(--color-text);
   color: var(--color-bg);
+}
+.seg-view .seg-opt[aria-pressed='true'],
+.seg-view .seg-opt[aria-pressed='true']:hover {
+  background: var(--color-accent-fill);
 }
 .seg .seg-opt[aria-pressed='false']:hover {
   background: color-mix(in srgb, var(--color-text) 7%, transparent);
@@ -619,11 +628,16 @@ body { text-wrap: pretty; }
 
 /* — trial banner — */
 
+/* The next-charge strip under the hero already puts the soonest conversion,
+   with both its actions, in front of the user. This section is the full list
+   of running trials, read after that, so it is set as a ruled section on the
+   page ground rather than a second alarm: only the 2px Signal Red top rule
+   says a deadline lives here. It stands in for the 2px divider between the
+   split and the table (Dashboard.jsx), so it closes with one too. */
 .trial-banner {
   border-top: 2px solid var(--color-accent);
-  background: var(--color-accent-100);
-  padding: 28px 0;
-  margin-top: 56px;
+  border-bottom: 2px solid var(--color-divider);
+  padding: 28px 0 42px;
 }
 .trial-headline {
   font-family: var(--font-heading);
@@ -631,31 +645,28 @@ body { text-wrap: pretty; }
   font-size: 17px;
   line-height: 24px;
   margin: 0;
-  color: var(--color-accent-900);
 }
 .trial-list { list-style: none; margin: 20px 0 0; padding: 0; }
-/* --color-divider disappears against this banner's --color-accent-100 fill,
-   so the rule between trials is mixed against the banner's own ink instead. */
 .trial-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px 24px;
   align-items: center;
   padding: 16px 0;
-  border-top: 1px solid color-mix(in srgb, var(--color-accent-900) 22%, transparent);
+  border-top: 1px solid var(--color-divider);
 }
+.trial-row:last-child { border-bottom: 1px solid var(--color-divider); }
 .trial-row-name {
   font-family: var(--font-heading);
   font-weight: 800;
   font-size: 15px;
   margin: 0;
-  color: var(--color-accent-900);
 }
 .trial-row-detail {
   font-size: 13px;
   line-height: 18px;
   margin: 4px 0 0;
-  color: var(--color-accent-900);
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
 }
 /* Keep and cancel get the same style and the same width, so neither one looks
    like the default at the moment a trial is about to cost money. */
@@ -683,7 +694,7 @@ body { text-wrap: pretty; }
   margin: 0;
   font-size: 13px;
   line-height: 18px;
-  color: var(--color-accent-900);
+  color: var(--color-accent-700);
 }
 
 /* — the mono tile — */
@@ -1636,7 +1647,8 @@ body { text-wrap: pretty; }
   .coming-up { grid-template-columns: 58px minmax(0, 1fr) auto; }
 
   /* — trial banner — */
-  .trial-banner { padding: 20px; margin-top: 28px; }
+  /* The table section brings its own top rule at this width. */
+  .trial-banner { padding: 20px 0 28px; border-bottom: 0; }
   .trial-row { grid-template-columns: 1fr; gap: 10px; }
   .trial-row-actions { align-items: stretch; }
   .trial-row-actions .btn { width: 100%; min-height: 44px; }
@@ -1897,8 +1909,6 @@ body { text-wrap: pretty; }
      Dashboard.jsx, hidden here on desktop by simply not existing above) — */
   .mobile-action-bar {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px;
     position: fixed;
     left: 0;
     right: 0;
@@ -1909,7 +1919,7 @@ body { text-wrap: pretty; }
     border-top: 2px solid var(--color-divider);
   }
   .mobile-action-bar .btn { min-height: 48px; white-space: nowrap; }
-  .mobile-action-bar .btn-primary { justify-content: flex-start; }
+  .mobile-action-bar .btn-primary { justify-content: center; }
 
   /* Clears the fixed action bar the same way .page's own bottom padding
      does -- otherwise the bar permanently covers the footer link. */

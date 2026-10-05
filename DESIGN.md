@@ -86,6 +86,11 @@ components:
     padding: "6px 10px"
     height: "36px"
   segment-selected:
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.paper}"
+    rounded: "{rounded.none}"
+    padding: "7px 12px"
+  segment-view-selected:
     backgroundColor: "{colors.signal-red-deep}"
     textColor: "{colors.paper}"
     rounded: "{rounded.none}"
@@ -105,6 +110,11 @@ components:
     textColor: "{colors.signal-red-ink}"
     rounded: "{rounded.none}"
     padding: "28px 0"
+  trial-section:
+    backgroundColor: "transparent"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.none}"
+    padding: "28px 0 42px"
   dialog:
     backgroundColor: "{colors.paper-raised}"
     textColor: "{colors.ink}"
@@ -128,8 +138,10 @@ corners and generous vertical air between sections.
 The system is quiet until something matters. Neutral is the default state of
 every component. Red and the heavy 800 weight are spent only where money or an
 action is. The hero total is red because it is the reason you opened the page.
-The trial banner is red because a trial is about to cost money. A selected
-segment is red because it says which view you are reading. When red appears
+The trial section's top rule is red because a trial is about to cost money.
+The selected period is red because it says which view you are reading; a
+selected form option (plan type, export format, conflict mode) is only an
+answer, so it fills with Ink. When red appears
 anywhere else, the meaning gets diluted.
 
 Density is moderate and desktop-first. A 1240px column, 32px gutters, and
@@ -165,12 +177,12 @@ lightness scale, so the same step of any role matches in visual value.
   As text: the "next charge" and "trial converts" labels, the selected
   month's value and tick, field-error labels, and destructive actions (menu
   items, the delete trigger and destructive ghost buttons). As a fill under
-  paper text (`--color-accent-fill`): primary buttons, selected segments and
-  picker cells. In dark
+  paper text (`--color-accent-fill`): primary buttons, the selected period
+  (Monthly or Yearly) and picker cells. In dark
   mode the fill becomes `#ff563c` under dark text, and the text step becomes
   the reversed ramp's `#ffc4b8`.
 - **Signal Red Wash** (`signal-red-wash`): the fill for attention surfaces:
-  the server-error banner, the trial banner, row messages and the trial tag.
+  the server-error banner, row messages and the trial tag.
   Hover fills are never red; they are Ink at 7%.
 - **Signal Red Ink** (`signal-red-ink`): text set on Signal Red Wash.
 
@@ -260,7 +272,7 @@ width.
 The dashboard is a vertical statement: hero (total plus period controls) →
 next-charge strip (the soonest charge, plus the next trial conversion when
 that comes later, each with its keep or cancel action) → trend strip → four-up KPI band → a 7/5 split of categories and coming-up →
-trial banner → subscription table → add form → import/export. Major sections
+trial section → subscription table → add form → import/export. Major sections
 are separated by 2px rules and spacing on the 14px cadence: 14px inside rows,
 28px between sub-blocks, 42px around bands, 56px between major sections, and
 112px for empty-state air. The component spacing scale (4 / 8 / 12 / 16 / 24 /
@@ -274,7 +286,10 @@ At 760px and below:
   remain;
 - controls grow to at least 44px tall (48px for sheet actions);
 - every dialog becomes a full-width bottom sheet with a 2px Signal Red top
-  edge.
+  edge;
+- a fixed bar at the bottom holds one full-width "Add subscription" button and
+  nothing else, because whatever it holds covers the content scrolling
+  under it.
 
 Safe-area insets are respected at the bottom.
 
@@ -333,8 +348,10 @@ Heavy type with no softening. Neutral unless the button is the main action.
 
 ### Segmented control
 A row of square options joined by 1px Stroke separators inside a 1px Stroke
-frame. The selected option fills with Signal Red Deep and Paper text. Used for monthly or
-yearly view, plan type, export format and conflict mode.
+frame. The selected option fills with Ink and Paper text. Used for plan type,
+export format and conflict mode. The period selector (Monthly or Yearly,
+`.seg-view`) is the one exception: it fills with Signal Red Deep, because it
+names the view the page is showing.
 
 ### Tags
 Square, 12px text, 2px by 8px padding. **Trial** is Signal Red Wash with Signal
@@ -360,12 +377,19 @@ Ink at 68%) and a secondary "Log out" button. On mobile the email becomes a
 32px square avatar showing the initial.
 
 ### Attention banner
-The trial banner and the server-error banner share one form: Signal Red Wash
-fill, a 2px Signal Red top rule, a Title-weight headline in Signal Red Ink, and
-per-item rows divided by Signal Red Ink at 22%. Each row carries its own
-actions ("Convert to paid" and "Cancel before it charges"). Both are Secondary
-buttons at the same width, so neither looks like the default choice. Banners never
-blank the page, and nothing is ever a toast.
+The server-error banner: Signal Red Wash fill, a 2px Signal Red top rule, and
+a Title-weight headline in Signal Red Ink. Banners never blank the page, and
+nothing is ever a toast.
+
+### Trial section
+The full list of running trials, below the split. The next-charge strip under
+the hero already shows the soonest conversion with its actions, so this
+section is not a second alarm: it sits on the page ground with Ink text, and
+only its 2px Signal Red top rule marks the deadline. That rule takes the place
+of the 2px divider between the split and the table, and the section closes
+with a 2px Rule. Trials are 1px-ruled rows, each with its own actions
+("Convert to paid" and "Cancel before it charges"). Both are Secondary buttons
+at the same width, so neither looks like the default choice.
 
 ### Save notice
 A write that went through says so in one plain line next to where it

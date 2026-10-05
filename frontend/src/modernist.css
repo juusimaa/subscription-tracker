@@ -285,7 +285,7 @@ select.input {
   padding: 7px 12px; font-size: 13px; cursor: pointer;
 }
 .seg-opt + .seg-opt { border-left: 1px solid var(--color-stroke); }
-.seg-opt:has(input:checked) { background: var(--color-accent-fill); color: var(--color-bg); }
+.seg-opt:has(input:checked) { background: var(--color-text); color: var(--color-bg); }
 .seg-opt:not(:has(input:checked)):hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
 .seg-opt:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 

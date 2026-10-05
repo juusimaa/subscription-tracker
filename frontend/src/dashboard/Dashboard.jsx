@@ -29,7 +29,7 @@ import Sheet from "./Sheet";
 import SubscriptionTable from "./SubscriptionTable";
 import TrendStrip from "./TrendStrip";
 import TrialBanner from "./TrialBanner";
-import { accessEnded, buildGroups, endedGroupCount } from "./groups";
+import { accessEnded, buildGroups } from "./groups";
 
 function Dashboard({
   subscriptions,
@@ -125,9 +125,6 @@ function Dashboard({
     (s) => s.status === "active" && (!s.started_date || s.started_date <= todayISO()),
   );
   const trials = subscriptions.filter((s) => s.status === "trial");
-  // Same count SubscriptionTable computes for itself -- needed here too for
-  // the mobile fixed action bar's label, which sits outside that component.
-  const endedCount = endedGroupCount(buildGroups(subscriptions));
   const usedCategories = [...new Set(activeSubs.map((s) => s.category).filter(Boolean))];
 
   // --- by category ---
@@ -543,9 +540,9 @@ function Dashboard({
           />
         </section>
 
-        <hr className="rule" />
-
-        {trials.length > 0 && (
+        {/* The trial section's own Signal Red top rule takes the place of
+            this divider rather than stacking a second rule under it. */}
+        {trials.length > 0 ? (
           <TrialBanner
             trials={trials}
             year={year}
@@ -554,6 +551,8 @@ function Dashboard({
             onConvert={convertTrial}
             onCancel={setCancelTarget}
           />
+        ) : (
+          <hr className="rule" />
         )}
 
         <SubscriptionTable
@@ -604,16 +603,16 @@ function Dashboard({
 
       {/* Mobile only (hidden by the media query in dashboard.css): the
           add-section above is desktop's always-visible form, and this
-          fixed-position bar is what reaches it and the ended toggle
-          without scrolling back up to the table. Rendered unconditionally,
-          like the header's avatar square, rather than gated on isMobile --
-          CSS decides whether it's on screen, JS just supplies the handlers. */}
+          fixed-position bar is what reaches it without scrolling back up to
+          the table. It holds that one action and nothing else: every row of
+          it covers the trial and next-charge actions as they scroll past,
+          and the ended toggle already sits with the list it filters.
+          Rendered unconditionally, like the header's avatar square, rather
+          than gated on isMobile -- CSS decides whether it's on screen, JS
+          just supplies the handler. */}
       <div className="mobile-action-bar">
         <button type="button" className="btn btn-primary" onClick={focusAddForm}>
           Add subscription
-        </button>
-        <button type="button" className="btn btn-secondary" onClick={() => setShowEnded(!showEnded)}>
-          {showEnded ? "Hide ended" : `Show ended — ${endedCount}`}
         </button>
       </div>
 
