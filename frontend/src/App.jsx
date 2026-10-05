@@ -37,6 +37,7 @@ import Dashboard from "./dashboard/Dashboard";
 import Login from "./Login";
 import { MAX_YEAR, MIN_YEAR, ageInWords } from "./format";
 import { GitHub, TriangleAlert } from "./icons";
+import { useModal } from "./useModal";
 import "./modernist.css";
 import "./dashboard.css";
 
@@ -49,6 +50,25 @@ function initialPeriod() {
   const now = new Date();
   const year = Math.min(MAX_YEAR, Math.max(MIN_YEAR, now.getFullYear()));
   return { view: "monthly", year, month: year === now.getFullYear() ? now.getMonth() : 0 };
+}
+
+// The session-expired sign-in, as a dialog over the page it is protecting.
+function ReauthDialog({ email, onLogin, onClose }) {
+  const ref = useModal(onClose);
+  return (
+    <div className="dialog-backdrop confirm" onClick={onClose}>
+      <div
+        ref={ref}
+        className="dialog dialog-confirm"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Sign in again"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <Login onLogin={onLogin} email={email} compact />
+      </div>
+    </div>
+  );
 }
 
 function App() {
@@ -326,6 +346,10 @@ function App() {
         </div>
       )}
 
+      {/* The landmark is here rather than in Dashboard so it exists before
+          the first load has finished, and so the banner and session strip
+          above it stay outside it, next to the nav they qualify. */}
+      <main id="main">
       {data && (
         <Dashboard
           subscriptions={data.subscriptions}
@@ -339,6 +363,7 @@ function App() {
           staleId={staleId}
         />
       )}
+      </main>
 
       {accountOpen && data && (
         <AccountDialog
@@ -353,17 +378,7 @@ function App() {
       )}
 
       {reauthOpen && (
-        <div className="dialog-backdrop confirm" onClick={() => setReauthOpen(false)}>
-          <div
-            className="dialog dialog-confirm"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Sign in again"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <Login onLogin={handleReauth} email={email} compact />
-          </div>
-        </div>
+        <ReauthDialog email={email} onLogin={handleReauth} onClose={() => setReauthOpen(false)} />
       )}
 
       <footer className="app-footer">

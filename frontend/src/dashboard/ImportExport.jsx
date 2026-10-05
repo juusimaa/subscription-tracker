@@ -191,7 +191,7 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
   return (
     <section id="io" className="io-section" aria-label="Import and export">
       <div className="section-head">
-        <span className="eyebrow">Import &amp; export</span>
+        <h2 className="eyebrow">Import &amp; export</h2>
         <span className="hint">Maintenance — moving your list in and out in one go</span>
       </div>
 

@@ -19,7 +19,7 @@ function TrendStrip({ label, bars, onSelect }) {
   return (
     <section aria-label="Spending over time" className="trend">
       <div className="section-head">
-        <span className="eyebrow">{label}</span>
+        <h2 className="eyebrow">{label}</h2>
         {/* Desktop: a hint beside the eyebrow. Mobile drops the per-bar value
             label (no room for twelve of them at 4px gaps) and moves the
             selected one up here instead -- see the media query at the bottom
@@ -33,6 +33,10 @@ function TrendStrip({ label, bars, onSelect }) {
             key={bar.tick}
             type="button"
             title={`${bar.tick} · ${money(bar.value)}`}
+            // The bar's own content is only a figure, and only on the selected
+            // bar, so its name has to say which period it is and what it cost.
+            aria-label={`${bar.label ?? bar.tick}: ${money(bar.value)}`}
+            aria-pressed={bar.on}
             onClick={() => onSelect(bar)}
           >
             {/* Only the selected bar carries its figure; twelve numbers over

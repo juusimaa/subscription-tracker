@@ -6,6 +6,7 @@
 // popover, so the headline, KPIs, category bars and Coming up list can never
 // disagree about which period is on screen.
 
+import { useEffect, useRef } from "react";
 import { Calendar, ChevronLeft, ChevronRight } from "../icons";
 import { MAX_YEAR, MIN_YEAR, MONTHS, SHORT_MONTHS } from "../format";
 
@@ -17,6 +18,30 @@ function PeriodControls({ view, year, month, onChange, pickerOpen, setPickerOpen
   // disabled -- clamping silently would leave the arrow looking live.
   const atMin = monthly ? year === MIN_YEAR && month === 0 : year === MIN_YEAR;
   const atMax = monthly ? year === MAX_YEAR && month === 11 : year === MAX_YEAR;
+
+  // The popover closes the way popovers do: Escape (focus back on the label
+  // that opened it) or a press anywhere outside it. Picking a period closes
+  // it too, but that is changePeriod's job, in Dashboard.jsx.
+  const root = useRef(null);
+  const opener = useRef(null);
+  useEffect(() => {
+    if (!pickerOpen) return undefined;
+    function onKeyDown(event) {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      setPickerOpen(false);
+      opener.current?.focus();
+    }
+    function onPointerDown(event) {
+      if (!root.current?.contains(event.target)) setPickerOpen(false);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [pickerOpen, setPickerOpen]);
 
   function step(direction) {
     if (!monthly) {
@@ -34,7 +59,7 @@ function PeriodControls({ view, year, month, onChange, pickerOpen, setPickerOpen
   }
 
   return (
-    <div className="period">
+    <div className="period" ref={root}>
       <span className="field-label">View</span>
       <div className="period-controls">
         <div className="seg" role="group" aria-label="Spending period">
@@ -70,6 +95,8 @@ function PeriodControls({ view, year, month, onChange, pickerOpen, setPickerOpen
           <button
             type="button"
             className="stepper-label"
+            ref={opener}
+            aria-label={`Choose period, currently ${label}`}
             onClick={() => setPickerOpen(!pickerOpen)}
             aria-haspopup="dialog"
             aria-expanded={pickerOpen}

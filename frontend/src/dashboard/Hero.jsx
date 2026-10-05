@@ -2,6 +2,7 @@
 // page, with the period controls beside it.
 
 import { MONTHS, money } from "../format";
+import { Figure } from "./KpiBand";
 import PeriodControls from "./PeriodControls";
 
 function Hero({ view, year, month, total, activeCount, categoryCount, ...periodProps }) {
@@ -9,10 +10,10 @@ function Hero({ view, year, month, total, activeCount, categoryCount, ...periodP
   return (
     <section id="overview" className="hero">
       <div>
-        <span className="eyebrow">
+        <h1 className="eyebrow">
           {monthly ? "Monthly spend" : "Annual spend"} · {monthly ? `${MONTHS[month]} ${year}` : year}
-        </span>
-        <p className="hero-total">{money(total)}</p>
+        </h1>
+        <p className="hero-total"><Figure text={money(total)} /></p>
         <p className="hero-body">
           Across {activeCount} active subscription{activeCount === 1 ? "" : "s"} in {categoryCount}{" "}
           categor{categoryCount === 1 ? "y" : "ies"}.{" "}

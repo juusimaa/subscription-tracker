@@ -13,11 +13,12 @@
 // sorting all work on groups, so a group is never split up.
 
 import { Fragment, useEffect, useState } from "react";
-import { ApiError } from "../api";
+import { ApiError, describeWriteError } from "../api";
 import MonoTile from "../MonoTile";
 import Sheet from "./Sheet";
 import { ChevronRight, Search, TriangleAlert } from "../icons";
-import { SHORT_MONTHS, cycleSuffix, longDate, money, perMonth, todayISO } from "../format";
+import { SHORT_MONTHS, costProblem, cycleSuffix, longDate, money, parseAmount, perMonth, todayISO } from "../format";
+import { NAME_MAX } from "./AddForm";
 import { useIsMobile } from "../useMediaQuery";
 import { buildGroups, cancelledGroupCount, groupSince, lifetimePaid, runNumber } from "./groups";
 
@@ -265,20 +266,57 @@ function SubscriptionTable({
   const [openGroups, setOpenGroups] = useState({});
   const isMobile = useIsMobile();
 
+  // A failed archive or restore, said on the row it was for. Those two are
+  // the only writes this list starts without a dialog in between, so they
+  // are the only ones that need somewhere of their own to fail.
+  const [actionError, setActionError] = useState(null);
+
+  // The open menu behaves like one: focus moves to its first item, the arrow
+  // keys move between items, and Escape or Tab closes it -- Escape handing
+  // focus back to the "More" button that opened it.
   useEffect(() => {
-    if (menuOpenId == null) return;
+    if (menuOpenId == null) return undefined;
+    const trigger = document.querySelector(`[data-menu-trigger="${menuOpenId}"]`);
+    const items = () => [...document.querySelectorAll(".row-menu [role=menuitem]")];
+    items()[0]?.focus();
     function onKeyDown(event) {
-      if (event.key === "Escape") setMenuOpenId(null);
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMenuOpenId(null);
+        trigger?.focus();
+        return;
+      }
+      if (event.key === "Tab") {
+        setMenuOpenId(null);
+        return;
+      }
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      event.preventDefault();
+      const list = items();
+      const at = list.indexOf(document.activeElement);
+      const next = event.key === "ArrowDown" ? at + 1 : at - 1;
+      list[(next + list.length) % list.length]?.focus();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [menuOpenId]);
 
+  async function runRowAction(subscription, action) {
+    setActionError(null);
+    try {
+      await action(subscription);
+    } catch (err) {
+      // A 404 already turned the row into "removed on another device".
+      if (err instanceof ApiError && err.status === 404) return;
+      setActionError({ id: subscription.id, message: describeWriteError(err) });
+    }
+  }
+
   const actionHandlers = {
     cancel: onCancelPlan,
     reactivate: onReactivate,
-    archive: onArchive,
-    unarchive: onUnarchive,
+    archive: (subscription) => runRowAction(subscription, onArchive),
+    unarchive: (subscription) => runRowAction(subscription, onUnarchive),
     delete: onDelete,
   };
 
@@ -402,8 +440,9 @@ function SubscriptionTable({
       setRowError("A name is required. Nothing was saved.");
       return;
     }
-    if (!(Number(draft.cost) > 0)) {
-      setRowError("Cost must be greater than 0. Nothing was saved.");
+    const costError = costProblem(draft.cost);
+    if (costError) {
+      setRowError(`Cost: ${costError} Nothing was saved.`);
       return;
     }
     setBusy(true);
@@ -412,7 +451,7 @@ function SubscriptionTable({
         name: draft.name.trim(),
         category: draft.category || null,
         status: draft.status,
-        cost: Number(draft.cost),
+        cost: parseAmount(draft.cost),
         billing_cycle: draft.billing_cycle,
         // Cleared on purpose means "start unknown", which is a real state the
         // spend summary handles (it counts the plan as always having run), so
@@ -459,14 +498,22 @@ function SubscriptionTable({
     };
 
     const draftPerMonth =
-      draft && draft.status === "active" && Number(draft.cost) > 0
-        ? money(perMonth({ cost: draft.cost, billing_cycle: draft.billing_cycle }))
+      draft && draft.status === "active" && parseAmount(draft.cost) > 0
+        ? money(perMonth({ cost: parseAmount(draft.cost), billing_cycle: draft.billing_cycle }))
         : "—";
+
+    const mobileActionError = (id) =>
+      actionError?.id === id && (
+        <p role="alert" className="mobile-row-error">
+          <TriangleAlert size={16} />
+          <span>{actionError.message}</span>
+        </p>
+      );
 
     return (
       <section id="all" className="table-section">
         <div className="section-head">
-          <span className="eyebrow">All subscriptions — {listCount}</span>
+          <h2 className="eyebrow">All subscriptions — {listCount}</h2>
         </div>
 
         {searchBox}
@@ -563,6 +610,7 @@ function SubscriptionTable({
                 </span>
                 <ChevronRight size={16} />
               </button>
+              {mobileActionError(subscription.id)}
               {earlierCount > 0 && (
                 <button
                   type="button"
@@ -577,8 +625,8 @@ function SubscriptionTable({
               {open && (
                 <div className="mobile-earlier">
                   {group.earlier.map((run) => (
+                    <Fragment key={run.id}>
                     <button
-                      key={run.id}
                       type="button"
                       className={matchedEarlier.has(run.id) ? "mobile-row match" : "mobile-row"}
                       onClick={() => setDetailId(run.id)}
@@ -604,6 +652,8 @@ function SubscriptionTable({
                       </span>
                       <ChevronRight size={16} />
                     </button>
+                    {mobileActionError(run.id)}
+                    </Fragment>
                   ))}
                   <div className="mobile-lifetime">
                     <LifetimeLine group={group} prefix="Lifetime" />
@@ -684,6 +734,8 @@ function SubscriptionTable({
                 <input
                   className="input"
                   type="text"
+                  maxLength={NAME_MAX}
+                  autoComplete="off"
                   value={draft.name}
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                 />
@@ -694,6 +746,8 @@ function SubscriptionTable({
                   <input
                     className="input tnum"
                     type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
                     value={draft.cost}
                     onChange={(e) => setDraft({ ...draft, cost: e.target.value })}
                   />
@@ -828,8 +882,8 @@ function SubscriptionTable({
 
     if (subscription.id === editingId && draft && draft.id === editingId) {
       const draftPerMonth =
-        draft.status === "active" && Number(draft.cost) > 0
-          ? money(perMonth({ cost: draft.cost, billing_cycle: draft.billing_cycle }))
+        draft.status === "active" && parseAmount(draft.cost) > 0
+          ? money(perMonth({ cost: parseAmount(draft.cost), billing_cycle: draft.billing_cycle }))
           : "—";
       return (
         <Fragment key={subscription.id}>
@@ -842,6 +896,8 @@ function SubscriptionTable({
                 className="input"
                 type="text"
                 aria-label="Service"
+                maxLength={NAME_MAX}
+                autoComplete="off"
                 value={draft.name}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
               />
@@ -879,6 +935,8 @@ function SubscriptionTable({
               <input
                 className="input tnum"
                 type="text"
+                inputMode="decimal"
+                autoComplete="off"
                 aria-label="Cost"
                 value={draft.cost}
                 onChange={(e) => setDraft({ ...draft, cost: e.target.value })}
@@ -1023,6 +1081,7 @@ function SubscriptionTable({
           <button
             type="button"
             className="btn btn-ghost"
+            aria-label={`${primary.label} ${subscription.name}`}
             onClick={
               primary.key
                 ? () => actionHandlers[primary.key](subscription)
@@ -1031,7 +1090,7 @@ function SubscriptionTable({
           >
             {primary.label}
           </button>
-          {moreMenu(subscription, menuKeysFor(subscription), MENU_HINTS)}
+          {moreMenu(subscription, menuKeysFor(subscription), MENU_HINTS, `More actions for ${subscription.name}`)}
         </td>
       </tr>
     );
@@ -1057,13 +1116,15 @@ function SubscriptionTable({
   }
 
   // "More ▾" and the menu it opens, for a head row or an earlier run.
-  function moreMenu(subscription, keys, hints) {
+  function moreMenu(subscription, keys, hints, label) {
     const menuOpen = menuOpenId === subscription.id;
     return (
       <>
         <button
           type="button"
           className="btn btn-ghost"
+          aria-label={label}
+          data-menu-trigger={subscription.id}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           onClick={() => setMenuOpenId(menuOpen ? null : subscription.id)}
@@ -1071,7 +1132,7 @@ function SubscriptionTable({
           More ▾
         </button>
         {menuOpen && (
-          <div className="row-menu" role="menu">
+          <div className="row-menu" role="menu" aria-label={label}>
             {keys.map((key) => (
               <button
                 key={key}
@@ -1079,6 +1140,9 @@ function SubscriptionTable({
                 role="menuitem"
                 className={key === "delete" ? "row-menu-item destructive" : "row-menu-item"}
                 onClick={() => {
+                  // Focus goes back to "More" before the menu closes, so a
+                  // dialog this opens has it to return to afterwards.
+                  document.querySelector(`[data-menu-trigger="${subscription.id}"]`)?.focus();
                   setMenuOpenId(null);
                   actionHandlers[key](subscription);
                 }}
@@ -1093,6 +1157,21 @@ function SubscriptionTable({
     );
   }
 
+  // The row under a row whose archive or restore just failed.
+  function actionErrorRow(id) {
+    if (actionError?.id !== id) return null;
+    return (
+      <tr className="row-message row-error">
+        <td colSpan={8}>
+          <span role="alert" className="row-message-inner">
+            <TriangleAlert />
+            <span>{actionError.message}</span>
+          </span>
+        </td>
+      </tr>
+    );
+  }
+
   // An open group's earlier runs, newest first, closed by the lifetime row.
   // Each run shows the price and dates it had then; every earlier run is
   // cancelled, so its last date is when it stopped rather than a renewal.
@@ -1100,7 +1179,8 @@ function SubscriptionTable({
     return (
       <>
         {group.earlier.map((run) => (
-          <tr key={run.id} className={matchedEarlier.has(run.id) ? "row-earlier match" : "row-earlier"}>
+          <Fragment key={run.id}>
+          <tr className={matchedEarlier.has(run.id) ? "row-earlier match" : "row-earlier"}>
             <td>
               <span className="earlier-name">
                 <span className="name-stack">
@@ -1126,8 +1206,17 @@ function SubscriptionTable({
                 {run.paid_total == null ? "cancelled" : `cancelled · paid ${money(run.paid_total)}`}
               </span>
             </td>
-            <td className="row-actions">{moreMenu(run, earlierMenuKeys(run), EARLIER_HINTS)}</td>
+            <td className="row-actions">
+              {moreMenu(
+                run,
+                earlierMenuKeys(run),
+                EARLIER_HINTS,
+                `More actions for run ${runNumber(group, run)} of ${group.head.name}`,
+              )}
+            </td>
           </tr>
+          {actionErrorRow(run.id)}
+          </Fragment>
         ))}
         <tr className="row-lifetime">
           <td colSpan={8}>
@@ -1141,7 +1230,7 @@ function SubscriptionTable({
   return (
     <section id="all" className="table-section">
       <div className="section-head">
-        <span className="eyebrow">All subscriptions — {listCount}</span>
+        <h2 className="eyebrow">All subscriptions — {listCount}</h2>
         <span className="table-actions">
           {searchBox}
           {archivedCount > 0 && (
@@ -1200,6 +1289,7 @@ function SubscriptionTable({
           {visible.map((group) => (
             <Fragment key={group.key}>
               {headRows(group)}
+              {actionErrorRow(group.head.id)}
               {isOpen(group) && earlierRows(group)}
             </Fragment>
           ))}

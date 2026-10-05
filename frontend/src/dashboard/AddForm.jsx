@@ -10,7 +10,11 @@
 import { useState } from "react";
 import { ApiError } from "../api";
 import { TriangleAlert } from "../icons";
-import { todayISO } from "../format";
+import { costProblem, parseAmount, todayISO } from "../format";
+
+// The server's own limits (schemas.SubscriptionName), so a too-long name is
+// stopped at the keyboard rather than coming back as a 422.
+export const NAME_MAX = 100;
 
 const blank = {
   name: "",
@@ -80,7 +84,8 @@ function AddForm({
     event.preventDefault();
     const found = {};
     if (!form.name.trim()) found.name = "Required — pick a service or type a name.";
-    if (!(Number(form.cost) > 0)) found.cost = "Must be greater than 0.";
+    const costError = costProblem(form.cost);
+    if (costError) found.cost = costError;
     setErrors(found);
     setFormError(null);
     if (Object.keys(found).length > 0) return;
@@ -89,7 +94,7 @@ function AddForm({
     try {
       await onSubmit({
         name: form.name.trim(),
-        cost: Number(form.cost),
+        cost: parseAmount(form.cost),
         billing_cycle: form.billing_cycle,
         // Cleared means "not stated", which the API answers with today. Sent
         // as null rather than "": an empty string is a 422, not a default.
@@ -166,6 +171,8 @@ function AddForm({
             className="input"
             type="text"
             placeholder="Netflix, Spotify, …"
+            maxLength={NAME_MAX}
+            autoComplete="off"
             value={form.name}
             aria-invalid={errors.name ? "true" : undefined}
             onChange={set("name")}
@@ -186,10 +193,14 @@ function AddForm({
 
         <label className={field("cost")}>
           <span className="field-label">{labels.cost}</span>
+          {/* Text with a decimal keypad, not type="number": a number input
+              hands back "" for "9,99" in most browsers, which would read as
+              a missing cost to the one audience this app prices for. */}
           <input
             className="input tnum"
-            type="number"
-            step="0.01"
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
             placeholder="0.00"
             value={form.cost}
             aria-invalid={errors.cost ? "true" : undefined}

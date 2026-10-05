@@ -7,10 +7,14 @@
 // into bottom sheets without any component change. This one exists so these
 // three get the same treatment despite never being mounted on desktop.
 
+import { useModal } from "../useModal";
+
 function Sheet({ title, header, onClose, children, className = "" }) {
+  const ref = useModal(onClose);
   return (
     <div className="dialog-backdrop confirm" onClick={onClose}>
       <div
+        ref={ref}
         className={`dialog dialog-sheet ${className}`.trim()}
         role="dialog"
         aria-modal="true"

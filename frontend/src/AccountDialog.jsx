@@ -20,9 +20,18 @@
 import { useState } from "react";
 import { ApiError } from "./api";
 import { TriangleAlert } from "./icons";
+import { useModal } from "./useModal";
 
 function stop(event) {
   event.stopPropagation();
+}
+
+// The delete confirm opens over the account dialog, so it needs its own place
+// on the modal stack -- Escape closes it and leaves the account dialog open.
+// `onClose` is withheld while the delete is in flight.
+function DeletePanel({ onClose, children, ...props }) {
+  const ref = useModal(onClose);
+  return <div ref={ref} {...props}>{children}</div>;
 }
 
 function AccountDialog({
@@ -46,6 +55,7 @@ function AccountDialog({
   const [confirmText, setConfirmText] = useState("");
   const [deleteError, setDeleteError] = useState(null);
   const [deleteSaving, setDeleteSaving] = useState(false);
+  const ref = useModal(deleteSaving ? undefined : onClose);
 
   function closeDelete() {
     setDeleteOpen(false);
@@ -113,6 +123,7 @@ function AccountDialog({
   return (
     <div className="dialog-backdrop account-backdrop" onClick={onClose}>
       <div
+        ref={ref}
         className="dialog dialog-account"
         role="dialog"
         aria-modal="true"
@@ -219,7 +230,8 @@ function AccountDialog({
 
       {deleteOpen && (
         <div className="dialog-backdrop confirm account-backdrop" onClick={(e) => { stop(e); closeDelete(); }}>
-          <div
+          <DeletePanel
+            onClose={deleteSaving ? undefined : closeDelete}
             className="dialog dialog-confirm dialog-account-delete"
             role="dialog"
             aria-modal="true"
@@ -271,7 +283,7 @@ function AccountDialog({
                 Keep my account
               </button>
             </div>
-          </div>
+          </DeletePanel>
         </div>
       )}
     </div>

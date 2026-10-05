@@ -15,9 +15,44 @@
 // says must not happen.
 
 import { useState } from "react";
-import { ApiError } from "../api";
+import { describeWriteError } from "../api";
 import { TriangleAlert } from "../icons";
 import { money, perMonth } from "../format";
+import { useModal } from "../useModal";
+
+// schemas.CategoryBase: the server refuses anything longer.
+const CATEGORY_MAX = 50;
+
+// Its own component so it gets its own place on the modal stack: Escape here
+// closes this confirm and leaves the categories dialog open underneath.
+function ConfirmCategoryDelete({ category, onConfirm, onClose }) {
+  const ref = useModal(onClose);
+  return (
+    <div className="dialog-backdrop confirm" onClick={(e) => { e.stopPropagation(); onClose(); }}>
+      <div
+        ref={ref}
+        className="dialog dialog-confirm"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Delete the ${category.name} category?`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <p className="dialog-title">Delete the {category.name} category?</p>
+        <p className="dialog-body">
+          Nothing uses it, so no subscription changes. You can add it again later.
+        </p>
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-primary" onClick={onConfirm}>
+            Delete
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
+            Keep it
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDelete, onClose }) {
   const [renamingId, setRenamingId] = useState(null);
@@ -25,6 +60,10 @@ function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDel
   const [newName, setNewName] = useState("");
   const [error, setError] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  // One write at a time: a second tap on "Add category" while the first is
+  // still in flight would create the category twice.
+  const [busy, setBusy] = useState(false);
+  const ref = useModal(onClose);
 
   function usageOf(category) {
     const inCategory = subscriptions.filter(
@@ -49,23 +88,55 @@ function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDel
   }
 
   async function run(action) {
+    if (busy) return false;
     setError(null);
+    setBusy(true);
     try {
       await action();
       return true;
     } catch (err) {
-      setError(err instanceof ApiError ? `${err.message} (${err.status})` : err.message);
+      setError(describeWriteError(err));
       return false;
+    } finally {
+      setBusy(false);
     }
+  }
+
+  // The names are checked here first so the common mistakes read as this
+  // dialog's own copy. Case-insensitive, like usageOf above: "work" next to
+  // "Work" would split one category's subscriptions across two bars.
+  function nameProblem(name, exceptId) {
+    if (!name) return "A category needs a name.";
+    const clash = categories.find(
+      (c) => c.id !== exceptId && c.name.toLowerCase() === name.toLowerCase(),
+    );
+    return clash ? `There is already a category called ${clash.name}.` : null;
+  }
+
+  async function saveRename(category) {
+    const name = renameValue.trim();
+    if (name === category.name) { setRenamingId(null); return; }
+    const problem = nameProblem(name, category.id);
+    if (problem) { setError(problem); return; }
+    if (await run(() => onRename(category.id, name))) setRenamingId(null);
+  }
+
+  async function addCategory() {
+    const name = newName.trim();
+    const problem = nameProblem(name, null);
+    if (problem) { setError(problem); return; }
+    if (await run(() => onCreate(name))) setNewName("");
   }
 
   return (
     <div className="dialog-backdrop" onClick={onClose}>
       <div
+        ref={ref}
         className="dialog dialog-wide"
         role="dialog"
         aria-modal="true"
         aria-labelledby="categories-title"
+        aria-busy={busy || undefined}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="dialog-head">
@@ -80,23 +151,32 @@ function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDel
             const usage = usageOf(category);
             if (renamingId === category.id) {
               return (
-                <div className="cat-row-renaming" key={category.id}>
+                <form
+                  className="cat-row-renaming"
+                  key={category.id}
+                  onSubmit={(event) => { event.preventDefault(); saveRename(category); }}
+                >
                   <input
                     className="input"
                     type="text"
-                    aria-label="Category name"
+                    aria-label={`New name for ${category.name}`}
+                    maxLength={CATEGORY_MAX}
+                    autoComplete="off"
                     value={renameValue}
                     onChange={(event) => setRenameValue(event.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={async () => {
-                      if (await run(() => onRename(category.id, renameValue.trim()))) {
+                    // Escape backs out of the rename, not out of the whole
+                    // dialog -- the field is the thing being cancelled.
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        event.preventDefault();
                         setRenamingId(null);
                       }
                     }}
-                  >
+                    // Mounted mid-dialog, so useModal's open-time focus has
+                    // already happened; the field takes focus itself.
+                    autoFocus
+                  />
+                  <button type="submit" className="btn btn-primary" disabled={busy}>
                     Save
                   </button>
                   <button
@@ -106,7 +186,7 @@ function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDel
                   >
                     Cancel
                   </button>
-                </div>
+                </form>
               );
             }
             return (
@@ -118,14 +198,16 @@ function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDel
                   <button
                     type="button"
                     className="btn btn-ghost btn-small"
-                    onClick={() => { setRenamingId(category.id); setRenameValue(category.name); }}
+                    aria-label={`Rename ${category.name}`}
+                    onClick={() => { setRenamingId(category.id); setRenameValue(category.name); setError(null); }}
                   >
                     Rename
                   </button>
                   <button
                     type="button"
                     className="btn btn-ghost btn-small"
-                    disabled={usage.live > 0}
+                    disabled={usage.live > 0 || busy}
+                    aria-label={`Delete ${category.name}`}
                     title={
                       usage.live > 0
                         ? `${usage.live} subscription${usage.live === 1 ? "" : "s"} still use${usage.live === 1 ? "s" : ""} this category`
@@ -140,28 +222,26 @@ function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDel
             );
           })}
 
-          <div className="cat-new">
+          <form
+            className="cat-new"
+            onSubmit={(event) => { event.preventDefault(); addCategory(); }}
+          >
             <label className="field">
               <span className="field-label">New category</span>
               <input
                 className="input"
                 type="text"
                 placeholder="Transport, Education, …"
+                maxLength={CATEGORY_MAX}
+                autoComplete="off"
                 value={newName}
                 onChange={(event) => setNewName(event.target.value)}
               />
             </label>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={async () => {
-                if (!newName.trim()) return;
-                if (await run(() => onCreate(newName.trim()))) setNewName("");
-              }}
-            >
+            <button type="submit" className="btn btn-secondary" disabled={busy}>
               Add category
             </button>
-          </div>
+          </form>
 
           {error && (
             <p role="alert" className="dialog-error">
@@ -179,35 +259,15 @@ function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDel
       </div>
 
       {confirmDelete && (
-        <div className="dialog-backdrop confirm" onClick={(e) => { e.stopPropagation(); setConfirmDelete(null); }}>
-          <div
-            className="dialog dialog-confirm"
-            role="dialog"
-            aria-modal="true"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <p className="dialog-title">Delete the {confirmDelete.name} category?</p>
-            <p className="dialog-body">
-              Nothing uses it, so no subscription changes. You can add it again later.
-            </p>
-            <div className="dialog-actions">
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={async () => {
-                  const category = confirmDelete;
-                  setConfirmDelete(null);
-                  await run(() => onDelete(category.id));
-                }}
-              >
-                Delete
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={() => setConfirmDelete(null)}>
-                Keep it
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmCategoryDelete
+          category={confirmDelete}
+          onClose={() => setConfirmDelete(null)}
+          onConfirm={async () => {
+            const category = confirmDelete;
+            setConfirmDelete(null);
+            await run(() => onDelete(category.id));
+          }}
+        />
       )}
     </div>
   );
