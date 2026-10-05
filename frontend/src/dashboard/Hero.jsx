@@ -1,11 +1,12 @@
 // The headline: what the selected period costs, in the largest type on the
-// page, with the period controls beside it.
+// page, with the period controls beside it. Children (the next-charge strip)
+// span the full width under both, still above the fold.
 
 import { MONTHS, money } from "../format";
 import { Figure } from "./KpiBand";
 import PeriodControls from "./PeriodControls";
 
-function Hero({ view, year, month, total, activeCount, categoryCount, ...periodProps }) {
+function Hero({ view, year, month, total, activeCount, categoryCount, children, ...periodProps }) {
   const monthly = view === "monthly";
   return (
     <section id="overview" className="hero">
@@ -24,6 +25,7 @@ function Hero({ view, year, month, total, activeCount, categoryCount, ...periodP
         </p>
       </div>
       <PeriodControls view={view} year={year} month={month} {...periodProps} />
+      {children}
     </section>
   );
 }

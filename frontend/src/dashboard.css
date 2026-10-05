@@ -206,6 +206,56 @@ body { text-wrap: pretty; }
   color: color-mix(in srgb, var(--color-text) 78%, transparent);
 }
 
+/* — next charge — */
+
+/* A ruled list under the hero text: label, what and when, then the action.
+   Neutral like everything else at rest; the red label and the date are what
+   pull the eye. */
+.next-charge {
+  grid-column: 1 / -1;
+  margin: 0;
+  border-top: 1px solid var(--color-divider);
+}
+.next-charge-row {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 20px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+.next-charge-label {
+  margin: 0;
+  font-size: 13px;
+  line-height: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent-700);
+}
+.next-charge-what { margin: 0; font-size: 15px; line-height: 24px; }
+.next-charge-name,
+.next-charge-amount { font-family: var(--font-heading); font-weight: 800; }
+.next-charge-amount,
+.next-charge-when { font-feature-settings: 'tnum' 1; }
+.next-charge-amount,
+.next-charge-when {
+  margin-left: 8px;
+}
+.next-charge-when {
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.next-charge-actions { display: flex; gap: 12px; justify-content: flex-end; }
+.next-charge-error {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 0 12px;
+  align-items: center;
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-accent-900);
+}
+
 /* — period controls — */
 
 .period {
@@ -1464,6 +1514,12 @@ body { text-wrap: pretty; }
   .hero .eyebrow { margin: 0 0 16px; }
   .hero-total { font-size: clamp(44px, 14vw, 64px); }
   .hero-body { font-size: 14px; line-height: 22px; margin: 18px 0 0; }
+  .next-charge { margin: 28px 0 0; }
+  .next-charge-row { grid-template-columns: minmax(0, 1fr) auto; padding: 12px 0; }
+  .next-charge-label { grid-column: 1 / -1; }
+  .next-charge-when { display: block; margin-left: 0; font-size: 13px; line-height: 18px; }
+  .next-charge-actions { flex-direction: column; align-items: flex-end; gap: 0; }
+  .next-charge-actions .btn { min-height: 44px; }
   /* Desktop's align-items: flex-start (base rule) lets .period sit in the
      hero grid's auto-sized column without stretching to fill it. On mobile
      .hero is block, so .period is already full width -- but flex-start would
