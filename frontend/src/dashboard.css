@@ -1377,6 +1377,76 @@ body { text-wrap: pretty; }
    the full-page rhythm above it. */
 .dialog .login-form { margin-top: 20px; padding-top: 20px; }
 
+/* — how this list works —
+   Reference, not maintenance, so it sits straight under the list it
+   explains and before the add form. Folded it is one ruled line, like the
+   two sections after it. Open, each term is set the way the list sets it,
+   in a narrow column, with the explanation in body prose beside it. */
+
+.guide-section {
+  padding: 42px 0;
+  border-top: 2px solid var(--color-divider);
+  margin-top: 28px;
+}
+.guide-section + .add-section { margin-top: 0; }
+.guide-body { margin-top: 28px; }
+.guide-body:not([hidden]) {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+}
+.guide-terms { margin: 0; padding: 0 56px 0 0; }
+.guide-row {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 4px 20px;
+  align-items: baseline;
+  padding: 14px 0;
+  border-top: 1px solid var(--color-divider);
+}
+.guide-row:first-child { border-top: 0; padding-top: 0; }
+.guide-row dt { margin: 0; }
+.guide-row dd {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  max-width: 62ch;
+  color: color-mix(in srgb, var(--color-text) 78%, transparent);
+  text-wrap: pretty;
+}
+.guide-term {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 14px;
+}
+.guide-keys {
+  margin: 0;
+  padding: 0 0 0 56px;
+  border-left: 2px solid var(--color-divider);
+  align-self: start;
+}
+.guide-key {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 20px;
+  align-items: baseline;
+  padding: 14px 0;
+  border-top: 1px solid var(--color-divider);
+}
+.guide-key:first-child { border-top: 0; padding-top: 0; }
+.guide-key dt,
+.guide-key dd { margin: 0; font-size: 14px; line-height: 22px; }
+kbd {
+  display: inline-block;
+  min-width: 24px;
+  padding: 1px 6px;
+  border: 1px solid var(--color-stroke);
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+}
+
 /* — import & export (section 12) —
    The page foot. Deliberately the quietest thing on the page: no accent
    fills and no primary button outside the confirm dialog, because it is
@@ -1993,6 +2063,12 @@ body { text-wrap: pretty; }
   /* Clears the fixed action bar the same way .page's own bottom padding
      does -- otherwise the bar permanently covers the footer link. */
   .app-footer { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+
+  /* — how this list works: one column, the term over its explanation — */
+  .guide-section { padding: 28px 0; }
+  .guide-body:not([hidden]) { display: block; margin-top: 20px; }
+  .guide-terms { padding: 0; }
+  .guide-row { grid-template-columns: 1fr; }
 
   /* — import & export — */
   .io-section { padding: 28px 20px 32px; margin-top: 28px; }
