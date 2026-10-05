@@ -4,11 +4,11 @@
 //
 // Validation happens here first (non-empty name, cost greater than zero) so a
 // server rejection is the rare second line of defence. When one does come
-// back its message is rendered at the field that caused it, with the status
-// code in the copy, because that is what support triages from a screenshot.
+// back its message is rendered at the field that caused it, or on the form
+// line with what it means and what to do next (see describeWriteError).
 
 import { useEffect, useRef, useState } from "react";
-import { ApiError } from "../api";
+import { ApiError, describeWriteError } from "../api";
 import { TriangleAlert } from "../icons";
 import { MONTHS, costProblem, parseAmount, todayISO } from "../format";
 import { nextRenewalFrom } from "../renewals";
@@ -192,7 +192,7 @@ function AddForm({
         // what the server actually said instead of asserting a rule nobody
         // implemented.
         const unfielded = !err.fields.name && !err.fields.cost;
-        if (unfielded) setFormError(`${err.message} ${err.status} — nothing was saved.`);
+        if (unfielded) setFormError(describeWriteError(err));
       } else {
         setFormError(err.message);
       }

@@ -480,7 +480,7 @@ function SubscriptionTable({
     if (busy) return;
     // Checked here first so the common mistakes read as the design's own copy
     // rather than as Pydantic's. A server rejection is then the rare second
-    // line of defence, and its message is shown verbatim with the status.
+    // line of defence, and its message is shown verbatim with a next step.
     if (!draft.name.trim()) {
       setRowError("A name is required. Nothing was saved.");
       return;
@@ -508,11 +508,7 @@ function SubscriptionTable({
     } catch (err) {
       // Save with an error keeps the row open -- closing it would discard the
       // edit the user still has to fix.
-      const status = err instanceof ApiError ? err.status : null;
-      // The server's sentence, punctuated, then the code -- support triages
-      // from a screenshot, so the status has to be in the copy.
-      const said = err.message.replace(/[.\s]*$/, ".");
-      setRowError(status ? `${said} ${status} — the change wasn't saved.` : said);
+      setRowError(describeWriteError(err, "The change wasn't saved"));
     } finally {
       setBusy(false);
     }
