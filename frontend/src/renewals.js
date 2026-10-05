@@ -124,3 +124,21 @@ export function chargeCountInYear(subscriptions, year) {
   }
   return count;
 }
+
+/**
+ * The first renewal on or after `todayIso` of a plan that started on
+ * `startedIso` and bills every `billingCycle` -- what the add form suggests
+ * for "Next renewal" (issue #66). A start date in the future is its own first
+ * charge. Stepped from the start date every time, like the server, so a plan
+ * begun on the 31st comes back to the 31st after a short month.
+ */
+export function nextRenewalFrom(startedIso, billingCycle, todayIso) {
+  if (!startedIso || startedIso >= todayIso) return startedIso;
+  const started = parseISO(startedIso);
+  const today = parseISO(todayIso);
+  const step = CYCLE_MONTHS[billingCycle];
+  const elapsed = (today.y - started.y) * 12 + (today.m - started.m);
+  let n = Math.max(0, Math.floor(elapsed / step) * step);
+  while (rank(addMonths(started, n)) < rank(today)) n += step;
+  return toISOParts(addMonths(started, n));
+}

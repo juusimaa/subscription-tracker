@@ -10,13 +10,16 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../api";
 import { TriangleAlert } from "../icons";
-import { costProblem, parseAmount, todayISO } from "../format";
+import { MONTHS, costProblem, parseAmount, todayISO } from "../format";
+import { nextRenewalFrom } from "../renewals";
 
 // The server's own limits (schemas.SubscriptionName), so a too-long name is
 // stopped at the keyboard rather than coming back as a 422.
 export const NAME_MAX = 100;
 
-const blank = {
+// A function rather than a constant so a tab left open past midnight starts
+// its next subscription on the new day, not the one the page loaded on.
+const blank = () => ({
   name: "",
   cost: "",
   billing_cycle: "monthly",
@@ -26,12 +29,39 @@ const blank = {
   // years contributes nothing to the months before today until this is moved
   // back.
   started_date: todayISO(),
+  // Worked out from the start date and cycle until it is typed into (see
+  // withSuggestion), so it is never left on today for a plan someone has
+  // had for years (issue #66).
   next_renewal_date: todayISO(),
   category: "",
   // Form-local only: it picks which labels the fields below show and which
   // status the submit turns into, but is never itself sent to the API.
   is_trial: false,
-};
+  // Form-local too: true once the renewal date has been set by hand, after
+  // which nothing here overwrites it.
+  renewal_edited: false,
+});
+
+// The form with its renewal date brought up to date with the start date and
+// cycle, unless that date was typed in by hand. A paid plan gets the next
+// charge on or after today; a trial gets nothing, because how long a trial
+// lasts has nothing to do with the cycle it bills on afterwards, and a
+// guessed end date is exactly the wrong total this is here to prevent.
+function withSuggestion(form) {
+  if (form.renewal_edited) return form;
+  const suggested = form.is_trial
+    ? ""
+    : nextRenewalFrom(form.started_date, form.billing_cycle, todayISO()) || "";
+  return { ...form, next_renewal_date: suggested };
+}
+
+// "September 2024" for a start date in the past, null otherwise -- the month
+// the plan starts counting toward totals from.
+function countsFrom(startedIso) {
+  if (!startedIso || startedIso >= todayISO()) return null;
+  const [y, m] = startedIso.split("-");
+  return `${MONTHS[Number(m) - 1]} ${y}`;
+}
 
 const PLAN_LABELS = {
   paid: { cost: "Cost", started: "Started", renewal: "Next renewal", submit: "Add" },
@@ -56,7 +86,9 @@ function AddForm({
   // inline form does not.
   onSuccess,
 }) {
-  const [form, setForm] = useState(blank);
+  const [form, setFormRaw] = useState(() => withSuggestion(blank()));
+  const setForm = (next) =>
+    setFormRaw((current) => withSuggestion(typeof next === "function" ? next(current) : next));
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -83,6 +115,11 @@ function AddForm({
   }, [applied]);
 
   const set = (field) => (event) => setForm({ ...form, [field]: event.target.value });
+  // Any edit sticks, clearing included: a date input reports "" while a
+  // segment is being retyped, and refilling the suggestion at that moment
+  // would fight the keyboard. A cleared date is caught on submit instead.
+  const setRenewal = (event) =>
+    setForm({ ...form, next_renewal_date: event.target.value, renewal_edited: true });
 
   // A warning, never a refusal. Two Netflix accounts in one household are an
   // ordinary thing to track, so uniqueness is not a rule the API enforces and
@@ -98,6 +135,11 @@ function AddForm({
     if (!form.name.trim()) found.name = "Required — pick a service or type a name.";
     const costError = costProblem(form.cost);
     if (costError) found.cost = costError;
+    if (!form.next_renewal_date) {
+      found.next_renewal_date = form.is_trial
+        ? "Required — the day the trial ends."
+        : "Required — the date of the next charge.";
+    }
     setErrors(found);
     setFormError(null);
     if (Object.keys(found).length > 0) return;
@@ -124,11 +166,14 @@ function AddForm({
       // start the save can take seconds, and the next subscription typed in
       // the meantime is not this one's to clear. Adding two trials in a row is
       // a real sequence, so the plan-type choice always survives the reset.
+      // A renewal date that was only ever a suggestion is worked out again
+      // from whatever the start date and cycle are now.
+      const fresh = blank();
       setForm((current) =>
         Object.fromEntries(
           Object.entries(current).map(([key, value]) => [
             key,
-            key === "is_trial" || value !== submitted[key] ? value : blank[key],
+            key === "is_trial" || value !== submitted[key] ? value : fresh[key],
           ]),
         ),
       );
@@ -158,6 +203,7 @@ function AddForm({
 
   const field = (key) => (errors[key] ? "field invalid" : "field");
   const labels = form.is_trial ? PLAN_LABELS.trial : PLAN_LABELS.paid;
+  const startMonth = countsFrom(form.started_date);
 
   return (
     <form onSubmit={handleSubmit} noValidate>
@@ -256,16 +302,29 @@ function AddForm({
             value={form.started_date}
             onChange={set("started_date")}
           />
+          {/* Only for a date in the past: that is when it changes the
+              totals, and today's date needs no explaining. A trial counts
+              from when it converts, not from here, so it gets no hint. */}
+          {startMonth && !form.is_trial && (
+            <span className="field-hint">Counts from {startMonth}.</span>
+          )}
         </label>
 
-        <label className="field">
+        <label className={field("next_renewal_date")}>
           <span className="field-label">{labels.renewal}</span>
           <input
             className="input tnum"
             type="date"
             value={form.next_renewal_date}
-            onChange={set("next_renewal_date")}
+            aria-invalid={errors.next_renewal_date ? "true" : undefined}
+            onChange={setRenewal}
           />
+          {errors.next_renewal_date && (
+            <span role="alert" className="field-error">{errors.next_renewal_date}</span>
+          )}
+          {!errors.next_renewal_date && startMonth && !form.is_trial && !form.renewal_edited && (
+            <span className="field-hint">Worked out from Started and Cycle.</span>
+          )}
         </label>
 
         <label className="field">
