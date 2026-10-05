@@ -388,11 +388,11 @@ function Dashboard({
     // worth offering.
     const row = { ...subscription, ...payload, ...updated, status: "cancelled" };
     if (!accessEnded(row)) {
-      say(`${subscription.name} cancelled. It stays in the list until access ends ${longDate(row.next_renewal_date)}.`);
+      say(`${subscription.name} marked as cancelled. It stays in the list until access ends ${longDate(row.next_renewal_date)}.`);
       return;
     }
     say(
-      `${subscription.name} cancelled.`,
+      `${subscription.name} marked as cancelled.`,
       showEnded
         ? {}
         : { action: { label: "Show ended", run: () => { setShowEnded(true); setNotice(null); } } },
@@ -651,10 +651,6 @@ function Dashboard({
             )
           }
           onClose={() => setCancelTarget(null)}
-          destructive={{
-            label: "Delete permanently",
-            onClick: () => thenClose(() => remove(cancelTarget), () => setCancelTarget(null)),
-          }}
         />
       )}
 

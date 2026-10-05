@@ -84,7 +84,7 @@ function NextCharge({ subscriptions, onConvert, onCancel }) {
                 disabled={convertingId === s.id}
                 onClick={() => onCancel(s)}
               >
-                {isTrial ? "Cancel before it charges" : "Cancel"}
+                {isTrial ? "Cancel before it charges" : "Mark as cancelled"}
               </button>
             </div>
             {failure?.id === s.id && (

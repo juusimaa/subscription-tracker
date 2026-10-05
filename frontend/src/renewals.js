@@ -142,3 +142,23 @@ export function nextRenewalFrom(startedIso, billingCycle, todayIso) {
   while (rank(addMonths(started, n)) < rank(today)) n += step;
   return toISOParts(addMonths(started, n));
 }
+
+/**
+ * The day a plan cancelled on `cancelledIso` stops giving access -- the first
+ * charge after that day, which it no longer pays. Mirrors
+ * models.Subscription.next_renewal_date for a stopped plan, so the cancel
+ * dialog can say the date before the write rather than after it. Walks the
+ * schedule in both directions like renewals.occurrence_on_or_after, since a
+ * back-dated cancel lands before the anchor the API hands back.
+ */
+export function accessEndsAfter(anchorIso, billingCycle, cancelledIso) {
+  const anchor = parseISO(anchorIso);
+  const stopped = parseISO(cancelledIso);
+  const target = rank(stopped) + 1;
+  const step = CYCLE_MONTHS[billingCycle];
+  const elapsed = (stopped.y - anchor.y) * 12 + (stopped.m - anchor.m);
+  let n = Math.floor(elapsed / step) * step;
+  while (rank(addMonths(anchor, n)) < target) n += step;
+  while (rank(addMonths(anchor, n - step)) >= target) n -= step;
+  return toISOParts(addMonths(anchor, n));
+}
