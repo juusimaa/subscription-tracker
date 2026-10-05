@@ -18,6 +18,7 @@ test("published UI mock uses the app and updates sample figures", async ({ page 
   await expect(page.getByText("Annual spend · 2026")).toBeVisible();
   await page.getByRole("button", { name: "Monthly" }).click();
 
+  await page.getByRole("button", { name: "Add a subscription" }).click();
   const form = page.locator("#add");
   await form.getByRole("textbox", { name: "Service" }).fill("Test plan");
   await form.getByRole("textbox", { name: "Cost" }).fill("4.50");

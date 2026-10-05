@@ -7,6 +7,7 @@
 // answers into the figures the design asks for.
 
 import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { ApiError, describeWriteError } from "../api";
 import { MAX_YEAR, MIN_YEAR, MONTHS, SHORT_MONTHS, longDate, money, signed, toISO, todayISO } from "../format";
 import { chargeCountInYear, chargesInMonth } from "../renewals";
@@ -25,6 +26,7 @@ import KpiBand from "./KpiBand";
 import NextCharge from "./NextCharge";
 import ReactivateDialog from "./ReactivateDialog";
 import SaveNotice from "./SaveNotice";
+import SectionToggle from "./SectionToggle";
 import Sheet from "./Sheet";
 import SubscriptionTable from "./SubscriptionTable";
 import TrendStrip from "./TrendStrip";
@@ -64,6 +66,11 @@ function Dashboard({
   // populated view's fixed action bar and the empty state's "Add it
   // yourself" button -- one sheet, two openers, rather than two.
   const [addSheetOpen, setAddSheetOpen] = useState(false);
+  // Desktop's inline add form starts folded: the page is a statement first,
+  // and the list's own Add button and the n shortcut open it when it is
+  // wanted. Once open it stays open, so adding several in a row is not a
+  // click per subscription.
+  const [addOpen, setAddOpen] = useState(false);
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -453,6 +460,9 @@ function Dashboard({
 
   function focusAddForm() {
     if (isMobile) { setAddSheetOpen(true); return; }
+    // Rendered open before it is focused: a field under `hidden` takes no
+    // focus.
+    flushSync(() => setAddOpen(true));
     document.getElementById("add")?.scrollIntoView({ behavior: "smooth", block: "center" });
     document.querySelector("#add input")?.focus();
   }
@@ -579,20 +589,29 @@ function Dashboard({
           onRefreshStale={actions.refresh}
         />
 
-        <section id="add" aria-label="Add a subscription" className="add-section">
-          <h2 className="eyebrow" style={{ margin: "0 0 28px" }}>Add a subscription</h2>
-          <AddForm
-            categories={categories}
-            existing={subscriptions}
-            onSubmit={(payload) => handleCreate(payload, "add")}
-            onOpenExisting={openExisting}
-            prefill={prefill}
+        <section id="add" aria-label="Add a subscription" className={addOpen ? "add-section" : "add-section folded"}>
+          <SectionToggle
+            title="Add a subscription"
+            open={addOpen}
+            onToggle={() => setAddOpen((open) => !open)}
+            controls="add-body"
           />
+          <div id="add-body" className="section-body" hidden={!addOpen}>
+            <AddForm
+              categories={categories}
+              existing={subscriptions}
+              onSubmit={(payload) => handleCreate(payload, "add")}
+              onOpenExisting={openExisting}
+              prefill={prefill}
+            />
+          </div>
+          {/* Outside the fold, so "added" still shows if it was closed
+              while the save was in flight. */}
           <SaveNotice notice={notice?.where === "add" ? notice : null} />
         </section>
 
-        {/* Last on the page and quiet, because it is maintenance rather than
-            anything to do with what the subscriptions cost. */}
+        {/* Last on the page, quiet and folded, because it is maintenance
+            rather than anything to do with what the subscriptions cost. */}
         <ImportExport
           subscriptions={subscriptions}
           categories={categories}

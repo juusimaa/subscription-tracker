@@ -11,10 +11,13 @@ test.beforeEach(async ({ page }) => openDashboard(page));
 // part of the accessible name: match on how the name starts.
 const field = (form, label) => form.getByLabel(new RegExp(`^${label}`));
 
-// The same AddForm either way: inline under the table on desktop, in the add
-// sheet on mobile.
+// The same AddForm either way: inline under the table on desktop (folded
+// until its heading is clicked), in the add sheet on mobile.
 async function openForm(page, isMobile) {
-  if (!isMobile) return page.locator("#add form");
+  if (!isMobile) {
+    await page.getByRole("button", { name: "Add a subscription" }).click();
+    return page.locator("#add form");
+  }
   await page.getByRole("button", { name: "Add subscription" }).click();
   return page.getByRole("dialog", { name: "Add a subscription" }).locator("form");
 }
@@ -27,6 +30,7 @@ test("next renewal follows the start date and cycle until it is edited", async (
   await expect(started).toHaveValue("2026-09-15");
   await expect(renewal).toHaveValue("2026-09-15");
   await expect(form.getByText("Counts from")).toHaveCount(0);
+  await expect(form.getByText("The first charge, on the day it starts.")).toBeVisible();
 
   await started.fill("2024-03-20");
   await expect(renewal).toHaveValue("2026-09-20");

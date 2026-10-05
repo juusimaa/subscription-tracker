@@ -204,6 +204,16 @@ function AddForm({
   const field = (key) => (errors[key] ? "field invalid" : "field");
   const labels = form.is_trial ? PLAN_LABELS.trial : PLAN_LABELS.paid;
   const startMonth = countsFrom(form.started_date);
+  // Only while the date is still the suggestion. A plan started today
+  // charges today, which looks like a mistake unless it says so.
+  const suggested = !form.is_trial && !form.renewal_edited && form.next_renewal_date;
+  const renewalHint = !suggested
+    ? null
+    : form.next_renewal_date === form.started_date
+      ? "The first charge, on the day it starts."
+      : startMonth
+        ? "Worked out from Started and Cycle."
+        : null;
 
   return (
     <form onSubmit={handleSubmit} noValidate>
@@ -322,8 +332,8 @@ function AddForm({
           {errors.next_renewal_date && (
             <span role="alert" className="field-error">{errors.next_renewal_date}</span>
           )}
-          {!errors.next_renewal_date && startMonth && !form.is_trial && !form.renewal_edited && (
-            <span className="field-hint">Worked out from Started and Cycle.</span>
+          {!errors.next_renewal_date && renewalHint && (
+            <span className="field-hint">{renewalHint}</span>
           )}
         </label>
 

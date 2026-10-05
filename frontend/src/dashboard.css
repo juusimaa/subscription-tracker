@@ -119,6 +119,35 @@ body { text-wrap: pretty; }
   color: color-mix(in srgb, var(--color-text) 68%, transparent);
 }
 
+/* — folding sections —
+   The button is the heading's whole text, so it keeps the eyebrow's type
+   and only adds the chevron and a target tall enough to tap. The negative
+   margins give back the height it adds, so a folded section's rhythm is
+   the eyebrow's own. */
+.section-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin: -15px 0 -15px -4px;
+  padding: 0 8px 0 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.section-toggle svg { flex: 0 0 auto; transition: transform 0.15s ease; }
+.section-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+.section-toggle:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+/* Both bodies set their own display, which would otherwise beat [hidden]. */
+.section-body[hidden],
+.io-cols[hidden] { display: none; }
+.folded .section-head { margin-bottom: 0; }
+#add-body { margin-top: 28px; }
+
 /* — page-level error surfaces —
    Transport and auth problems live at the top of the page; field problems
    live at the field. Nothing is ever a toast. */
@@ -990,6 +1019,9 @@ body { text-wrap: pretty; }
   border-top: 2px solid var(--color-divider);
   margin-top: 28px;
 }
+/* Folded, the next section's rule follows close behind instead of a full
+   section's worth of space. */
+.add-section.folded { padding-bottom: 42px; }
 .plan-type-field { margin: 0 0 24px; }
 .plan-type-hint {
   font-size: 13px;
