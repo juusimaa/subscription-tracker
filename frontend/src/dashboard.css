@@ -648,7 +648,14 @@ body { text-wrap: pretty; }
   align-items: stretch;
   gap: 8px;
 }
-.trial-review { margin-top: 20px; }
+/* A standalone action, not an inline row control, so it gets a real target
+   instead of the ghost button's minimal padding. The negative margin keeps its
+   text on the banner's left edge. */
+.trial-review {
+  margin-top: 20px;
+  margin-inline-start: calc(-1 * var(--space-3));
+  padding-inline: var(--space-3);
+}
 /* A failed conversion, said on the trial it was for, under both columns. */
 .trial-row-error {
   grid-column: 1 / -1;
@@ -1614,7 +1621,7 @@ body { text-wrap: pretty; }
   .trial-row { grid-template-columns: 1fr; gap: 10px; }
   .trial-row-actions { align-items: stretch; }
   .trial-row-actions .btn { width: 100%; min-height: 44px; }
-  .trial-review { width: 100%; min-height: 48px; }
+  .trial-review { width: 100%; min-height: 48px; margin-inline-start: 0; }
 
   /* — subscription list (SubscriptionTable.jsx's mobile branch) —
      The desktop table markup never mounts at this width, so there's no
