@@ -18,7 +18,7 @@
 //   copy.
 
 import { useState } from "react";
-import { ApiError } from "./api";
+import { describeWriteError } from "./api";
 import { TriangleAlert } from "./icons";
 import { useModal } from "./useModal";
 
@@ -96,7 +96,7 @@ function AccountDialog({
       setRepeatPassword("");
     } catch (err) {
       setPwDone(false);
-      setPwError(err instanceof ApiError ? `${err.message} (${err.status})` : err.message);
+      setPwError(describeWriteError(err, "Nothing was changed"));
     } finally {
       setPwSaving(false);
     }
@@ -114,7 +114,7 @@ function AccountDialog({
       // No further state to reset: onDeleteAccount succeeding means the App
       // shell is about to unmount this dialog by logging the user out.
     } catch (err) {
-      setDeleteError(err instanceof ApiError ? `${err.message} (${err.status})` : err.message);
+      setDeleteError(describeWriteError(err, "Nothing was changed"));
     } finally {
       setDeleteSaving(false);
     }

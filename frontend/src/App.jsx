@@ -320,9 +320,7 @@ function App() {
             <div>
               <p className="server-banner-title">Couldn&apos;t load your subscriptions</p>
               <p className="server-banner-detail">
-                {loadError.status
-                  ? `${loadError.status} — the server didn't respond.`
-                  : "The server could not be reached."}{" "}
+                {loadError.message.replace(/[.\s]*$/, ".")}{" "}
                 {data
                   ? `Figures below were last updated ${ageInWords(loadedAt)}.`
                   : "Nothing has loaded yet."}

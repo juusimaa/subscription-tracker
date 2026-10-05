@@ -13,7 +13,7 @@
 // than guess at it.
 
 import { useRef, useState } from "react";
-import { ApiError } from "../api";
+import { ApiError, describeWriteError } from "../api";
 import { BackupFileError, diffBackup, exportFilename, parseBackup } from "../backup";
 import { TriangleAlert } from "../icons";
 import ImportSummary from "./ImportSummary";
@@ -60,7 +60,7 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
     } catch (err) {
       setError(
         err instanceof ApiError
-          ? `${err.message} ${err.status} — nothing was exported.`
+          ? describeWriteError(err, "Nothing was exported")
           : "The export could not be built.",
       );
     }
@@ -83,11 +83,7 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
       });
     } catch (err) {
       if (!(err instanceof BackupFileError)) throw err;
-      // No status code in the copy: nothing was sent, so there is no code to
-      // report. The design's 422 wording assumes the server did the checking;
-      // claiming one the server never returned would be a lie in the one
-      // message the user is meant to act on. A rejection from the write
-      // itself does carry its real code -- see the dialog.
+      // Nothing was sent, so the file's own problem is the whole message.
       setError(`${err.message} Nothing was imported.`);
       setCandidate(null);
     }
@@ -120,7 +116,7 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
     } catch (err) {
       setWriteError(
         err instanceof ApiError
-          ? `${err.message} ${err.status} — nothing was imported.`
+          ? describeWriteError(err, "Nothing was imported")
           : "The import could not be sent. Nothing was imported.",
       );
     } finally {

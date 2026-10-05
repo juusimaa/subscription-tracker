@@ -35,9 +35,10 @@ export const onAuthExpired = (handler) => {
 };
 
 // Errors carry the status code and, where FastAPI sent one, a per-field map.
-// Both matter to the UI rather than to the log: the design renders validation
-// errors at the field that caused them and prints the status in the copy, so
-// "the change wasn't saved" can say which code it was.
+// The UI renders validation errors at the field that caused them, and uses
+// the status to choose what to tell the user to do next. The code itself never
+// goes in the copy: "500" means nothing to the person reading it, and the
+// plain cause and next step are the parts they can act on.
 export class ApiError extends Error {
   constructor(message, status, fields = {}) {
     super(message);
@@ -91,7 +92,7 @@ async function send(path, options = {}) {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new ApiError(
-      formatError(body.detail) || `Request failed: ${res.status}`,
+      formatError(body.detail) || plainCause(res.status),
       res.status,
       fieldErrors(body.detail),
     );
@@ -116,6 +117,27 @@ function formatError(detail) {
   return null;
 }
 
+// What to say when the server gave no reason of its own -- a crash returns
+// "Internal Server Error" as plain text, and a gateway in front of a cold app
+// returns an HTML page, so neither has a detail to show. Each line names the
+// cause in the user's terms; describeWriteError adds what to do about it.
+function plainCause(status) {
+  if (status === 403) return "You don't have permission to do that.";
+  if (status === 404) return "That item no longer exists.";
+  if (status === 409) return "That clashes with something already saved.";
+  if (status === 413) return "That is too large to send.";
+  if (status === 429) return "Too many requests in a short time.";
+  if (status >= 500) return "The server ran into a problem.";
+  return "The server turned the request down.";
+}
+
+// Whether waiting and trying the same thing again can work: the request never
+// arrived, the server failed on its own side, or it asked us to slow down.
+// Anything else is a refusal of this request, and repeating it gets the same
+// answer -- the server's own message says what to change instead.
+export const isTransient = (err) =>
+  err instanceof ApiError && (err.status === 0 || err.status === 429 || err.status >= 500);
+
 // The same list, keyed by field name so a message can be rendered at the
 // input that caused it. `loc` is a path like ["body", "cost"]; the last
 // element is the field, and anything without a body path (a whole-model
@@ -139,13 +161,26 @@ export async function login(email, password) {
   // /token follows the OAuth2 password flow, which specifies a form-encoded
   // body with fields literally named "username" and "password" -- not JSON.
   // Our email goes in the "username" field.
-  const res = await fetch(`${API_URL}/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ username: email, password }),
-  });
+  let res;
+  try {
+    res = await fetch(`${API_URL}/token`, {
+      method: "POST",
+      signal: timeoutSignal(),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ username: email, password }),
+    });
+  } catch {
+    // Without this the screen shows the browser's own "Failed to fetch".
+    throw new ApiError("The server could not be reached. Check your connection and try again.", 0);
+  }
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(formatError(body.detail) || "Login failed", res.status);
+  if (!res.ok) {
+    // Login has no "nothing was saved" to say, so the next step joins the
+    // message here rather than going through describeWriteError.
+    const said = formatError(body.detail) || plainCause(res.status);
+    const retry = res.status === 429 || res.status >= 500;
+    throw new ApiError(retry ? `${said} Try again in a moment.` : said, res.status);
+  }
   setToken(body.access_token);
   return body.access_token;
 }
@@ -275,14 +310,15 @@ export const importBackup = (backup, mode = "merge") =>
   request(`/import?mode=${mode}`, { method: "POST", body: JSON.stringify(backup) });
 
 // One sentence for a write that failed, for the place the write was asked
-// for: a dialog, a row, the trial banner. The server's own words first, then
-// the status (support triages from a screenshot), then what it means for the
-// user's data -- which for every write here is that nothing changed. A
-// request that never reached the server has no status to give, so it says
-// what to do instead.
-export function describeWriteError(err) {
+// for: a dialog, a row, the trial banner. The server's own words first (or a
+// plain cause when it gave none), then what it means for the user's data --
+// which for every write here is that nothing changed -- then what to do, when
+// there is something to do beyond reading the first sentence. `outcome` names
+// the write when "saved" is the wrong verb (an import, an export).
+export function describeWriteError(err, outcome = "Nothing was saved") {
   const said = (err?.message || "Something went wrong.").replace(/[.\s]*$/, ".");
   if (!(err instanceof ApiError)) return said;
-  if (err.status === 0) return `${said} Nothing was saved — check your connection and try again.`;
-  return `${said} ${err.status} — nothing was saved.`;
+  if (err.status === 0) return `${said} ${outcome} — check your connection and try again.`;
+  if (isTransient(err)) return `${said} ${outcome} — try again in a moment.`;
+  return `${said} ${outcome}.`;
 }
