@@ -366,6 +366,15 @@ actions ("Convert to paid" and "Cancel before it charges"). Both are Secondary
 buttons at the same width, so neither looks like the default choice. Banners never
 blank the page, and nothing is ever a toast.
 
+### Save notice
+A write that went through says so in one plain line next to where it
+happened: under the list heading, or under the desktop add form. It is 14px
+Ink at 78%, never Signal Red, and reads like "Netflix cancelled. Show
+cancelled". When a row has just left view, the line says where it went. It
+offers Undo only where the opposite write is exact (archive, restore to list,
+convert a trial). It stays until the next write replaces it, and it is a
+`role="status"` region that stays mounted even when empty. It is not a toast.
+
 ### Data table
 Uppercase 11px headers over a 2px rule, and 1px rules between rows. Each
 header is a sort button. The active one shows its arrow in full Ink, and the

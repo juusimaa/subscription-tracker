@@ -7,7 +7,7 @@
 // answers into the figures the design asks for.
 
 import { useState } from "react";
-import { ApiError } from "../api";
+import { ApiError, describeWriteError } from "../api";
 import { MAX_YEAR, MIN_YEAR, MONTHS, SHORT_MONTHS, longDate, money, signed, todayISO } from "../format";
 import { chargeCountInYear, chargesInMonth } from "../renewals";
 import { useIsMobile } from "../useMediaQuery";
@@ -23,6 +23,7 @@ import ImportExport from "./ImportExport";
 import KpiBand from "./KpiBand";
 import NextCharge from "./NextCharge";
 import ReactivateDialog from "./ReactivateDialog";
+import SaveNotice from "./SaveNotice";
 import Sheet from "./Sheet";
 import SubscriptionTable from "./SubscriptionTable";
 import TrendStrip from "./TrendStrip";
@@ -50,6 +51,10 @@ function Dashboard({
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [catPanelOpen, setCatPanelOpen] = useState(false);
   const [prefill, setPrefill] = useState(null);
+  // The last write that went through, said next to where it happened (see
+  // SaveNotice.jsx). `where` is "add" for the desktop add form, which stays
+  // on screen after a save, and "list" for everything else.
+  const [notice, setNotice] = useState(null);
   // Mobile-only: the add sheet has no desktop equivalent (desktop scrolls to
   // the always-visible inline form instead), and is shared between the
   // populated view's fixed action bar and the empty state's "Add it
@@ -238,9 +243,76 @@ function Dashboard({
   // that new, otherwise-blank form. The symptom is a form that looks like it
   // never cleared, now flagging the subscription it just created as a
   // duplicate of itself.
-  async function handleCreate(payload) {
+  async function handleCreate(payload, where = "list") {
     await actions.create(payload);
     setPrefill(null);
+    say(`${payload.name} added.`, { where });
+  }
+
+  // --- saying that a write went through ---
+
+  function say(message, { where = "list", action = null } = {}) {
+    setNotice({ seq: Date.now(), where, message, action });
+  }
+
+  // Undo is offered only where it is the exact opposite write: archive and
+  // unarchive, and converting a trial. A cancel has no undo -- the API does
+  // not let a cancelled run go back (reactivating starts a new run instead).
+  function undoable(write) {
+    return {
+      label: "Undo",
+      run: async () => {
+        try {
+          await write();
+        } catch (err) {
+          // A 404 already turned the row into "removed on another device".
+          if (err instanceof ApiError && err.status === 404) { setNotice(null); return; }
+          say(`Couldn't undo. ${describeWriteError(err)}`);
+        }
+      },
+    };
+  }
+
+  async function saveRow(id, patch) {
+    await actions.update(id, patch);
+    say(`${patch.name} saved.`);
+  }
+
+  async function archive(subscription) {
+    await actions.archive(subscription.id);
+    // Archived rows stay out of the list until "Show archived" is on, so the
+    // row has just vanished -- say where it went.
+    say(
+      showArchived ? `${subscription.name} archived.` : `${subscription.name} archived and hidden from the list.`,
+      {
+        action: undoable(async () => {
+          await actions.unarchive(subscription.id);
+          say(`${subscription.name} is back in the cancelled list.`);
+        }),
+      },
+    );
+  }
+
+  async function unarchive(subscription) {
+    await actions.unarchive(subscription.id);
+    say(`${subscription.name} restored to the list.`, {
+      action: undoable(async () => {
+        await actions.archive(subscription.id);
+        say(`${subscription.name} archived again.`);
+      }),
+    });
+  }
+
+  async function cancelPlan(subscription, payload) {
+    await actions.update(subscription.id, { status: "cancelled", ...payload });
+    // A cancelled row leaves the list unless "Show cancelled" is on, so the
+    // way back to it is the one action worth offering.
+    say(
+      `${subscription.name} cancelled.`,
+      showCancelled
+        ? {}
+        : { action: { label: "Show cancelled", run: () => { setShowCancelled(true); setNotice(null); } } },
+    );
   }
 
   // A dialog's write, then the dialog closes -- in that order, so a failure
@@ -250,13 +322,26 @@ function Dashboard({
   // the dialog, is where the explanation belongs.
   // Shared by the trial banner and the next-charge strip.
   function convertTrial(subscription) {
-    return thenClose(() => actions.update(subscription.id, {
-      status: "active",
-      // The conversion date becomes the first charge -- it's what the trial
-      // was going to do anyway.
-      started_date: subscription.next_renewal_date,
-      next_renewal_date: subscription.next_renewal_date,
-    }), () => {});
+    return thenClose(async () => {
+      await actions.update(subscription.id, {
+        status: "active",
+        // The conversion date becomes the first charge -- it's what the trial
+        // was going to do anyway.
+        started_date: subscription.next_renewal_date,
+        next_renewal_date: subscription.next_renewal_date,
+      });
+      say(`${subscription.name} converted to paid.`, {
+        // Back to the trial exactly as it was: its own start and end dates.
+        action: undoable(async () => {
+          await actions.update(subscription.id, {
+            status: "trial",
+            started_date: subscription.started_date,
+            next_renewal_date: subscription.next_renewal_date,
+          });
+          say(`${subscription.name} is a trial again.`);
+        }),
+      });
+    }, () => {});
   }
 
   async function thenClose(write, close) {
@@ -270,6 +355,11 @@ function Dashboard({
       throw err;
     }
     close();
+  }
+
+  async function remove(subscription) {
+    await actions.remove(subscription.id);
+    say(`${subscription.name} deleted.`);
   }
 
   function quickAdd(service) {
@@ -389,11 +479,12 @@ function Dashboard({
           setShowArchived={setShowArchived}
           editingId={editingId}
           setEditingId={setEditingId}
-          onSave={actions.update}
+          onSave={saveRow}
           onCancelPlan={setCancelTarget}
           onReactivate={setReactivationTarget}
-          onArchive={(subscription) => actions.archive(subscription.id)}
-          onUnarchive={(subscription) => actions.unarchive(subscription.id)}
+          onArchive={archive}
+          onUnarchive={unarchive}
+          notice={<SaveNotice notice={notice?.where === "list" ? notice : null} />}
           onDelete={setDeleteTarget}
           onAdd={focusAddForm}
           staleId={staleId}
@@ -405,10 +496,11 @@ function Dashboard({
           <AddForm
             categories={categories}
             existing={subscriptions}
-            onSubmit={handleCreate}
+            onSubmit={(payload) => handleCreate(payload, "add")}
             onOpenExisting={openExisting}
             prefill={prefill}
           />
+          <SaveNotice notice={notice?.where === "add" ? notice : null} />
         </section>
 
         {/* Last on the page and quiet, because it is maintenance rather than
@@ -465,14 +557,14 @@ function Dashboard({
           subscription={cancelTarget}
           onConfirm={(payload) =>
             thenClose(
-              () => actions.update(cancelTarget.id, { status: "cancelled", ...payload }),
+              () => cancelPlan(cancelTarget, payload),
               () => setCancelTarget(null),
             )
           }
           onClose={() => setCancelTarget(null)}
           destructive={{
             label: "Delete permanently",
-            onClick: () => thenClose(() => actions.remove(cancelTarget.id), () => setCancelTarget(null)),
+            onClick: () => thenClose(() => remove(cancelTarget), () => setCancelTarget(null)),
           }}
         />
       )}
@@ -481,7 +573,10 @@ function Dashboard({
         <ReactivateDialog
           subscription={reactivationTarget}
           onConfirm={(payload) =>
-            thenClose(() => actions.restore(reactivationTarget.id, payload), () => setReactivationTarget(null))
+            thenClose(async () => {
+              await actions.restore(reactivationTarget.id, payload);
+              say(`${reactivationTarget.name} reactivated.`);
+            }, () => setReactivationTarget(null))
           }
           onClose={() => setReactivationTarget(null)}
         />
@@ -492,7 +587,7 @@ function Dashboard({
           title={`Delete ${deleteTarget.name} permanently?`}
           body="This removes the subscription and its past charges for good. There is no undoing this from here."
           confirmLabel="Delete permanently"
-          onConfirm={() => thenClose(() => actions.remove(deleteTarget.id), () => setDeleteTarget(null))}
+          onConfirm={() => thenClose(() => remove(deleteTarget), () => setDeleteTarget(null))}
           onClose={() => setDeleteTarget(null)}
         />
       )}

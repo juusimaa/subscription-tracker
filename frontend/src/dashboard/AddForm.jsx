@@ -7,7 +7,7 @@
 // back its message is rendered at the field that caused it, with the status
 // code in the copy, because that is what support triages from a screenshot.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../api";
 import { TriangleAlert } from "../icons";
 import { costProblem, parseAmount, todayISO } from "../format";
@@ -69,6 +69,18 @@ function AddForm({
     setApplied(prefill);
     setForm({ ...form, ...prefill });
   }
+
+  // ...and since a tile saves nothing, focus lands on the price it guessed,
+  // selected, so the next keystroke corrects it and Enter adds it (issue
+  // #63). Inside the mobile add sheet, useModal does the same through the
+  // data-autofocus mark on the input, because the sheet focuses itself after
+  // this effect has run.
+  const costRef = useRef(null);
+  useEffect(() => {
+    if (!applied) return;
+    costRef.current?.focus({ preventScroll: true });
+    costRef.current?.select();
+  }, [applied]);
 
   const set = (field) => (event) => setForm({ ...form, [field]: event.target.value });
 
@@ -197,6 +209,8 @@ function AddForm({
               hands back "" for "9,99" in most browsers, which would read as
               a missing cost to the one audience this app prices for. */}
           <input
+            ref={costRef}
+            data-autofocus={prefill ? "" : undefined}
             className="input tnum"
             type="text"
             inputMode="decimal"
