@@ -245,6 +245,9 @@ function SubscriptionTable({
   onAdd,
   staleId,
   onRefreshStale,
+  // Dashboard's "that went through" line (SaveNotice.jsx), shown under the
+  // heading on both layouts: most writes move or remove a row in this list.
+  notice,
 }) {
   // The draft carries the id it belongs to, so a stale one can never be
   // rendered into a different row than the one it was opened from.
@@ -515,6 +518,8 @@ function SubscriptionTable({
         <div className="section-head">
           <h2 className="eyebrow">All subscriptions — {listCount}</h2>
         </div>
+
+        {notice}
 
         {searchBox}
 
@@ -981,8 +986,10 @@ function SubscriptionTable({
             >
               Save
             </button>
+            {/* "Discard", as in the mobile edit sheet -- never "Cancel", which
+                would sit right next to the "Cancel plan" action. */}
             <button type="button" className="btn btn-ghost btn-small" onClick={closeEditor}>
-              Cancel
+              Discard
             </button>
           </td>
         </tr>
@@ -1254,6 +1261,8 @@ function SubscriptionTable({
           </button>
         </span>
       </div>
+
+      {notice}
 
       <table className="table">
         <thead>

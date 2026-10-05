@@ -28,10 +28,21 @@ function EmptyState({ categories, onSubmit, prefill, onQuickAdd, actions, onOpen
       </section>
 
       <section aria-label="Common subscriptions" className="quick-add-section">
-        <h2 className="eyebrow">One tap to add</h2>
+        <h2 className="eyebrow">Start from a common one</h2>
+        {/* A tile only fills in the form, so it says so -- someone who
+            expected it to save would otherwise not know a step is left. */}
+        <p id="quick-add-note" className="quick-add-note">
+          A tile fills in the {isMobile ? "add form" : "form below"} with a typical price. Check the
+          price, then press Add.
+        </p>
         <div className="quick-add">
           {QUICK_ADD.map((service) => (
-            <button key={service.name} type="button" onClick={() => onQuickAdd(service)}>
+            <button
+              key={service.name}
+              type="button"
+              aria-describedby="quick-add-note"
+              onClick={() => onQuickAdd(service)}
+            >
               <MonoTile brand={service} />
               <span className="name">{service.name}</span>
               <span className="plus">+</span>
