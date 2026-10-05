@@ -274,6 +274,11 @@ body { text-wrap: pretty; }
   color: color-mix(in srgb, var(--color-text) 70%, transparent);
 }
 .next-charge-actions { display: flex; gap: 12px; justify-content: flex-end; }
+/* The strip is the hero's last band, and the 2px section rule after the hero
+   closes it. Its last row drops its own hairline, and the hero gives up its
+   bottom padding, so the two rules do not stack 42px apart. */
+.hero:has(> .next-charge) { padding-bottom: 0; }
+.next-charge-row:last-child { border-bottom: 0; padding-bottom: 14px; }
 .next-charge-error {
   grid-column: 1 / -1;
   display: grid;
@@ -590,16 +595,41 @@ body { text-wrap: pretty; }
   margin: 14px 0 28px;
 }
 
+.cat-idle {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 28px 0 0;
+  border-top: 1px solid var(--color-divider);
+  font-size: 13px;
+  line-height: 18px;
+}
+.cat-idle.first { padding-top: 0; border-top: 0; }
+.cat-idle-label {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.cat-idle-names {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 15px;
+  line-height: 24px;
+}
+
 .coming-up {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: baseline;
-  gap: 0 20px;
 }
+/* The column space is padding, not grid gap, so each row's hairline runs
+   unbroken under all three cells. */
+.coming-up > .date,
+.coming-up > .name { padding-right: 20px; }
 .coming-up > span {
   font-size: 15px;
   line-height: 24px;
-  padding: 14px 0;
+  padding-block: 14px;
   border-top: 1px solid var(--color-divider);
 }
 .coming-up > .first { border-top: 0; }
@@ -666,8 +696,12 @@ body { text-wrap: pretty; }
 .trial-banner {
   border-top: 2px solid var(--color-accent);
   border-bottom: 2px solid var(--color-divider);
-  padding: 28px 0 42px;
+  padding: 28px 0 0;
 }
+/* The headline and the way to the full list share one line, like every
+   other section head, so the section ends on its last trial rather than on
+   a link left on its own. */
+.trial-head { align-items: baseline; margin-bottom: 20px; }
 .trial-headline {
   font-family: var(--font-heading);
   font-weight: 800;
@@ -675,7 +709,7 @@ body { text-wrap: pretty; }
   line-height: 24px;
   margin: 0;
 }
-.trial-list { list-style: none; margin: 20px 0 0; padding: 0; }
+.trial-list { list-style: none; margin: 0; padding: 0; }
 .trial-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -684,7 +718,6 @@ body { text-wrap: pretty; }
   padding: 16px 0;
   border-top: 1px solid var(--color-divider);
 }
-.trial-row:last-child { border-bottom: 1px solid var(--color-divider); }
 .trial-row-name {
   font-family: var(--font-heading);
   font-weight: 800;
@@ -705,12 +738,12 @@ body { text-wrap: pretty; }
   align-items: stretch;
   gap: 8px;
 }
-/* A standalone action, not an inline row control, so it gets a real target
-   instead of the ghost button's minimal padding. The negative margin keeps its
-   text on the banner's left edge. */
+/* A section-head action, like "Manage": a real target instead of the ghost
+   button's minimal padding, with the negative margin keeping its text on the
+   column's right edge. */
 .trial-review {
-  margin-top: 20px;
-  margin-inline-start: calc(-1 * var(--space-3));
+  flex: 0 0 auto;
+  margin-inline-end: calc(-1 * var(--space-3));
   padding-inline: var(--space-3);
 }
 /* A failed conversion, said on the trial it was for, under both columns. */
@@ -1676,15 +1709,19 @@ body { text-wrap: pretty; }
   }
   .split-right { padding: 28px 0 24px; border-top: 2px solid var(--color-divider); }
   .cat-track { height: 12px; }
-  .coming-up { grid-template-columns: 58px minmax(0, 1fr) auto; }
+  .coming-up { grid-template-columns: 70px minmax(0, 1fr) auto; }
+  .coming-up > .date,
+  .coming-up > .name { padding-right: 12px; }
+  .cat-idle { margin-bottom: 20px; }
 
   /* — trial banner — */
   /* The table section brings its own top rule at this width. */
-  .trial-banner { padding: 20px 0 28px; border-bottom: 0; }
+  .trial-banner { padding: 20px 0 14px; border-bottom: 0; }
+  .trial-head { flex-wrap: wrap; gap: 4px; }
   .trial-row { grid-template-columns: 1fr; gap: 10px; }
   .trial-row-actions { align-items: stretch; }
   .trial-row-actions .btn { width: 100%; min-height: 44px; }
-  .trial-review { width: 100%; min-height: 48px; margin-inline-start: 0; }
+  .trial-review { min-height: 44px; margin-inline: calc(-1 * var(--space-3)) 0; }
 
   /* — subscription list (SubscriptionTable.jsx's mobile branch) —
      The desktop table markup never mounts at this width, so there's no

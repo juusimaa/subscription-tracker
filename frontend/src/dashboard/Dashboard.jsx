@@ -173,24 +173,38 @@ function Dashboard({
       return {
         name,
         amount,
+        loaded: Boolean(summary),
         members: subscriptions
           .filter((s) => s.category === name && chargedIds.has(s.id))
           .map((s) => s.name),
       };
     })
-    .filter((row) => row.amount > 0.005)
     // Largest share first: a bar chart read top to bottom should be ordered
     // by the thing the bars are showing.
     .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name));
+
+  // Split the categories that billed from the ones that did not. A category
+  // that only holds a trial, a paused plan or a yearly plan renewing in
+  // another month still counts in the hero's "in N categories", so it is
+  // named under the bars rather than left out: the half stays honest, and
+  // the numbers on the page agree with each other.
+  const idleCategories = categoryRows
+    // Not until its figure has arrived, or every category would read as
+    // idle for the moment the page is loading.
+    .filter((row) => row.loaded && row.amount <= 0.005)
+    .filter((row) => subscriptions.some((s) => s.category === row.name && s.status !== "cancelled"))
+    .map((row) => row.name)
+    .sort((a, b) => a.localeCompare(b));
+  const billedRows = categoryRows.filter((row) => row.amount > 0.005);
 
   // Whatever the categories do not account for belongs to subscriptions with
   // no category at all -- there is no way to ask the API for those directly,
   // since an absent `category` filter means "all of them". The members are
   // the uncategorised plans the all-subscriptions breakdown says billed.
-  const uncategorised = total - categoryRows.reduce((sum, row) => sum + row.amount, 0);
+  const uncategorised = total - billedRows.reduce((sum, row) => sum + row.amount, 0);
   if (uncategorised > 0.005 && subscriptions.some((s) => !s.category)) {
     const chargedIds = spendByYear[year] ? chargedIn(spendByYear[year]) : new Set();
-    categoryRows.push({
+    billedRows.push({
       name: "Uncategorised",
       amount: uncategorised,
       members: subscriptions.filter((s) => !s.category && chargedIds.has(s.id)).map((s) => s.name),
@@ -540,7 +554,13 @@ function Dashboard({
         <KpiBand cells={kpis} />
 
         <section className="split">
-          <CategoryBars rows={categoryRows} total={total} onManage={() => setCatPanelOpen(true)} />
+          <CategoryBars
+            rows={billedRows}
+            idle={idleCategories}
+            periodLabel={monthly ? MONTHS[month] : String(year)}
+            total={total}
+            onManage={() => setCatPanelOpen(true)}
+          />
           <ComingUp
             kind={monthKind}
             monthLabel={`${MONTHS[month]} ${year}`}

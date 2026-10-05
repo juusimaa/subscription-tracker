@@ -10,7 +10,7 @@
 
 import { money } from "../format";
 
-function CategoryBars({ rows, total, onManage }) {
+function CategoryBars({ rows, idle = [], periodLabel, total, onManage }) {
   return (
     <div className="split-left">
       <div className="section-head">
@@ -20,7 +20,7 @@ function CategoryBars({ rows, total, onManage }) {
         </button>
       </div>
 
-      {rows.length === 0 && (
+      {rows.length === 0 && idle.length === 0 && (
         <p className="cat-members">Nothing charged in this period.</p>
       )}
 
@@ -42,6 +42,18 @@ function CategoryBars({ rows, total, onManage }) {
           </div>
         );
       })}
+
+      {/* Categories with a live plan that billed nothing in the period: a
+          trial, a paused plan, a yearly plan renewing in another month.
+          Named in one ruled line rather than as empty bars, so a bar always
+          means money and the list of names still squares with the hero's
+          category count. */}
+      {idle.length > 0 && (
+        <p className={rows.length > 0 ? "cat-idle" : "cat-idle first"}>
+          <span className="cat-idle-label">Nothing billed in {periodLabel}</span>
+          <span className="cat-idle-names">{idle.join(" · ")}</span>
+        </p>
+      )}
     </div>
   );
 }

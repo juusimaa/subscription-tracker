@@ -45,7 +45,12 @@ function TrialBanner({ trials, year, month, onReview, onConvert, onCancel }) {
 
   return (
     <section aria-label="Trials converting soon" className="trial-banner">
-      <p className="trial-headline">{headline}</p>
+      <div className="section-head trial-head">
+        <p className="trial-headline">{headline}</p>
+        <button type="button" className="btn btn-ghost trial-review" onClick={onReview}>
+          Review trials in the table
+        </button>
+      </div>
       <ul className="trial-list">
         {trials.map((trial) => (
           <li key={trial.id} className="trial-row" aria-busy={convertingId === trial.id || undefined}>
@@ -84,9 +89,6 @@ function TrialBanner({ trials, year, month, onReview, onConvert, onCancel }) {
           </li>
         ))}
       </ul>
-      <button type="button" className="btn btn-ghost trial-review" onClick={onReview}>
-        Review trials in the table
-      </button>
     </section>
   );
 }
