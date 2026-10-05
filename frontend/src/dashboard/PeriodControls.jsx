@@ -8,11 +8,14 @@
 
 import { useEffect, useRef } from "react";
 import { Calendar, ChevronLeft, ChevronRight } from "../icons";
-import { MAX_YEAR, MIN_YEAR, MONTHS, SHORT_MONTHS } from "../format";
+import { MAX_YEAR, MIN_YEAR, MONTHS, SHORT_MONTHS, todayISO } from "../format";
 
 function PeriodControls({ view, year, month, onChange, pickerOpen, setPickerOpen }) {
   const monthly = view === "monthly";
   const label = monthly ? `${MONTHS[month]} ${year}` : String(year);
+  // Today's month and year carry aria-current in the picker grid.
+  const [thisYear, thisMonthNumber] = todayISO().split("-").map(Number);
+  const thisMonth = thisMonthNumber - 1;
 
   // Stepping past a boundary is a no-op, and the button that would do it is
   // disabled -- clamping silently would leave the arrow looking live.
@@ -146,6 +149,7 @@ function PeriodControls({ view, year, month, onChange, pickerOpen, setPickerOpen
                     key={name}
                     type="button"
                     aria-pressed={index === month}
+                    aria-current={year === thisYear && index === thisMonth ? "date" : undefined}
                     onClick={() => onChange({ month: index })}
                   >
                     {name}
@@ -158,7 +162,12 @@ function PeriodControls({ view, year, month, onChange, pickerOpen, setPickerOpen
               <span className="field-label" style={{ marginBottom: 16 }}>Select year</span>
               <div className="picker-grid years">
                 {Array.from({ length: MAX_YEAR - MIN_YEAR + 1 }, (_, i) => MIN_YEAR + i).map((y) => (
-                  <button key={y} type="button" aria-pressed={y === year} onClick={() => onChange({ year: y })}>
+                  <button
+                    key={y}
+                    type="button"
+                    aria-pressed={y === year}
+                    aria-current={y === thisYear ? "date" : undefined}
+                    onClick={() => onChange({ year: y })}>
                     {y}
                   </button>
                 ))}

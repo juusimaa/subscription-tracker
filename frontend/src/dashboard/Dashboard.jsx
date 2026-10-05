@@ -578,7 +578,12 @@ function Dashboard({
             trials={trials}
             year={year}
             month={month}
-            onReview={() => setSort({ key: "status", dir: "asc" })}
+            onReview={() => {
+              // Sorted by status, trials come straight after the active
+              // plans. Go there, so the click visibly does something.
+              setSort({ key: "status", dir: "asc" });
+              document.getElementById("all")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
             onConvert={convertTrial}
             onCancel={setCancelTarget}
           />

@@ -115,7 +115,7 @@ body { text-wrap: pretty; }
 }
 .hint {
   font-size: 13px;
-  line-height: 14px;
+  line-height: 18px;
   color: color-mix(in srgb, var(--color-text) 68%, transparent);
 }
 
@@ -428,6 +428,12 @@ body { text-wrap: pretty; }
 }
 .picker-grid button:hover {
   background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+/* Today's month or year, marked the way the nav marks the current page, so
+   the way back to now is findable from any period. */
+.picker-grid button[aria-current] {
+  text-decoration: underline 2px;
+  text-underline-offset: 4px;
 }
 .picker-grid button[aria-pressed='true'],
 .picker-grid button[aria-pressed='true']:hover {
@@ -1765,7 +1771,10 @@ kbd {
     border-left: 1px solid var(--color-divider);
     border-bottom: 1px solid var(--color-divider);
   }
-  .kpi:nth-child(2n+1) { border-left: 0; }
+  /* The left column sits on the page edge and the right column on the
+     right edge, the same as the band's outer cells on desktop. */
+  .kpi:nth-child(2n+1) { border-left: 0; padding-left: 0; }
+  .kpi:nth-child(2n) { padding-right: 0; }
   .kpi:nth-child(n+3) { border-bottom: 0; }
   .kpi-figure { font-size: 26px; line-height: 32px; }
   .kpi-label { font-size: 11px; letter-spacing: 0.07em; }
@@ -2071,7 +2080,7 @@ kbd {
   .guide-row { grid-template-columns: 1fr; }
 
   /* — import & export — */
-  .io-section { padding: 28px 20px 32px; margin-top: 28px; }
+  .io-section { padding: 28px 0 32px; margin-top: 28px; }
   .io-cols { grid-template-columns: 1fr; }
   .io-export { padding: 0 0 24px; border-right: 0; border-bottom: 1px solid var(--color-divider); }
   .io-import { padding: 24px 0 0; }

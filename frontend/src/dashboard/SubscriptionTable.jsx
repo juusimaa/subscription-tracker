@@ -397,6 +397,11 @@ function SubscriptionTable({
     .sort((ga, gb) => {
       const a = ga.head;
       const b = gb.head;
+      // Ended plans go last whichever way the list is sorted: with Show
+      // ended on, their past renewal dates would otherwise put them first
+      // under the default sort, above every plan that still charges.
+      const ended = Number(accessEnded(a)) - Number(accessEnded(b));
+      if (ended) return ended;
       const direction = sort.dir === "desc" ? -1 : 1;
       const va = sortValue(a, sort.key);
       const vb = sortValue(b, sort.key);
@@ -588,10 +593,11 @@ function SubscriptionTable({
                 type="button"
                 className={on ? "sort-chip on" : "sort-chip"}
                 aria-pressed={on}
+                aria-label={on ? `${chip.label}, ${sort.dir === "asc" ? "ascending" : "descending"}` : undefined}
                 onClick={() => sortBy(chip.key)}
               >
                 {chip.label}
-                {on && <span>{sort.dir === "asc" ? " ↑" : " ↓"}</span>}
+                {on && <span aria-hidden="true">{sort.dir === "asc" ? " ↑" : " ↓"}</span>}
               </button>
             );
           })}
@@ -1331,7 +1337,8 @@ function SubscriptionTable({
                     }
                   >
                     <span>{column.label}</span>
-                    <span className="sort-arrow">{on ? (asc ? "↑" : "↓") : "↕"}</span>
+                    {/* aria-sort on the th says which way; the arrow is for the eye. */}
+                    <span className="sort-arrow" aria-hidden="true">{on ? (asc ? "↑" : "↓") : "↕"}</span>
                   </button>
                 </th>
               );

@@ -9,9 +9,10 @@
 //   ?view=yearly&year=2025            a year
 //   ?year=2026&month=3                a month (1-based, as people write it)
 //   ?sort=cost&dir=desc               the list's sort
-//   ?cancelled=1&archived=1           the list's two visibility toggles
-//                                     (cancelled=1 is Show ended, issue #53;
-//                                     the key is kept so old bookmarks work)
+//   ?ended=1&archived=1               the list's two visibility toggles,
+//                                     named after their buttons (an old
+//                                     bookmark's cancelled=1 still reads as
+//                                     Show ended, issue #53)
 //
 // Anything malformed is ignored rather than rejected, field by field.
 
@@ -57,7 +58,7 @@ export function readListView() {
     sort: SORT_KEYS.includes(key)
       ? { key, dir: p.get("dir") === "desc" ? "desc" : "asc" }
       : DEFAULT_SORT,
-    showEnded: p.get("cancelled") === "1",
+    showEnded: p.get("ended") === "1" || p.get("cancelled") === "1",
     showArchived: p.get("archived") === "1",
   };
 }
@@ -66,7 +67,7 @@ export function readListView() {
 // trail of history entries for Back to walk through one at a time.
 export function writeView({ period, sort, showEnded, showArchived }) {
   const p = params();
-  for (const key of ["view", "year", "month", "sort", "dir", "cancelled", "archived"]) p.delete(key);
+  for (const key of ["view", "year", "month", "sort", "dir", "ended", "cancelled", "archived"]) p.delete(key);
 
   const home = defaultPeriod();
   const monthly = period.view === "monthly";
@@ -81,7 +82,7 @@ export function writeView({ period, sort, showEnded, showArchived }) {
     p.set("sort", sort.key);
     if (sort.dir === "desc") p.set("dir", "desc");
   }
-  if (showEnded) p.set("cancelled", "1");
+  if (showEnded) p.set("ended", "1");
   if (showArchived) p.set("archived", "1");
 
   const query = p.toString();

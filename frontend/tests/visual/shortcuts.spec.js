@@ -45,7 +45,7 @@ test("changing the view writes it to the URL, and the default stays a plain URL"
   await expect(page).toHaveURL(/\/$/);
   await page.getByRole("button", { name: /Show ended/ }).click();
   await page.getByRole("columnheader", { name: /^Name/ }).getByRole("button").click();
-  await expect(page).toHaveURL(/\?sort=name&cancelled=1$/);
+  await expect(page).toHaveURL(/\?sort=name&ended=1$/);
 });
 
 test("/ focuses search and n goes to the add form", async ({ page }) => {
