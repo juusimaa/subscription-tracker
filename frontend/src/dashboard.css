@@ -1920,11 +1920,6 @@ body { text-wrap: pretty; }
   }
   .mobile-action-bar .btn { min-height: 48px; white-space: nowrap; }
   .mobile-action-bar .btn-primary { justify-content: center; }
-  /* Whatever the browser scrolls into view for you -- a control reached by
-     Tab or by a screen reader, or "Review trials in the table" landing on
-     the list -- stops above the bar rather than underneath it. 72px is the
-     bar itself: 48px button, 12px padding either side. */
-  html { scroll-padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
 
   /* Clears the fixed action bar the same way .page's own bottom padding
      does -- otherwise the bar permanently covers the footer link. */

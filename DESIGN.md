@@ -289,7 +289,7 @@ At 760px and below:
   edge;
 - a fixed bar at the bottom holds one full-width "Add subscription" button and
   nothing else, because whatever it holds covers the content scrolling
-  under it. `scroll-padding-bottom` keeps a focused control clear of it.
+  under it.
 
 Safe-area insets are respected at the bottom.
 
