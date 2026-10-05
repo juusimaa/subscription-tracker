@@ -149,8 +149,15 @@ function Dashboard({
   // that (see _charge_dates), so a plan cancelled long ago can still be
   // named here if a past period's figure includes it, without a plan that
   // simply shares the category but didn't bill this month tagging along.
-  const onTheBooks = subscriptions.filter((s) => s.status !== "cancelled");
-  const categoryRows = [...new Set(onTheBooks.map((s) => s.category).filter(Boolean))]
+  // Cancelled plans are candidates like any other (issue #54): a category
+  // whose only plan was cancelled in June still billed January to June.
+  const chargedIn = (summary) =>
+    new Set(
+      monthly
+        ? (summary.months.find((row) => row.month === month + 1)?.subscription_ids ?? [])
+        : summary.months.flatMap((row) => row.subscription_ids),
+    );
+  const categoryRows = [...new Set(subscriptions.map((s) => s.category).filter(Boolean))]
     .map((name) => {
       const summary = spendByCategory[`${year}|${name}`];
       const amount = summary
@@ -158,21 +165,10 @@ function Dashboard({
           ? (summary.months.find((row) => row.month === month + 1)?.total ?? 0)
           : summary.total
         : 0;
-      const chargedIds = summary
-        ? new Set(
-            monthly
-              ? (summary.months.find((row) => row.month === month + 1)?.subscription_ids ?? [])
-              : summary.months.flatMap((row) => row.subscription_ids),
-          )
-        : new Set();
+      const chargedIds = summary ? chargedIn(summary) : new Set();
       return {
         name,
         amount,
-        // subscriptions, not onTheBooks: chargedIds already is the precise
-        // "did this one actually bill" answer, cancelled plans included, so
-        // narrowing the candidate list to non-cancelled first would just
-        // silently drop exactly the rows the comment above says to keep --
-        // a plan cancelled since can still be named for a period it billed.
         members: subscriptions
           .filter((s) => s.category === name && chargedIds.has(s.id))
           .map((s) => s.name),
@@ -185,13 +181,15 @@ function Dashboard({
 
   // Whatever the categories do not account for belongs to subscriptions with
   // no category at all -- there is no way to ask the API for those directly,
-  // since an absent `category` filter means "all of them".
+  // since an absent `category` filter means "all of them". The members are
+  // the uncategorised plans the all-subscriptions breakdown says billed.
   const uncategorised = total - categoryRows.reduce((sum, row) => sum + row.amount, 0);
-  if (uncategorised > 0.005 && onTheBooks.some((s) => !s.category)) {
+  if (uncategorised > 0.005 && subscriptions.some((s) => !s.category)) {
+    const chargedIds = spendByYear[year] ? chargedIn(spendByYear[year]) : new Set();
     categoryRows.push({
       name: "Uncategorised",
       amount: uncategorised,
-      members: onTheBooks.filter((s) => !s.category).map((s) => s.name),
+      members: subscriptions.filter((s) => !s.category && chargedIds.has(s.id)).map((s) => s.name),
     });
   }
 
