@@ -31,11 +31,11 @@ body { text-wrap: pretty; }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
   font-size: 13px;
   text-decoration: none;
 }
-.app-footer-link:hover { color: var(--color-accent); }
+.app-footer-link:hover { color: var(--color-accent-700); }
 
 /* Every figure on the page is tabular: columns of money that shift width as
    the digits change read as noise. */
@@ -60,10 +60,10 @@ body { text-wrap: pretty; }
 }
 .app-nav a { text-decoration: none; }
 .nav-link { font-size: 14px; color: var(--color-text); }
-.nav-link[aria-current] { color: var(--color-accent); }
+.nav-link[aria-current] { color: var(--color-accent-700); }
 .nav-email {
   font-size: 13px;
-  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
   font-feature-settings: 'tnum' 1;
 }
 .nav-account { display: inline-flex; align-items: center; gap: 10px; padding-inline: 0; }
@@ -117,7 +117,7 @@ body { text-wrap: pretty; }
 .hint {
   font-size: 13px;
   line-height: 14px;
-  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
 }
 
 /* — page-level error surfaces —
@@ -170,11 +170,11 @@ body { text-wrap: pretty; }
   border: 0;
   padding: 0;
   font: inherit;
-  color: var(--color-accent);
+  color: var(--color-accent-700);
   cursor: pointer;
   text-underline-offset: 3px;
 }
-.link-button:hover { color: var(--color-accent-700); }
+.link-button:hover { color: var(--color-accent-800); }
 
 /* — hero — */
 
@@ -229,14 +229,14 @@ body { text-wrap: pretty; }
   font-family: inherit;
   cursor: pointer;
 }
-.seg-opt + .seg-opt { border-left: 1px solid var(--color-divider); }
+.seg-opt + .seg-opt { border-left: 1px solid var(--color-stroke); }
 /* Re-asserted at a specificity that beats modernist's
    `.seg-opt:not(:has(input:checked)):hover`, which is written for the radio
    version of this control and would otherwise paint a hover tint over the
    selected option's accent fill. */
 .seg .seg-opt[aria-pressed='true'],
 .seg .seg-opt[aria-pressed='true']:hover {
-  background: var(--color-accent);
+  background: var(--color-accent-fill);
   color: var(--color-bg);
 }
 .seg .seg-opt[aria-pressed='false']:hover {
@@ -246,7 +246,7 @@ body { text-wrap: pretty; }
 .stepper {
   display: flex;
   align-items: stretch;
-  border: 1px solid var(--color-divider);
+  border: 1px solid var(--color-stroke);
 }
 .stepper button {
   background: transparent;
@@ -265,8 +265,8 @@ body { text-wrap: pretty; }
   width: 34px;
   padding: 0;
 }
-.stepper-arrow:first-child { border-right: 1px solid var(--color-divider); }
-.stepper-arrow:last-child { border-left: 1px solid var(--color-divider); }
+.stepper-arrow:first-child { border-right: 1px solid var(--color-stroke); }
+.stepper-arrow:last-child { border-left: 1px solid var(--color-stroke); }
 .stepper-label {
   display: inline-flex;
   align-items: center;
@@ -308,7 +308,7 @@ body { text-wrap: pretty; }
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: 1px solid var(--color-divider);
+  border: 1px solid var(--color-stroke);
   color: var(--color-text);
   cursor: pointer;
 }
@@ -328,7 +328,7 @@ body { text-wrap: pretty; }
   font-size: 13px;
   font-family: var(--font-body);
   cursor: pointer;
-  border: 1px solid var(--color-divider);
+  border: 1px solid var(--color-stroke);
   text-align: left;
   background: transparent;
   color: var(--color-text);
@@ -338,9 +338,9 @@ body { text-wrap: pretty; }
 }
 .picker-grid button[aria-pressed='true'],
 .picker-grid button[aria-pressed='true']:hover {
-  background: var(--color-accent);
+  background: var(--color-accent-fill);
   color: var(--color-bg);
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-fill);
 }
 
 /* — trend strip — */
@@ -377,7 +377,7 @@ body { text-wrap: pretty; }
   font-weight: 800;
   font-size: 12px;
   line-height: 14px;
-  color: var(--color-accent);
+  color: var(--color-accent-700);
   font-feature-settings: 'tnum' 1;
   white-space: nowrap;
 }
@@ -406,7 +406,7 @@ body { text-wrap: pretty; }
   letter-spacing: 0.06em;
   text-transform: uppercase;
   font-feature-settings: 'tnum' 1;
-  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
 }
 .trend-tick.on {
   color: var(--color-accent-700);
@@ -479,7 +479,7 @@ body { text-wrap: pretty; }
   font-weight: 400;
   font-family: var(--font-body);
   font-size: 13px;
-  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
 }
 .cat-track {
   height: 14px;
@@ -619,7 +619,7 @@ body { text-wrap: pretty; }
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
   pointer-events: none;
 }
 .subscription-search .subscription-search-input {
@@ -672,25 +672,25 @@ body { text-wrap: pretty; }
   text-transform: inherit;
   color: inherit;
 }
-.sort-button.on { color: var(--color-accent); }
+.sort-button.on { color: var(--color-accent-700); }
 .sort-arrow {
   font-size: 12px;
   line-height: 12px;
   color: color-mix(in srgb, var(--color-text) 35%, transparent);
 }
-.sort-button.on .sort-arrow { color: var(--color-accent); }
+.sort-button.on .sort-arrow { color: var(--color-accent-700); }
 
 .row-name {
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
-.row-cancelled { color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+.row-cancelled { color: color-mix(in srgb, var(--color-text) 66%, transparent); }
 .sub-note {
   display: block;
   font-size: 12px;
   line-height: 16px;
-  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
 }
 .row-actions { position: relative; text-align: right; white-space: nowrap; }
 .row-actions .btn + .btn { margin-left: 8px; }
@@ -727,14 +727,14 @@ body { text-wrap: pretty; }
   font: inherit;
   font-size: 12px;
   line-height: 16px;
-  color: var(--color-accent);
+  color: var(--color-accent-700);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 .row-group-open > td { border-bottom: 0; }
 .row-earlier td {
   background: color-mix(in srgb, var(--color-text) 3.5%, transparent);
-  color: color-mix(in srgb, var(--color-text) 45%, transparent);
+  color: color-mix(in srgb, var(--color-text) 66%, transparent);
   border-bottom: 0;
 }
 .row-earlier td:first-child { padding-left: 40px; }
@@ -760,7 +760,7 @@ body { text-wrap: pretty; }
 .row-lifetime td {
   background: color-mix(in srgb, var(--color-text) 3.5%, transparent);
   font-size: 12px;
-  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
   padding-top: 6px;
   padding-bottom: 10px;
   border-bottom: 2px solid var(--color-divider);
@@ -813,7 +813,7 @@ body { text-wrap: pretty; }
   font-size: 12px;
   line-height: 16px;
   margin-top: 2px;
-  color: color-mix(in srgb, var(--color-text) 62%, transparent);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
 }
 
 /* Editing happens in place -- no modal. The accent rule on the left edge is
@@ -837,7 +837,7 @@ body { text-wrap: pretty; }
 .edit-cost { display: grid; gap: 6px; }
 .edit-per-month {
   font-feature-settings: 'tnum' 1;
-  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
 }
 .row-editing .btn-primary { padding: 6px 14px; font-size: 13px; }
 
@@ -876,7 +876,7 @@ body { text-wrap: pretty; }
   font-size: 13px;
   line-height: 18px;
   max-width: 60ch;
-  color: color-mix(in srgb, var(--color-text) 65%, transparent);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
   margin: 10px 0 0;
 }
 .add-grid {
@@ -1048,7 +1048,7 @@ body { text-wrap: pretty; }
 .cat-row .name { font-family: var(--font-heading); font-weight: 800; font-size: 15px; }
 .cat-row .usage {
   font-size: 13px;
-  color: color-mix(in srgb, var(--color-text) 65%, transparent);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
   font-feature-settings: 'tnum' 1;
 }
 .cat-row .monthly { font-size: 14px; font-feature-settings: 'tnum' 1; }
@@ -1076,7 +1076,7 @@ body { text-wrap: pretty; }
 .cat-rule {
   font-size: 13px;
   line-height: 18px;
-  color: color-mix(in srgb, var(--color-text) 65%, transparent);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
   margin: 20px 0 0;
 }
 .dialog-error {
@@ -1226,7 +1226,7 @@ body { text-wrap: pretty; }
 .io-meta {
   font-size: 13px;
   line-height: 20px;
-  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
   margin: 14px 0 0;
 }
 
@@ -1235,7 +1235,7 @@ body { text-wrap: pretty; }
 .io-hint {
   font-size: 13px;
   line-height: 20px;
-  color: color-mix(in srgb, var(--color-text) 65%, transparent);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
   margin: 12px 0 0;
   max-width: 46ch;
 }
@@ -1257,7 +1257,7 @@ body { text-wrap: pretty; }
 .io-drop-note {
   font-size: 13px;
   line-height: 20px;
-  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
   margin: 4px 0 0;
 }
 
@@ -1481,7 +1481,7 @@ body { text-wrap: pretty; }
     font-family: var(--font-heading);
     font-weight: 800;
     font-size: 13px;
-    color: var(--color-accent);
+    color: var(--color-accent-700);
     font-feature-settings: 'tnum' 1;
   }
   .hint { display: none; }
@@ -1539,14 +1539,14 @@ body { text-wrap: pretty; }
     min-height: 40px;
     padding: 0 14px;
     background: transparent;
-    border: 1px solid var(--color-divider);
+    border: 1px solid var(--color-stroke);
     color: var(--color-text);
     font: inherit;
     font-size: 13px;
     cursor: pointer;
     white-space: nowrap;
   }
-  .sort-chip.on { background: var(--color-accent); color: var(--color-bg); border-color: var(--color-accent); }
+  .sort-chip.on { background: var(--color-accent-fill); color: var(--color-bg); border-color: var(--color-accent-fill); }
   .mobile-list { margin: 18px 0 0; border-top: 2px solid var(--color-divider); }
   .mobile-row {
     display: grid;
@@ -1565,7 +1565,7 @@ body { text-wrap: pretty; }
     cursor: pointer;
   }
   .mobile-row:hover { background: var(--color-accent-100); }
-  .mobile-row.cancelled { color: color-mix(in srgb, var(--color-text) 48%, transparent); }
+  .mobile-row.cancelled { color: color-mix(in srgb, var(--color-text) 66%, transparent); }
   .mobile-row-main { min-width: 0; }
   .mobile-row-title { display: flex; align-items: center; gap: 8px; }
   .mobile-row-name {
@@ -1581,7 +1581,7 @@ body { text-wrap: pretty; }
     display: block;
     font-size: 12px;
     line-height: 18px;
-    color: color-mix(in srgb, var(--color-text) 62%, transparent);
+    color: color-mix(in srgb, var(--color-text) 68%, transparent);
     font-feature-settings: 'tnum' 1;
     margin-top: 2px;
   }
@@ -1598,11 +1598,11 @@ body { text-wrap: pretty; }
     display: block;
     font-size: 12px;
     line-height: 18px;
-    color: color-mix(in srgb, var(--color-text) 55%, transparent);
+    color: color-mix(in srgb, var(--color-text) 68%, transparent);
     font-feature-settings: 'tnum' 1;
     margin-top: 2px;
   }
-  .mobile-row svg { color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+  .mobile-row svg { color: var(--color-stroke); }
   /* Grouped runs: the toggle under a head row, then its earlier runs on a
      tinted panel, indented under a rule. */
   .mobile-row.has-runs { border-bottom: 0; }
@@ -1622,7 +1622,7 @@ body { text-wrap: pretty; }
     font-weight: 600;
     font-size: 13px;
     line-height: 1.2;
-    color: var(--color-accent);
+    color: var(--color-accent-700);
     text-align: left;
   }
   .mobile-runs-toggle svg { color: inherit; transition: transform 0.15s ease; }
@@ -1638,7 +1638,7 @@ body { text-wrap: pretty; }
     min-height: 56px;
     padding: 10px 12px;
     border-left: 1px solid var(--color-divider);
-    color: color-mix(in srgb, var(--color-text) 45%, transparent);
+    color: color-mix(in srgb, var(--color-text) 66%, transparent);
   }
   .mobile-earlier .mobile-row-name,
   .mobile-earlier .mobile-row-amount { font-size: 14px; }
@@ -1647,7 +1647,7 @@ body { text-wrap: pretty; }
   .mobile-lifetime {
     padding: 6px 12px 8px;
     font-size: 12px;
-    color: color-mix(in srgb, var(--color-text) 55%, transparent);
+    color: color-mix(in srgb, var(--color-text) 68%, transparent);
   }
   .mobile-lifetime strong { color: var(--color-text); font-weight: 600; }
   .mobile-row-stale {
@@ -1724,7 +1724,7 @@ body { text-wrap: pretty; }
     font-size: 12px;
     line-height: 16px;
     margin-top: 2px;
-    color: color-mix(in srgb, var(--color-text) 62%, transparent);
+    color: color-mix(in srgb, var(--color-text) 68%, transparent);
   }
   .sheet-fields { display: grid; gap: 16px; margin: 20px 0 0; }
   /* minmax(0, 1fr), not bare 1fr: a plain fr track still floors at the
@@ -1736,7 +1736,7 @@ body { text-wrap: pretty; }
   .sheet-hint {
     font-size: 12px;
     line-height: 18px;
-    color: color-mix(in srgb, var(--color-text) 60%, transparent);
+    color: color-mix(in srgb, var(--color-text) 68%, transparent);
     margin: 4px 0 0;
   }
   .dialog-sheet { width: 440px; max-width: calc(100vw - 64px); }

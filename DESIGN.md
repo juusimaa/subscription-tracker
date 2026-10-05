@@ -11,6 +11,7 @@ colors:
   paper-raised: "#eae9e9"
   ink: "#201e1d"
   rule: "color-mix(in srgb, #201e1d 40%, transparent)"
+  stroke: "color-mix(in srgb, #201e1d 52%, transparent)"
   idle-bar: "#d7d3d3"
   tile-neutral: "#605d5d"
 typography:
@@ -59,15 +60,15 @@ spacing:
   "8": "32px"
 components:
   button-primary:
-    backgroundColor: "{colors.signal-red}"
+    backgroundColor: "{colors.signal-red-deep}"
     textColor: "{colors.paper}"
     typography: "{typography.title}"
     rounded: "{rounded.none}"
     padding: "8px 14.4px"
   button-primary-hover:
-    backgroundColor: "{colors.signal-red-pressed}"
+    backgroundColor: "#7c1405"
   button-primary-active:
-    backgroundColor: "{colors.signal-red-deep}"
+    backgroundColor: "{colors.signal-red-ink}"
   button-secondary:
     backgroundColor: "transparent"
     textColor: "{colors.ink}"
@@ -75,7 +76,7 @@ components:
     padding: "8px 14.4px"
   button-ghost:
     backgroundColor: "transparent"
-    textColor: "{colors.signal-red}"
+    textColor: "{colors.signal-red-deep}"
     rounded: "{rounded.none}"
     padding: "8px 4px"
   input:
@@ -85,7 +86,7 @@ components:
     padding: "6px 10px"
     height: "36px"
   segment-selected:
-    backgroundColor: "{colors.signal-red}"
+    backgroundColor: "{colors.signal-red-deep}"
     textColor: "{colors.paper}"
     rounded: "{rounded.none}"
     padding: "7px 12px"
@@ -96,7 +97,7 @@ components:
     padding: "2px 8px"
   tag-outline:
     backgroundColor: "transparent"
-    textColor: "{colors.signal-red}"
+    textColor: "{colors.signal-red-deep}"
     rounded: "{rounded.none}"
     padding: "2px 8px"
   attention-banner:
@@ -153,14 +154,20 @@ signal red. Every tint is drawn from one OKLCH ramp per role on a shared
 lightness scale, so the same step of any role matches in visual value.
 
 ### Primary
-- **Signal Red** (`signal-red`): the hero total, selected bars and segments,
-  primary buttons, the category fill, link text, focus rings and active sort
-  headers. Its job is to pull the eye to money and to the current choice.
-- **Signal Red Pressed** (`signal-red-pressed`): hover state of the primary
-  button.
-- **Signal Red Deep** (`signal-red-deep`): red *text* that has to meet contrast
-  at small sizes. Used for eyebrow labels, field-error labels, the "trial
-  converts" note, destructive menu items and the active trend tick.
+- **Signal Red** (`signal-red`): the hero total, selected trend bars, the
+  category fill and focus rings: large figures and non-text marks, where
+  3:1 is enough. Its job is to pull the eye to money and to the current
+  choice. It reaches only 3.76:1 against paper, so it never carries small
+  text and never sits under paper text.
+- **Signal Red Pressed** (`signal-red-pressed`): reserved; no longer used by
+  the primary button.
+- **Signal Red Deep** (`signal-red-deep`): every red that has to meet 4.5:1.
+  As text: eyebrow labels, links, ghost buttons, active nav and sort headers,
+  field-error labels, the "trial converts" note, destructive menu items and
+  the active trend tick. As a fill under paper text (`--color-accent-fill`):
+  primary buttons, selected segments, picker cells and sort chips. In dark
+  mode the fill becomes `#ff563c` under dark text, and the text step becomes
+  the reversed ramp's `#ffc4b8`.
 - **Signal Red Wash** (`signal-red-wash`): the fill for attention surfaces:
   the server-error banner, the trial banner, row messages, menu hover and the
   trial tag.
@@ -172,16 +179,22 @@ lightness scale, so the same step of any role matches in visual value.
   sits one step off the ground, so a raised surface reads without needing a
   border.
 - **Ink** (`ink`): all body text and headings.
-- **Rule** (`rule`): Ink at 40%, used for every divider, input stroke and
-  control border.
+- **Rule** (`rule`): Ink at 40%, used for every divider between rows and
+  sections.
+- **Stroke** (`stroke`): Ink at 52% (40% in dark mode), the border of every
+  input and control (segmented controls, secondary buttons, steppers, chips).
+  Control edges need 3:1, and the Rule only reaches 2.4:1.
 - **Idle Bar** (`idle-bar`): unselected trend bars.
 - **Tile Neutral** (`tile-neutral`): the fallback brand tile and the mobile
   avatar square.
 
 Secondary text is Ink mixed toward transparent at fixed percentages, never a
-new grey: 78% for lead prose, 70% for labels and notes, 60% for hints, 55% for
-sub-notes, 45% for cancelled rows, 35% for idle sort arrows, 10% for bar tracks
-and 7% for neutral hover fills.
+new grey: 78% for lead prose, 70% for labels and notes, 68% for hints,
+sub-notes and placeholders, 66% for cancelled and earlier runs, 35% for idle
+sort arrows, 10% for bar tracks and 7% for neutral hover fills. No text step
+goes below 66%: that is the lowest that still reaches 4.5:1 on every light
+ground it sits on (paper, raised paper, hover tints and the search-match
+wash).
 
 A second accent ramp (`--color-accent-2`, a softer coral) is defined in
 `modernist.css` but nothing on screen uses it today. Treat it as reserved, not
@@ -301,19 +314,19 @@ marks a row being edited in place. The only round shape is the radio dot.
 ### Buttons
 Heavy type with no softening. Neutral unless the button is the main action.
 - **Shape:** square (0px), 8px by 14.4px padding, Archivo 800 at 14px.
-- **Primary:** Signal Red fill with Paper text. Hover deepens to Signal Red
-  Pressed, active to Signal Red Deep. Use at most one per region.
-- **Secondary:** transparent with a 1px Rule border and Ink text. Hover fills
+- **Primary:** Signal Red Deep fill with Paper text (6.4:1). Hover deepens to
+  `#7c1405`, active to Signal Red Ink. Use at most one per region.
+- **Secondary:** transparent with a 1px Stroke border and Ink text. Hover fills
   with Ink at 7%.
-- **Ghost:** Signal Red text with minimal padding. Hover fills with Signal Red
+- **Ghost:** Signal Red Deep text with minimal padding. Hover fills with Signal Red
   at 10%. Used for "Edit", "More", "Manage" and "Show archived".
 - **Disabled:** 45% opacity.
 - **Focus:** a 2px Signal Red outline, offset 2px, on every interactive
   element.
 
 ### Segmented control
-A row of square options joined by 1px Rule separators inside a 1px Rule frame.
-The selected option fills with Signal Red and Paper text. Used for monthly or
+A row of square options joined by 1px Stroke separators inside a 1px Stroke
+frame. The selected option fills with Signal Red Deep and Paper text. Used for monthly or
 yearly view, plan type, export format and conflict mode.
 
 ### Tags
@@ -334,8 +347,8 @@ Red Ink text. **Active** is neutral wash with neutral ink. **Outline** has a
 ### Navigation
 A sticky header on Paper with a 2px bottom rule. On the left is the brand
 ("Subscriptions", Archivo 800) with an outline "Beta" tag. On the right are the
-text nav links (the current page in Signal Red), the account email (tabular,
-Ink at 60%) and a secondary "Log out" button. On mobile the email becomes a
+text nav links (the current page in Signal Red Deep), the account email (tabular,
+Ink at 68%) and a secondary "Log out" button. On mobile the email becomes a
 32px square avatar showing the initial.
 
 ### Attention banner
@@ -348,8 +361,8 @@ blank the page, and nothing is ever a toast.
 ### Data table
 Uppercase 11px headers over a 2px rule, and 1px rules between rows. Each
 header is a sort button that turns Signal Red when active. Rows carry a
-brand tile, a sub-note line at 12px (Ink at 55%), and Ghost actions aligned
-right. Cancelled rows mute to Ink at 45%, tile included. Grouped runs fold
+brand tile, a sub-note line at 12px (Ink at 68%), and Ghost actions aligned
+right. Cancelled rows mute to Ink at 66%, tile included. Grouped runs fold
 under a disclosure chevron. An open group has no rules inside it and closes
 with a 2px rule under its lifetime row. Editing happens in place, marked by the
 inset left rule.
