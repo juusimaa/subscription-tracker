@@ -1152,6 +1152,7 @@ body { text-wrap: pretty; }
 }
 .reactivation-fields .field { flex: 1; }
 .reactivation-note { margin: 12px 0 0; font-size: 13px; }
+.cancel-date { margin: 20px 0 0; }
 
 .cat-row {
   display: grid;

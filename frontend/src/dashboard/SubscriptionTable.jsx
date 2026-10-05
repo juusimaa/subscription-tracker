@@ -78,7 +78,7 @@ function isScheduled(subscription) {
 
 // Every row's secondary actions, described rather than left as bare verbs.
 const MENU_LABELS = {
-  cancel: "Cancel plan",
+  cancel: "Mark as cancelled",
   reactivate: "Reactivate",
   archive: "Archive",
   unarchive: "Restore to list",
@@ -1033,7 +1033,7 @@ function SubscriptionTable({
               Save
             </button>
             {/* "Discard", as in the mobile edit sheet -- never "Cancel", which
-                would sit right next to the "Cancel plan" action. */}
+                would sit right next to the "Mark as cancelled" action. */}
             <button type="button" className="btn btn-ghost btn-small" onClick={closeEditor}>
               Discard
             </button>

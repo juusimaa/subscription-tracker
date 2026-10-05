@@ -42,9 +42,9 @@ test("a cancelled plan says how long it stays in the list", async ({ page }) => 
   } }));
   const row = page.getByRole("row").filter({ hasText: "Netflix" });
   await row.getByRole("button", { name: /More/ }).click();
-  await page.getByRole("menuitem", { name: /Cancel plan/ }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Cancel plan" }).click();
-  await expect(notice(page)).toHaveText("Netflix cancelled. It stays in the list until access ends 20 Sep 2026.");
+  await page.getByRole("menuitem", { name: /Mark as cancelled/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Mark as cancelled" }).click();
+  await expect(notice(page)).toHaveText("Netflix marked as cancelled. It stays in the list until access ends 20 Sep 2026.");
 });
 
 test("a cancel back-dated past its term points to where it went", async ({ page }) => {
@@ -53,11 +53,31 @@ test("a cancel back-dated past its term points to where it went", async ({ page 
   } }));
   const row = page.getByRole("row").filter({ hasText: "Netflix" });
   await row.getByRole("button", { name: /More/ }).click();
-  await page.getByRole("menuitem", { name: /Cancel plan/ }).click();
+  await page.getByRole("menuitem", { name: /Mark as cancelled/ }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Cancelled date").fill("2026-06-01");
-  await dialog.getByRole("button", { name: "Cancel plan" }).click();
-  await expect(notice(page)).toHaveText("Netflix cancelled. Show ended");
+  await dialog.getByLabel("Cancelled on").fill("2026-06-01");
+  await dialog.getByRole("button", { name: "Mark as cancelled" }).click();
+  await expect(notice(page)).toHaveText("Netflix marked as cancelled. Show ended");
   await notice(page).getByRole("button", { name: "Show ended" }).click();
   await expect(page.getByRole("button", { name: "Hide ended" })).toBeVisible();
+});
+
+test("the cancel dialog says it only updates records, and when access ends", async ({ page }) => {
+  const row = page.getByRole("row").filter({ hasText: "Netflix" });
+  await row.getByRole("button", { name: /More/ }).click();
+  await page.getByRole("menuitem", { name: /Mark as cancelled/ }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("This updates your records only. Cancel with Netflix too");
+  // Started 10 Jan 2024, monthly: cancelled on the 15th, paid through 10 Oct.
+  await expect(dialog).toContainText("Access runs until 10 Oct 2026");
+  await dialog.getByLabel("Cancelled on").fill("2026-06-01");
+  await expect(dialog).toContainText("Access ended 10 Jun 2026");
+  await expect(dialog.getByRole("button", { name: "Delete permanently" })).toHaveCount(0);
+});
+
+test("cancelling a trial asks for no date", async ({ page }) => {
+  await page.locator(".trial-banner, .trial-row-actions").getByRole("button", { name: "Cancel before it charges" }).first().click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("To avoid the charge on 25 Sep 2026, cancel the trial with Notion too.");
+  await expect(dialog.getByLabel("Cancelled on")).toHaveCount(0);
 });
