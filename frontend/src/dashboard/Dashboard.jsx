@@ -6,11 +6,12 @@
 // edited, which dialog is open) and the arithmetic that turns the API's
 // answers into the figures the design asks for.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError, describeWriteError } from "../api";
 import { MAX_YEAR, MIN_YEAR, MONTHS, SHORT_MONTHS, longDate, money, signed, todayISO } from "../format";
 import { chargeCountInYear, chargesInMonth } from "../renewals";
 import { useIsMobile } from "../useMediaQuery";
+import { readListView, writeView } from "../viewUrl";
 import AddForm from "./AddForm";
 import CategoriesDialog from "./CategoriesDialog";
 import CategoryBars from "./CategoryBars";
@@ -42,10 +43,13 @@ function Dashboard({
   staleId,
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [sort, setSort] = useState({ key: "renewal", dir: "asc" });
+  // Sort and the two toggles open as the URL left them (see viewUrl.js);
+  // read once, on mount, like the period in App.jsx.
+  const [initialList] = useState(readListView);
+  const [sort, setSort] = useState(initialList.sort);
   const [editingId, setEditingId] = useState(null);
-  const [showCancelled, setShowCancelled] = useState(false);
-  const [showArchived, setShowArchived] = useState(false);
+  const [showCancelled, setShowCancelled] = useState(initialList.showCancelled);
+  const [showArchived, setShowArchived] = useState(initialList.showArchived);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [reactivationTarget, setReactivationTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -61,6 +65,37 @@ function Dashboard({
   // yourself" button -- one sheet, two openers, rather than two.
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const isMobile = useIsMobile();
+
+  useEffect(() => {
+    writeView({ period, sort, showCancelled, showArchived });
+  }, [period, sort, showCancelled, showArchived]);
+
+  // Two accelerators for the two things people come back to do (issue #67):
+  // "/" to search the list, "n" to add a subscription. Never while typing,
+  // with a modifier held, or with a dialog open -- those keys belong to
+  // whatever has focus then. The handler reads the latest focusAddForm
+  // through a ref so the listener is attached once.
+  const shortcuts = useRef(null);
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      if (target.closest?.("input, textarea, select, [contenteditable]")) return;
+      if (document.querySelector("[aria-modal=true]")) return;
+      if (event.key === "/") {
+        const search = document.querySelector(".subscription-search-input");
+        if (!search) return;
+        event.preventDefault();
+        search.scrollIntoView({ behavior: "smooth", block: "center" });
+        search.focus({ preventScroll: true });
+      } else if (event.key === "n" || event.key === "N") {
+        event.preventDefault();
+        shortcuts.current?.add();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const { view, year, month } = period;
   const monthly = view === "monthly";
@@ -293,6 +328,33 @@ function Dashboard({
     );
   }
 
+  // Every cancelled plan still in the list, archived in one go -- the
+  // cancelled list only grows, and archiving it row by row is a chore. The
+  // same set "Show cancelled — N" counts: heads of cancelled groups that are
+  // not archived yet.
+  async function archiveAllCancelled() {
+    const targets = buildGroups(subscriptions)
+      .map((g) => g.head)
+      .filter((s) => s.status === "cancelled" && !s.archived_date);
+    if (targets.length === 0) return;
+    const ids = targets.map((s) => s.id);
+    try {
+      await actions.archiveMany(ids);
+    } catch (err) {
+      // Some may have gone through; the reload already shows which.
+      say(`Couldn't archive every cancelled plan. ${describeWriteError(err)}`);
+      return;
+    }
+    const one = targets.length === 1;
+    const what = one ? targets[0].name : `${targets.length} cancelled plans`;
+    say(showArchived ? `${what} archived.` : `${what} archived and hidden from the list.`, {
+      action: undoable(async () => {
+        await actions.unarchiveMany(ids);
+        say(`${what} ${one ? "is" : "are"} back in the cancelled list.`);
+      }),
+    });
+  }
+
   async function unarchive(subscription) {
     await actions.unarchive(subscription.id);
     say(`${subscription.name} restored to the list.`, {
@@ -375,6 +437,10 @@ function Dashboard({
     document.getElementById("add")?.scrollIntoView({ behavior: "smooth", block: "center" });
     document.querySelector("#add input")?.focus();
   }
+
+  useEffect(() => {
+    shortcuts.current = { add: focusAddForm };
+  });
 
   function openExisting(subscription) {
     // On mobile this fires from inside the add sheet (the duplicate-name
@@ -484,6 +550,7 @@ function Dashboard({
           onReactivate={setReactivationTarget}
           onArchive={archive}
           onUnarchive={unarchive}
+          onArchiveAllCancelled={archiveAllCancelled}
           notice={<SaveNotice notice={notice?.where === "list" ? notice : null} />}
           onDelete={setDeleteTarget}
           onAdd={focusAddForm}

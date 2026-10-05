@@ -169,13 +169,13 @@ async function mockApi(page) {
  * for real content instead of a fixed delay. Call this as the whole of a
  * test file's beforeEach.
  */
-export async function openDashboard(page) {
+export async function openDashboard(page, path = "/") {
   await page.clock.install({ time: new Date(FROZEN_NOW) });
   // App.jsx reads the token from localStorage on its very first render (see
   // api.js's getToken), so this has to be in place before page.goto()
   // resolves -- an init script is the only hook that runs early enough.
   await page.addInitScript(() => localStorage.setItem("token", "visual-test-token"));
   await mockApi(page);
-  await page.goto("/");
+  await page.goto(path);
   await page.getByText("Netflix").first().waitFor();
 }

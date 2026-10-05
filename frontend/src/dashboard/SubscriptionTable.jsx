@@ -204,7 +204,9 @@ function matchesSearch(subscription, query) {
 // The input is controlled by SubscriptionTable. Both responsive layouts pass
 // through the same onChange callback, including the clear button, so they use
 // the same query and filtering behavior.
-function SubscriptionSearch({ value, onChange }) {
+// "/" focuses it from anywhere on the page (Dashboard.jsx), and the
+// placeholder says so where there is a keyboard to press it on.
+function SubscriptionSearch({ value, onChange, shortcutHint }) {
   return (
     <div className="subscription-search">
       <Search size={16} />
@@ -212,7 +214,8 @@ function SubscriptionSearch({ value, onChange }) {
         type="search"
         className="input subscription-search-input"
         aria-label="Search subscriptions"
-        placeholder="Name, cost, date"
+        placeholder={shortcutHint ? "Name, cost, date — press /" : "Name, cost, date"}
+        aria-keyshortcuts="/"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
@@ -241,6 +244,7 @@ function SubscriptionTable({
   onReactivate,
   onArchive,
   onUnarchive,
+  onArchiveAllCancelled,
   onDelete,
   onAdd,
   staleId,
@@ -254,6 +258,7 @@ function SubscriptionTable({
   const [draft, setDraft] = useState(null);
   const [rowError, setRowError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [archivingAll, setArchivingAll] = useState(false);
   // Mobile-only, and local rather than lifted to Dashboard: which row's
   // detail sheet is open is browsing state, not something anything outside
   // this component needs to know or set (unlike editingId, which the add
@@ -418,7 +423,26 @@ function SubscriptionTable({
     setMenuOpenId(null);
   }
 
-  const searchBox = <SubscriptionSearch value={searchQuery} onChange={updateSearch} />;
+  const searchBox = <SubscriptionSearch value={searchQuery} onChange={updateSearch} shortcutHint={!isMobile} />;
+
+  // Offered only while the cancelled list is on screen, since that is the
+  // list it empties. Undo is in the notice it leaves (Dashboard.jsx).
+  async function archiveAllCancelled() {
+    setArchivingAll(true);
+    closeEditor();
+    setMenuOpenId(null);
+    try {
+      await onArchiveAllCancelled();
+    } finally {
+      setArchivingAll(false);
+    }
+  }
+  const archiveAllButton = (className) =>
+    showCancelled && cancelledCount > 0 && (
+      <button type="button" className={className} disabled={archivingAll} onClick={archiveAllCancelled}>
+        {`Archive all cancelled — ${cancelledCount}`}
+      </button>
+    );
   const listCount = query ? `${visible.length} of ${available.length}` : visible.length;
   const noResults = query && visible.length === 0 && (
     <div className="subscription-search-empty">
@@ -435,7 +459,20 @@ function SubscriptionTable({
     setMenuOpenId(null);
   }
 
+  // Enter in any field of the edit row (or the mobile edit sheet) saves it,
+  // the way it would in a form. There is no <form> to do this natively: one
+  // cannot wrap a table row. Buttons keep their own Enter.
+  function saveOnEnter(subscription) {
+    return (event) => {
+      if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+      if (!event.target.matches("input, select")) return;
+      event.preventDefault();
+      save(subscription);
+    };
+  }
+
   async function save(subscription) {
+    if (busy) return;
     // Checked here first so the common mistakes read as the design's own copy
     // rather than as Pydantic's. A server rejection is then the rare second
     // line of defence, and its message is shown verbatim with the status.
@@ -539,6 +576,7 @@ function SubscriptionTable({
         >
           {showCancelled ? "Hide cancelled" : `Show cancelled — ${cancelledCount}`}
         </button>
+        {archiveAllButton("btn btn-ghost btn-small mobile-list-toggle")}
 
         <div className="sort-chips" role="group" aria-label="Sort">
           {CHIPS.map((chip) => {
@@ -733,7 +771,7 @@ function SubscriptionTable({
 
         {editing && draft && draft.id === editingId && (
           <Sheet title={`Edit ${editing.name}`} onClose={closeEditor} className="dialog-sheet-edit">
-            <div className="sheet-fields">
+            <div className="sheet-fields" onKeyDown={saveOnEnter(editing)}>
               <label className="field">
                 <span className="field-label">Service</span>
                 <input
@@ -892,7 +930,7 @@ function SubscriptionTable({
           : "—";
       return (
         <Fragment key={subscription.id}>
-        <tr className="row-editing">
+        <tr className="row-editing" onKeyDown={saveOnEnter(subscription)}>
           <td>
             <span className="row-name">
               {disclosure(group)}
@@ -1256,7 +1294,8 @@ function SubscriptionTable({
           >
             {showCancelled ? "Hide cancelled" : `Show cancelled — ${cancelledCount}`}
           </button>
-          <button type="button" className="btn btn-primary" onClick={onAdd}>
+          {archiveAllButton("btn btn-ghost btn-small")}
+          <button type="button" className="btn btn-primary" onClick={onAdd} title="Add subscription (N)" aria-keyshortcuts="n">
             Add subscription
           </button>
         </span>
