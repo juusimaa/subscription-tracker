@@ -1,5 +1,5 @@
 // The dashboard's view, kept in the query string so "Yearly 2025, sorted by
-// cost, cancelled shown" can be bookmarked, shared and survives a reload
+// cost, ended shown" can be bookmarked, shared and survives a reload
 // (issue #67).
 //
 // Only what differs from the defaults is written, so a plain visit stays a
@@ -10,6 +10,8 @@
 //   ?year=2026&month=3                a month (1-based, as people write it)
 //   ?sort=cost&dir=desc               the list's sort
 //   ?cancelled=1&archived=1           the list's two visibility toggles
+//                                     (cancelled=1 is Show ended, issue #53;
+//                                     the key is kept so old bookmarks work)
 //
 // Anything malformed is ignored rather than rejected, field by field.
 
@@ -55,14 +57,14 @@ export function readListView() {
     sort: SORT_KEYS.includes(key)
       ? { key, dir: p.get("dir") === "desc" ? "desc" : "asc" }
       : DEFAULT_SORT,
-    showCancelled: p.get("cancelled") === "1",
+    showEnded: p.get("cancelled") === "1",
     showArchived: p.get("archived") === "1",
   };
 }
 
 // replaceState, not pushState: stepping through months should not leave a
 // trail of history entries for Back to walk through one at a time.
-export function writeView({ period, sort, showCancelled, showArchived }) {
+export function writeView({ period, sort, showEnded, showArchived }) {
   const p = params();
   for (const key of ["view", "year", "month", "sort", "dir", "cancelled", "archived"]) p.delete(key);
 
@@ -79,7 +81,7 @@ export function writeView({ period, sort, showCancelled, showArchived }) {
     p.set("sort", sort.key);
     if (sort.dir === "desc") p.set("dir", "desc");
   }
-  if (showCancelled) p.set("cancelled", "1");
+  if (showEnded) p.set("cancelled", "1");
   if (showArchived) p.set("archived", "1");
 
   const query = p.toString();

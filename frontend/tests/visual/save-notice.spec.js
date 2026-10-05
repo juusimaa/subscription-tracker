@@ -35,13 +35,29 @@ test("converting a trial can be undone", async ({ page }) => {
   expect(bodies[1]).toMatchObject({ status: "trial" });
 });
 
-test("a cancelled plan points to where it went", async ({ page }) => {
-  await page.route("**/subscriptions/1", (route) => route.fulfill({ json: { id: 1 } }));
+test("a cancelled plan says how long it stays in the list", async ({ page }) => {
+  // What the server answers: cancelled today, paid through the 20th.
+  await page.route("**/subscriptions/1", (route) => route.fulfill({ json: {
+    id: 1, status: "cancelled", cancelled_date: "2026-09-15", next_renewal_date: "2026-09-20",
+  } }));
   const row = page.getByRole("row").filter({ hasText: "Netflix" });
   await row.getByRole("button", { name: /More/ }).click();
   await page.getByRole("menuitem", { name: /Cancel plan/ }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Cancel plan" }).click();
-  await expect(notice(page)).toHaveText("Netflix cancelled. Show cancelled");
-  await notice(page).getByRole("button", { name: "Show cancelled" }).click();
-  await expect(page.getByRole("button", { name: "Hide cancelled" })).toBeVisible();
+  await expect(notice(page)).toHaveText("Netflix cancelled. It stays in the list until access ends 20 Sep 2026.");
+});
+
+test("a cancel back-dated past its term points to where it went", async ({ page }) => {
+  await page.route("**/subscriptions/1", (route) => route.fulfill({ json: {
+    id: 1, status: "cancelled", cancelled_date: "2026-06-01", next_renewal_date: "2026-06-20",
+  } }));
+  const row = page.getByRole("row").filter({ hasText: "Netflix" });
+  await row.getByRole("button", { name: /More/ }).click();
+  await page.getByRole("menuitem", { name: /Cancel plan/ }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Cancelled date").fill("2026-06-01");
+  await dialog.getByRole("button", { name: "Cancel plan" }).click();
+  await expect(notice(page)).toHaveText("Netflix cancelled. Show ended");
+  await notice(page).getByRole("button", { name: "Show ended" }).click();
+  await expect(page.getByRole("button", { name: "Hide ended" })).toBeVisible();
 });

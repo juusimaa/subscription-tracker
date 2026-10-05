@@ -14,7 +14,7 @@ test("reactivation sends changed terms as a new run", async ({ page }) => {
     return route.fulfill({ status: 201, json: { id: 6 } });
   });
 
-  await page.getByRole("button", { name: /Show cancelled/ }).first().click();
+  await page.getByRole("button", { name: /Show ended/ }).first().click();
   const mobileRow = page.locator(".mobile-row").filter({ hasText: "Dropbox" });
   if (await mobileRow.isVisible()) {
     await mobileRow.click();

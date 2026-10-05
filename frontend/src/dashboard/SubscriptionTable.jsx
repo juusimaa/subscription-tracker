@@ -20,7 +20,7 @@ import { ChevronRight, Search, TriangleAlert } from "../icons";
 import { SHORT_MONTHS, costProblem, cycleSuffix, longDate, money, parseAmount, perMonth, todayISO } from "../format";
 import { NAME_MAX } from "./AddForm";
 import { useIsMobile } from "../useMediaQuery";
-import { buildGroups, cancelledGroupCount, groupSince, lifetimePaid, runNumber } from "./groups";
+import { accessEnded, buildGroups, endedGroupCount, groupSince, lifetimePaid, runNumber } from "./groups";
 
 // The sort chip row (mobile only) offers five of the desktop table's seven
 // columns, in the order the handoff lists them -- "Started" and "Per month"
@@ -36,14 +36,17 @@ const CHIPS = [
 
 // The mobile row's one meta line combines category with whatever the
 // desktop table says in two places (the Next renewal cell's date and its
-// sub-note): "Entertainment · 04 Sep 2026", "Work · access ends 30 Jul 2026".
+// sub-note): "Entertainment · 04 Sep 2026", "Work · access ends 30 Oct 2026",
+// "Work · access ended 30 Jul 2026".
 function mobileMeta(subscription) {
   const cancelled = subscription.status === "cancelled";
   const trial = subscription.status === "trial";
   const paused = subscription.status === "paused";
   let dateText;
   if (cancelled && !subscription.cancelled_date) dateText = "—";
-  else if (cancelled) dateText = `access ends ${longDate(subscription.next_renewal_date)}`;
+  else if (cancelled) {
+    dateText = `access ${accessEnded(subscription) ? "ended" : "ends"} ${longDate(subscription.next_renewal_date)}`;
+  }
   else if (paused) dateText = "resumes when unpaused";
   else if (trial) dateText = `trial ends ${longDate(subscription.next_renewal_date)}`;
   else dateText = longDate(subscription.next_renewal_date);
@@ -85,7 +88,7 @@ const MENU_HINTS = {
   cancel: "Stops counting toward your totals. The record stays.",
   reactivate: "Starts a new run; the paid history stays unchanged.",
   archive: "Hides it from the list. Your totals don't change.",
-  unarchive: "Puts it back among your cancelled plans.",
+  unarchive: "Puts it back in the list.",
   delete: "Removes it and its history. No undo.",
 };
 // An earlier run lives inside its group, so its hints say so.
@@ -233,8 +236,8 @@ function SubscriptionTable({
   categories,
   sort,
   setSort,
-  showCancelled,
-  setShowCancelled,
+  showEnded,
+  setShowEnded,
   showArchived,
   setShowArchived,
   editingId,
@@ -244,7 +247,7 @@ function SubscriptionTable({
   onReactivate,
   onArchive,
   onUnarchive,
-  onArchiveAllCancelled,
+  onArchiveAllEnded,
   onDelete,
   onAdd,
   staleId,
@@ -351,17 +354,18 @@ function SubscriptionTable({
   }
 
   const groups = buildGroups(subscriptions);
-  // "Show cancelled" hides a whole group, and only when its head is
-  // cancelled: the earlier runs of a live plan stay reachable through its
-  // disclosure.
-  const cancelledCount = cancelledGroupCount(groups);
+  // "Show ended" hides a whole group, and only when its head is cancelled and
+  // its paid-for access has run out (issue #53): a plan cancelled last week
+  // that still works until the end of the month stays in the list, and the
+  // earlier runs of a live plan stay reachable through its disclosure.
+  const endedCount = endedGroupCount(groups);
   // Archived is a flag on top of cancelled (TODO.md item 7), not a status of
   // its own, so it gets its own count and its own toggle. It reveals archived
   // heads and archived earlier runs alike, so it counts the archived runs of
   // every group that is on screen -- a live plan with an archived earlier run
   // offers the toggle even while cancelled plans are hidden.
   const archivedCount = groups
-    .filter((g) => g.head.status !== "cancelled" || showCancelled)
+    .filter((g) => !accessEnded(g.head) || showEnded)
     .reduce((n, g) => n + g.runs.filter((s) => s.archived_date).length, 0);
   const query = searchQuery.trim().toLowerCase();
   // Apply the existing cancelled/archived visibility switches first. Search
@@ -369,9 +373,10 @@ function SubscriptionTable({
   // its usual order within the results.
   const available = groups
     .filter(({ head }) => {
-      if (head.status !== "cancelled") return true;
-      if (head.archived_date) return showCancelled && showArchived;
-      return showCancelled;
+      // Archiving is a deliberate "out of my sight", so an archived plan
+      // waits behind both toggles even while its access is still running.
+      if (head.status === "cancelled" && head.archived_date) return showEnded && showArchived;
+      return !accessEnded(head) || showEnded;
     })
     .map((g) => (showArchived ? g : { ...g, earlier: g.earlier.filter((s) => !s.archived_date) }));
   // A group matches when its head or any of its shown earlier runs does. The
@@ -425,22 +430,22 @@ function SubscriptionTable({
 
   const searchBox = <SubscriptionSearch value={searchQuery} onChange={updateSearch} shortcutHint={!isMobile} />;
 
-  // Offered only while the cancelled list is on screen, since that is the
-  // list it empties. Undo is in the notice it leaves (Dashboard.jsx).
-  async function archiveAllCancelled() {
+  // Offered only while the ended plans are on screen, since those are what it
+  // empties. A cancelled plan that still has access is left alone. Undo is in the notice it leaves (Dashboard.jsx).
+  async function archiveAllEnded() {
     setArchivingAll(true);
     closeEditor();
     setMenuOpenId(null);
     try {
-      await onArchiveAllCancelled();
+      await onArchiveAllEnded();
     } finally {
       setArchivingAll(false);
     }
   }
   const archiveAllButton = (className) =>
-    showCancelled && cancelledCount > 0 && (
-      <button type="button" className={className} disabled={archivingAll} onClick={archiveAllCancelled}>
-        {`Archive all cancelled — ${cancelledCount}`}
+    showEnded && endedCount > 0 && (
+      <button type="button" className={className} disabled={archivingAll} onClick={archiveAllEnded}>
+        {`Archive all ended — ${endedCount}`}
       </button>
     );
   const listCount = query ? `${visible.length} of ${available.length}` : visible.length;
@@ -572,9 +577,9 @@ function SubscriptionTable({
         <button
           type="button"
           className="btn btn-ghost btn-small mobile-list-toggle"
-          onClick={() => { setShowCancelled(!showCancelled); closeEditor(); }}
+          onClick={() => { setShowEnded(!showEnded); closeEditor(); }}
         >
-          {showCancelled ? "Hide cancelled" : `Show cancelled — ${cancelledCount}`}
+          {showEnded ? "Hide ended" : `Show ended — ${endedCount}`}
         </button>
         {archiveAllButton("btn btn-ghost btn-small mobile-list-toggle")}
 
@@ -617,6 +622,7 @@ function SubscriptionTable({
               );
             }
             const cancelled = subscription.status === "cancelled";
+            const ended = accessEnded(subscription);
             const archived = Boolean(subscription.archived_date);
             const status = STATUS[subscription.status];
             const earlierCount = group.earlier.length;
@@ -625,7 +631,7 @@ function SubscriptionTable({
               <Fragment key={group.key}>
               <button
                 type="button"
-                className={["mobile-row", cancelled && "cancelled", earlierCount > 0 && "has-runs"]
+                className={["mobile-row", ended && "cancelled", earlierCount > 0 && "has-runs"]
                   .filter(Boolean).join(" ")}
                 // A cancelled row has nothing to edit inline -- its sheet is
                 // the read-only facts plus Manage plan. Anything else opens
@@ -634,7 +640,7 @@ function SubscriptionTable({
                 // are here for.
                 onClick={() => (cancelled ? setDetailId(subscription.id) : setEditingId(subscription.id))}
               >
-                <MonoTile name={subscription.name} dim={cancelled} />
+                <MonoTile name={subscription.name} dim={ended} />
                 <span className="mobile-row-main">
                   <span className="mobile-row-title">
                     <span className="mobile-row-name">{subscription.name}</span>
@@ -713,7 +719,7 @@ function SubscriptionTable({
             title={detailSub.name}
             header={
               <div className="row-detail-head">
-                <MonoTile name={detailSub.name} dim={detailSub.status === "cancelled"} />
+                <MonoTile name={detailSub.name} dim={accessEnded(detailSub)} />
                 <p className="row-detail-name">{detailSub.name}</p>
               </div>
             }
@@ -730,7 +736,9 @@ function SubscriptionTable({
                 ],
                 ["Per month", detailSub.status === "active" ? money(perMonth(detailSub)) : "—"],
                 [
-                  detailSub.status === "cancelled" ? "Access ends" : "Next renewal",
+                  detailSub.status !== "cancelled"
+                    ? "Next renewal"
+                    : accessEnded(detailSub) ? "Access ended" : "Access ends",
                   detailSub.status === "cancelled" && !detailSub.cancelled_date
                     ? "—"
                     : longDate(detailSub.next_renewal_date),
@@ -1046,6 +1054,9 @@ function SubscriptionTable({
     }
 
     const cancelled = subscription.status === "cancelled";
+    // Only an ended plan reads as history. One still inside its paid-for
+    // term is set in full ink: it is a plan the user can still use.
+    const ended = accessEnded(subscription);
     const archived = Boolean(subscription.archived_date);
     const trial = subscription.status === "trial";
     const status = STATUS[subscription.status];
@@ -1053,12 +1064,12 @@ function SubscriptionTable({
     return (
       <tr
         key={subscription.id}
-        className={[cancelled && "row-cancelled", isOpen(group) && "row-group-open"].filter(Boolean).join(" ") || undefined}
+        className={[ended && "row-cancelled", isOpen(group) && "row-group-open"].filter(Boolean).join(" ") || undefined}
       >
         <td>
           <span className="row-name">
             {disclosure(group)}
-            <MonoTile name={subscription.name} dim={cancelled} />
+            <MonoTile name={subscription.name} dim={ended} />
             <span className="name-stack">
               <span>{subscription.name}</span>
               {/* A second, larger target for the same toggle. Out of the
@@ -1117,7 +1128,7 @@ function SubscriptionTable({
                 ? "resumes when unpaused"
                 : cancelled
                   ? subscription.cancelled_date
-                    ? "access ends"
+                    ? ended ? "access ended" : "access ends"
                     : ""
                   : ""}
           </span>
@@ -1290,9 +1301,9 @@ function SubscriptionTable({
           <button
             type="button"
             className="btn btn-ghost btn-small"
-            onClick={() => { setShowCancelled(!showCancelled); closeEditor(); }}
+            onClick={() => { setShowEnded(!showEnded); closeEditor(); }}
           >
-            {showCancelled ? "Hide cancelled" : `Show cancelled — ${cancelledCount}`}
+            {showEnded ? "Hide ended" : `Show ended — ${endedCount}`}
           </button>
           {archiveAllButton("btn btn-ghost btn-small")}
           <button type="button" className="btn btn-primary" onClick={onAdd} title="Add subscription (N)" aria-keyshortcuts="n">

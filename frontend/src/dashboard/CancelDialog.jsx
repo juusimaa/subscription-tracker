@@ -63,7 +63,7 @@ function CancelDialog({ subscription, onConfirm, onClose, destructive }) {
         <p className="dialog-body">
           {notStarted
             ? "The new run has not charged yet. Cancelling it keeps the earlier paid run in your history."
-            : "It stops counting toward your totals and moves to your cancelled list, where its past charges stay on record. You can reactivate it any time."}
+            : "It stops counting toward your totals but stays in the list until the time already paid for runs out. After that it moves to your ended plans, where its past charges stay on record. You can reactivate it any time."}
         </p>
         {!notStarted && <label className="field">
           <span className="field-label">Cancelled date</span>

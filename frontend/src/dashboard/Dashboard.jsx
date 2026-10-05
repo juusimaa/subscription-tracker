@@ -29,7 +29,7 @@ import Sheet from "./Sheet";
 import SubscriptionTable from "./SubscriptionTable";
 import TrendStrip from "./TrendStrip";
 import TrialBanner from "./TrialBanner";
-import { buildGroups, cancelledGroupCount } from "./groups";
+import { accessEnded, buildGroups, endedGroupCount } from "./groups";
 
 function Dashboard({
   subscriptions,
@@ -48,7 +48,7 @@ function Dashboard({
   const [initialList] = useState(readListView);
   const [sort, setSort] = useState(initialList.sort);
   const [editingId, setEditingId] = useState(null);
-  const [showCancelled, setShowCancelled] = useState(initialList.showCancelled);
+  const [showEnded, setShowEnded] = useState(initialList.showEnded);
   const [showArchived, setShowArchived] = useState(initialList.showArchived);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [reactivationTarget, setReactivationTarget] = useState(null);
@@ -67,8 +67,8 @@ function Dashboard({
   const isMobile = useIsMobile();
 
   useEffect(() => {
-    writeView({ period, sort, showCancelled, showArchived });
-  }, [period, sort, showCancelled, showArchived]);
+    writeView({ period, sort, showEnded, showArchived });
+  }, [period, sort, showEnded, showArchived]);
 
   // Two accelerators for the two things people come back to do (issue #67):
   // "/" to search the list, "n" to add a subscription. Never while typing,
@@ -127,7 +127,7 @@ function Dashboard({
   const trials = subscriptions.filter((s) => s.status === "trial");
   // Same count SubscriptionTable computes for itself -- needed here too for
   // the mobile fixed action bar's label, which sits outside that component.
-  const cancelledCount = cancelledGroupCount(buildGroups(subscriptions));
+  const endedCount = endedGroupCount(buildGroups(subscriptions));
   const usedCategories = [...new Set(activeSubs.map((s) => s.category).filter(Boolean))];
 
   // --- by category ---
@@ -320,35 +320,35 @@ function Dashboard({
       {
         action: undoable(async () => {
           await actions.unarchive(subscription.id);
-          say(`${subscription.name} is back in the cancelled list.`);
+          say(`${subscription.name} is back in the list.`);
         }),
       },
     );
   }
 
-  // Every cancelled plan still in the list, archived in one go -- the
-  // cancelled list only grows, and archiving it row by row is a chore. The
-  // same set "Show cancelled — N" counts: heads of cancelled groups that are
-  // not archived yet.
-  async function archiveAllCancelled() {
+  // Every ended plan still in the list, archived in one go -- the ended list
+  // only grows, and archiving it row by row is a chore. The same set
+  // "Show ended — N" counts: heads of ended groups that are not archived yet.
+  // A cancelled plan whose access is still running is not part of it.
+  async function archiveAllEnded() {
     const targets = buildGroups(subscriptions)
       .map((g) => g.head)
-      .filter((s) => s.status === "cancelled" && !s.archived_date);
+      .filter((s) => accessEnded(s) && !s.archived_date);
     if (targets.length === 0) return;
     const ids = targets.map((s) => s.id);
     try {
       await actions.archiveMany(ids);
     } catch (err) {
       // Some may have gone through; the reload already shows which.
-      say(`Couldn't archive every cancelled plan. ${describeWriteError(err)}`);
+      say(`Couldn't archive every ended plan. ${describeWriteError(err)}`);
       return;
     }
     const one = targets.length === 1;
-    const what = one ? targets[0].name : `${targets.length} cancelled plans`;
+    const what = one ? targets[0].name : `${targets.length} ended plans`;
     say(showArchived ? `${what} archived.` : `${what} archived and hidden from the list.`, {
       action: undoable(async () => {
         await actions.unarchiveMany(ids);
-        say(`${what} ${one ? "is" : "are"} back in the cancelled list.`);
+        say(`${what} ${one ? "is" : "are"} back in the list.`);
       }),
     });
   }
@@ -364,14 +364,22 @@ function Dashboard({
   }
 
   async function cancelPlan(subscription, payload) {
-    await actions.update(subscription.id, { status: "cancelled", ...payload });
-    // A cancelled row leaves the list unless "Show cancelled" is on, so the
-    // way back to it is the one action worth offering.
+    const updated = await actions.update(subscription.id, { status: "cancelled", ...payload });
+    // The server works out when the paid-for term runs out. Until then the
+    // row stays where it is (issue #53), so the notice says how long for;
+    // a cancel back-dated past its own term has ended already and leaves the
+    // list unless "Show ended" is on, so the way back to it is the one action
+    // worth offering.
+    const row = { ...subscription, ...payload, ...updated, status: "cancelled" };
+    if (!accessEnded(row)) {
+      say(`${subscription.name} cancelled. It stays in the list until access ends ${longDate(row.next_renewal_date)}.`);
+      return;
+    }
     say(
       `${subscription.name} cancelled.`,
-      showCancelled
+      showEnded
         ? {}
-        : { action: { label: "Show cancelled", run: () => { setShowCancelled(true); setNotice(null); } } },
+        : { action: { label: "Show ended", run: () => { setShowEnded(true); setNotice(null); } } },
     );
   }
 
@@ -537,8 +545,8 @@ function Dashboard({
           categories={categories}
           sort={sort}
           setSort={setSort}
-          showCancelled={showCancelled}
-          setShowCancelled={setShowCancelled}
+          showEnded={showEnded}
+          setShowEnded={setShowEnded}
           showArchived={showArchived}
           setShowArchived={setShowArchived}
           editingId={editingId}
@@ -548,7 +556,7 @@ function Dashboard({
           onReactivate={setReactivationTarget}
           onArchive={archive}
           onUnarchive={unarchive}
-          onArchiveAllCancelled={archiveAllCancelled}
+          onArchiveAllEnded={archiveAllEnded}
           notice={<SaveNotice notice={notice?.where === "list" ? notice : null} />}
           onDelete={setDeleteTarget}
           onAdd={focusAddForm}
@@ -580,7 +588,7 @@ function Dashboard({
 
       {/* Mobile only (hidden by the media query in dashboard.css): the
           add-section above is desktop's always-visible form, and this
-          fixed-position bar is what reaches it and the cancelled toggle
+          fixed-position bar is what reaches it and the ended toggle
           without scrolling back up to the table. Rendered unconditionally,
           like the header's avatar square, rather than gated on isMobile --
           CSS decides whether it's on screen, JS just supplies the handlers. */}
@@ -588,8 +596,8 @@ function Dashboard({
         <button type="button" className="btn btn-primary" onClick={focusAddForm}>
           Add subscription
         </button>
-        <button type="button" className="btn btn-secondary" onClick={() => setShowCancelled(!showCancelled)}>
-          {showCancelled ? "Hide cancelled" : `Show cancelled — ${cancelledCount}`}
+        <button type="button" className="btn btn-secondary" onClick={() => setShowEnded(!showEnded)}>
+          {showEnded ? "Hide ended" : `Show ended — ${endedCount}`}
         </button>
       </div>
 
