@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ApiError, describeWriteError } from "../api";
-import { MAX_YEAR, MIN_YEAR, MONTHS, SHORT_MONTHS, longDate, money, signed, todayISO } from "../format";
+import { MAX_YEAR, MIN_YEAR, MONTHS, SHORT_MONTHS, longDate, money, signed, toISO, todayISO } from "../format";
 import { chargeCountInYear, chargesInMonth } from "../renewals";
 import { useIsMobile } from "../useMediaQuery";
 import { readListView, writeView } from "../viewUrl";
@@ -240,6 +240,21 @@ function Dashboard({
   const largestPool = monthly ? activeSubs.filter((s) => s.billing_cycle === "monthly") : activeSubs;
   const largest = largestPool.slice().sort((a, b) => Number(b.cost) - Number(a.cost))[0];
 
+  // Trials converting inside the same 30 days. The route counts them at 0 --
+  // nothing has charged yet -- so the figure says so, and gives the price
+  // they bring if kept: the same "if kept" figure the strip, the banner and
+  // Coming up show, rather than a fourth answer.
+  const horizon = new Date(`${today}T00:00:00`);
+  horizon.setDate(horizon.getDate() + 30);
+  const trialsSoon = trials.filter((s) => s.next_renewal_date >= today && s.next_renewal_date <= toISO(horizon));
+  const trialsSoonCost = trialsSoon.reduce((sum, s) => sum + Number(s.cost), 0);
+  const trialsSoonNote =
+    trialsSoon.length === 0
+      ? null
+      : trialsSoon.length === 1
+        ? `Not counting the ${trialsSoon[0].name} trial: ${money(trialsSoonCost)} more if kept`
+        : `Not counting ${trialsSoon.length} trials: ${money(trialsSoonCost)} more if kept`;
+
   const kpis = [
     {
       // The real answer from GET /subscriptions/upcoming, not a share of the
@@ -247,6 +262,7 @@ function Dashboard({
       // does not change when the period picker moves.
       figure: monthly ? money(upcomingTotal ?? 0) : money(total / 12),
       label: monthly ? "Charging in the next 30 days" : "Average per month",
+      note: monthly ? trialsSoonNote : null,
     },
     {
       figure: String(monthly ? monthCharges.length : chargeCountInYear(subscriptions, year)),

@@ -229,7 +229,7 @@ function AddForm({
         </div>
         <p className="plan-type-hint">
           {form.is_trial
-            ? "It shows €0.00 and stays out of your totals until the trial ends — then it charges the price above."
+            ? "It stays out of your totals while it is a trial. If you keep it, it charges the price above from the day the trial ends."
             : "It starts charging on the renewal date and counts toward your totals straight away."}
         </p>
       </div>

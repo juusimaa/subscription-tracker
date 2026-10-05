@@ -490,6 +490,15 @@ body { text-wrap: pretty; }
   color: color-mix(in srgb, var(--color-text) 70%, transparent);
   margin: 14px 0 0;
 }
+/* What a figure leaves out, under its label: sentence case and body size so
+   it reads as an explanation, not a second label. */
+.kpi-note {
+  font-size: 13px;
+  line-height: 18px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+  margin: 6px 0 0;
+  text-wrap: pretty;
+}
 
 /* — categories + coming up — */
 
@@ -564,6 +573,14 @@ body { text-wrap: pretty; }
   font-family: var(--font-heading);
   font-weight: 800;
   font-feature-settings: 'tnum' 1;
+}
+/* "if kept" after a trial's price, in the coming-up list and the next-charge
+   strip: the price in figure weight, the condition in body weight beside it,
+   so the two read as one phrase without the condition shouting. */
+.if-kept {
+  font-family: var(--font-body);
+  font-weight: 400;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
 }
 /* Charges already taken this month sit below the ones still to come, set
    in the label style and the hint ink step so they read as record, not as
@@ -1923,6 +1940,7 @@ body { text-wrap: pretty; }
 .coming-up .name,
 .panel-note,
 .kpi-label,
+.kpi-note,
 .dialog-title,
 .dialog-body,
 .cat-row .name,

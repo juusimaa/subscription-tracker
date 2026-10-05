@@ -1,8 +1,9 @@
 // The charges falling in the selected month, in date order.
 //
-// A trial shows €0.00 and says so: nothing leaves the account on a conversion
-// day, the trial is free until it ends. Its real price is in the table and in
-// the banner, which is where "then €9.99/mo" belongs.
+// A trial shows the price it converts to, marked "if kept": that is the one
+// answer the next-charge strip and the trial banner give too. Nothing has
+// charged yet -- the charge happens only if the user keeps the plan -- which
+// is why the 30-day KPI and the period totals leave it out until then.
 //
 // In the current month the list is split at today: what is still to come
 // leads, and what has already been taken follows, quieter, under its own
@@ -26,7 +27,16 @@ function ChargeGrid({ charges, past = false }) {
               {charge.subscription.name}
               {charge.isTrialConversion && <>{" "}<span className="trial-note">{past ? "trial converted" : "trial converts"}</span></>}
             </span>
-            <span className={`amount${first}`}>{money(charge.cost)}</span>
+            <span className={`amount${first}`}>
+              {charge.isTrialConversion ? (
+                <>
+                  {money(charge.subscription.cost)}{" "}
+                  <span className="if-kept">if kept</span>
+                </>
+              ) : (
+                money(charge.cost)
+              )}
+            </span>
           </Fragment>
         );
       })}

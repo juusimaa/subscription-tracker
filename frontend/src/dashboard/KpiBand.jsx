@@ -27,6 +27,7 @@ function KpiBand({ cells }) {
             <Figure text={cell.figure} />
           </p>
           <p className="kpi-label">{cell.label}</p>
+          {cell.note && <p className="kpi-note">{cell.note}</p>}
         </div>
       ))}
     </section>
