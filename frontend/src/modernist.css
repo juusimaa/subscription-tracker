@@ -201,9 +201,11 @@ figcaption {
 .btn-secondary { border-color: var(--color-stroke); }
 .btn-secondary:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
 .btn-secondary:active { background: color-mix(in srgb, var(--color-text) 14%, transparent); }
-.btn-ghost { color: var(--color-accent-700); padding-inline: var(--space-1); }
-.btn-ghost:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
-.btn-ghost:active { background: color-mix(in srgb, var(--color-accent) 18%, transparent); }
+.btn-ghost { color: var(--color-text); padding-inline: var(--space-1); }
+.btn-ghost:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.btn-ghost:active { background: color-mix(in srgb, var(--color-text) 14%, transparent); }
+/* The one ghost that stays red: an action that deletes or ends something. */
+.btn-ghost.destructive { color: var(--color-accent-700); }
 .btn-icon { width: 36px; height: 36px; padding: 0; }
 .btn-block { width: 100%; margin-top: var(--space-2); justify-content: flex-start; text-align: left; }
 
@@ -292,7 +294,7 @@ select.input {
   display: flex; flex-direction: column; gap: var(--space-2);
   padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-surface);
 }
-.card-kicker { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent-700); }
+.card-kicker { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: color-mix(in srgb, var(--color-text) 70%, transparent); }
 .card-title {
   font-family: var(--font-heading); font-weight: var(--font-heading-weight);
   font-size: 17px; line-height: 1.2;
@@ -316,7 +318,7 @@ select.input {
 .tag-accent { background: var(--color-accent-100); color: var(--color-accent-800); }
 .tag-accent-2 { background: var(--color-accent-2-100); color: var(--color-accent-2-800); }
 .tag-neutral { background: var(--color-neutral-100); color: var(--color-neutral-800); }
-.tag-outline { border: 1px solid var(--color-accent-700); color: var(--color-accent-700); }
+.tag-outline { border: 1px solid var(--color-stroke); color: var(--color-text); }
 
 /* — navigation — */
 .nav {
@@ -329,7 +331,8 @@ select.input {
   font-size: 18px; margin-right: auto;
 }
 .nav a { color: inherit; text-decoration: none; font-size: 14px; }
-.nav a:hover, .nav a[aria-current='page'] { color: var(--color-accent-700); }
+.nav a:hover { text-decoration: underline; text-underline-offset: 6px; }
+.nav a[aria-current] { text-decoration: underline 2px; text-underline-offset: 6px; }
 
 /* — tables — */
 .table { width: 100%; border-collapse: collapse; font-size: 14px; }

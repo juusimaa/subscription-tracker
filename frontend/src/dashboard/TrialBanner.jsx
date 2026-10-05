@@ -60,7 +60,7 @@ function TrialBanner({ trials, year, month, onReview, onConvert, onCancel }) {
             <div className="trial-row-actions">
               <button
                 type="button"
-                className="btn btn-primary btn-small"
+                className="btn btn-secondary btn-small"
                 disabled={convertingId != null}
                 onClick={() => convert(trial)}
               >

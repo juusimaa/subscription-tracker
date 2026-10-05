@@ -76,7 +76,7 @@ components:
     padding: "8px 14.4px"
   button-ghost:
     backgroundColor: "transparent"
-    textColor: "{colors.signal-red-deep}"
+    textColor: "{colors.ink}"
     rounded: "{rounded.none}"
     padding: "8px 4px"
   input:
@@ -97,7 +97,7 @@ components:
     padding: "2px 8px"
   tag-outline:
     backgroundColor: "transparent"
-    textColor: "{colors.signal-red-deep}"
+    textColor: "{colors.ink}"
     rounded: "{rounded.none}"
     padding: "2px 8px"
   attention-banner:
@@ -162,15 +162,16 @@ lightness scale, so the same step of any role matches in visual value.
 - **Signal Red Pressed** (`signal-red-pressed`): reserved; no longer used by
   the primary button.
 - **Signal Red Deep** (`signal-red-deep`): every red that has to meet 4.5:1.
-  As text: eyebrow labels, links, ghost buttons, active nav and sort headers,
-  field-error labels, the "trial converts" note, destructive menu items and
-  the active trend tick. As a fill under paper text (`--color-accent-fill`):
-  primary buttons, selected segments, picker cells and sort chips. In dark
+  As text: the "next charge" and "trial converts" labels, the selected
+  month's value and tick, field-error labels, and destructive actions (menu
+  items, the delete trigger and destructive ghost buttons). As a fill under
+  paper text (`--color-accent-fill`): primary buttons, selected segments and
+  picker cells. In dark
   mode the fill becomes `#ff563c` under dark text, and the text step becomes
   the reversed ramp's `#ffc4b8`.
 - **Signal Red Wash** (`signal-red-wash`): the fill for attention surfaces:
-  the server-error banner, the trial banner, row messages, menu hover and the
-  trial tag.
+  the server-error banner, the trial banner, row messages and the trial tag.
+  Hover fills are never red; they are Ink at 7%.
 - **Signal Red Ink** (`signal-red-ink`): text set on Signal Red Wash.
 
 ### Neutral
@@ -208,7 +209,10 @@ itself does not change.
 ### Named Rules
 **The One Signal Rule.** Signal Red marks money, deadlines and the current
 selection, and nothing else. If an element is red, the user should be able to
-say which of those three it is.
+say which of those three it is. Errors and destructive actions also stay red,
+because each one is about to cost something. Section eyebrows, nav links,
+sort headers, links, ghost actions, disclosure chevrons and status tags are
+Ink. They are structure and controls, not signals.
 
 **The Mixed-Ink Rule.** Never introduce a new grey hex. Secondary text and
 fills are Ink mixed toward transparent at the established percentages, so they
@@ -235,7 +239,7 @@ is in weight, not in typeface.
   is 14px.
 - **Lead** (400, 17px, 28px, max 52ch): the hero explanation of how the total
   was counted.
-- **Label** (400, 13px, 0.08em, uppercase): eyebrows (in Signal Red Deep),
+- **Label** (400, 13px, 0.08em, uppercase): eyebrows (in Ink),
   field labels and KPI labels (Ink at 70%). Table headers use 11px.
 - **Buttons** use the heading face at 800, 14px (13px small).
 
@@ -319,8 +323,9 @@ Heavy type with no softening. Neutral unless the button is the main action.
   `#7c1405`, active to Signal Red Ink. Use at most one per region.
 - **Secondary:** transparent with a 1px Stroke border and Ink text. Hover fills
   with Ink at 7%.
-- **Ghost:** Signal Red Deep text with minimal padding. Hover fills with Signal Red
-  at 10%. Used for "Edit", "More", "Manage" and "Show archived".
+- **Ghost:** Ink text with minimal padding. Hover fills with Ink at 7%. Used
+  for "Edit", "More", "Manage" and "Show archived". A destructive ghost
+  (`.destructive`) is the one exception and keeps Signal Red Deep text.
 - **Disabled:** 45% opacity.
 - **Focus:** a 2px Signal Red outline, offset 2px, on every interactive
   element.
@@ -333,7 +338,8 @@ yearly view, plan type, export format and conflict mode.
 ### Tags
 Square, 10px text, 2px by 8px padding. **Trial** is Signal Red Wash with Signal
 Red Ink text. **Active** is neutral wash with neutral ink. **Outline** has a
-1px Signal Red border and is used for "Beta" and "Archived".
+1px Stroke border with Ink text and is used for "Beta", "Paused", "Cancelled"
+and "Archived".
 
 ### Inputs / Fields
 - **Style:** Paper Raised fill, 1px Rule stroke, square, 36px minimum height
@@ -348,7 +354,7 @@ Red Ink text. **Active** is neutral wash with neutral ink. **Outline** has a
 ### Navigation
 A sticky header on Paper with a 2px bottom rule. On the left is the brand
 ("Subscriptions", Archivo 800) with an outline "Beta" tag. On the right are the
-text nav links (the current page in Signal Red Deep), the account email (tabular,
+text nav links (Ink, with the current page underlined at 2px), the account email (tabular,
 Ink at 68%) and a secondary "Log out" button. On mobile the email becomes a
 32px square avatar showing the initial.
 
@@ -356,12 +362,14 @@ Ink at 68%) and a secondary "Log out" button. On mobile the email becomes a
 The trial banner and the server-error banner share one form: Signal Red Wash
 fill, a 2px Signal Red top rule, a Title-weight headline in Signal Red Ink, and
 per-item rows divided by Signal Red Ink at 22%. Each row carries its own
-actions ("Convert to paid" and "Cancel before it charges"). Banners never
+actions ("Convert to paid" and "Cancel before it charges"). Both are Secondary
+buttons at the same width, so neither looks like the default choice. Banners never
 blank the page, and nothing is ever a toast.
 
 ### Data table
 Uppercase 11px headers over a 2px rule, and 1px rules between rows. Each
-header is a sort button that turns Signal Red when active. Rows carry a
+header is a sort button. The active one shows its arrow in full Ink, and the
+idle arrows sit at 35%. On mobile the active sort chip fills with Ink. Rows carry a
 brand tile, a sub-note line at 12px (Ink at 68%), and Ghost actions aligned
 right. Cancelled rows mute to Ink at 66%, tile included. Grouped runs fold
 under a disclosure chevron. An open group has no rules inside it and closes

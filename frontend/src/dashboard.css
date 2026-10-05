@@ -35,7 +35,7 @@ body { text-wrap: pretty; }
   font-size: 13px;
   text-decoration: none;
 }
-.app-footer-link:hover { color: var(--color-accent-700); }
+.app-footer-link:hover { color: var(--color-text); }
 
 /* Every figure on the page is tabular: columns of money that shift width as
    the digits change read as noise. */
@@ -60,7 +60,6 @@ body { text-wrap: pretty; }
 }
 .app-nav a { text-decoration: none; }
 .nav-link { font-size: 14px; color: var(--color-text); }
-.nav-link[aria-current] { color: var(--color-accent-700); }
 .nav-email {
   font-size: 13px;
   color: color-mix(in srgb, var(--color-text) 68%, transparent);
@@ -96,7 +95,7 @@ body { text-wrap: pretty; }
   line-height: 14px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--color-accent-700);
+  color: var(--color-text);
 }
 .field-label {
   display: block;
@@ -170,11 +169,12 @@ body { text-wrap: pretty; }
   border: 0;
   padding: 0;
   font: inherit;
-  color: var(--color-accent-700);
+  color: var(--color-text);
   cursor: pointer;
+  text-decoration: underline;
   text-underline-offset: 3px;
 }
-.link-button:hover { color: var(--color-accent-800); }
+.link-button:hover { text-decoration-thickness: 2px; }
 
 /* — hero — */
 
@@ -640,10 +640,12 @@ body { text-wrap: pretty; }
   margin: 4px 0 0;
   color: var(--color-accent-900);
 }
+/* Keep and cancel get the same style and the same width, so neither one looks
+   like the default at the moment a trial is about to cost money. */
 .trial-row-actions {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: stretch;
   gap: 8px;
 }
 .trial-review { margin-top: 20px; }
@@ -714,7 +716,7 @@ body { text-wrap: pretty; }
   line-height: 1;
   cursor: pointer;
 }
-.subscription-search-clear:hover { color: var(--color-accent); }
+.subscription-search-clear:hover { color: var(--color-text); }
 .subscription-search-empty {
   display: flex;
   align-items: center;
@@ -741,13 +743,13 @@ body { text-wrap: pretty; }
   text-transform: inherit;
   color: inherit;
 }
-.sort-button.on { color: var(--color-accent-700); }
+.sort-button.on { color: var(--color-text); }
 .sort-arrow {
   font-size: 12px;
   line-height: 12px;
   color: color-mix(in srgb, var(--color-text) 35%, transparent);
 }
-.sort-button.on .sort-arrow { color: var(--color-accent-700); }
+.sort-button.on .sort-arrow { color: var(--color-text); }
 
 .row-name {
   display: inline-flex;
@@ -777,13 +779,13 @@ body { text-wrap: pretty; }
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--color-accent);
+  color: var(--color-text);
   cursor: pointer;
   font: inherit;
 }
 .disclosure svg { transition: transform 0.15s ease; }
 .disclosure[aria-expanded="true"] svg { transform: rotate(90deg); }
-.disclosure:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.disclosure:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
 .disclosure-spacer { display: inline-block; width: 24px; flex: 0 0 24px; }
 .name-stack { display: flex; flex-direction: column; }
 .runs-link {
@@ -796,7 +798,7 @@ body { text-wrap: pretty; }
   font: inherit;
   font-size: 12px;
   line-height: 16px;
-  color: var(--color-accent-700);
+  color: var(--color-text);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -868,7 +870,7 @@ body { text-wrap: pretty; }
   font: inherit;
 }
 .row-menu-item + .row-menu-item { border-top: 1px solid var(--color-divider); }
-.row-menu-item:hover { background: var(--color-accent-100); }
+.row-menu-item:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
 .row-menu-label {
   display: block;
   font-family: var(--font-heading);
@@ -1041,7 +1043,7 @@ body { text-wrap: pretty; }
   text-align: left;
   font-family: var(--font-body);
 }
-.quick-add button:hover { background: var(--color-accent-100); }
+.quick-add button:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
 .quick-add .name {
   font-family: var(--font-heading);
   font-weight: 800;
@@ -1051,7 +1053,7 @@ body { text-wrap: pretty; }
 .quick-add .plus {
   font-size: 20px;
   line-height: 20px;
-  color: var(--color-accent);
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
 }
 .manual-add-section { padding: 56px 0 112px; }
 
@@ -1202,7 +1204,7 @@ body { text-wrap: pretty; }
 }
 .account-pw-current { grid-column: 1 / -1; }
 .account-pw-actions { display: flex; align-items: center; gap: 16px; margin: 20px 0 0; }
-.account-pw-done { font-size: 13px; color: var(--color-accent-700); }
+.account-pw-done { font-size: 13px; color: var(--color-text); }
 .account-danger-actions { display: flex; gap: 12px; margin: 20px 0 0; }
 .account-delete-trigger { color: var(--color-accent-700); }
 .dialog-account-delete { width: 480px; max-width: calc(100vw - 64px); }
@@ -1321,7 +1323,7 @@ body { text-wrap: pretty; }
 }
 /* Tinted on drag-over, and the border stays square -- nothing in this system
    has a rounded corner, least of all a state that lasts half a second. */
-.io-drop.dragging { background: var(--color-accent-100); }
+.io-drop.dragging { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
 .io-drop-title { font-size: 15px; line-height: 22px; margin: 0; }
 .io-drop-note {
   font-size: 13px;
@@ -1400,7 +1402,7 @@ body { text-wrap: pretty; }
   line-height: 18px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--color-accent-700);
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
 }
 .ledger-row .detail { font-size: 15px; line-height: 22px; }
 .ledger-row .count {
@@ -1621,7 +1623,7 @@ body { text-wrap: pretty; }
     cursor: pointer;
     white-space: nowrap;
   }
-  .sort-chip.on { background: var(--color-accent-fill); color: var(--color-bg); border-color: var(--color-accent-fill); }
+  .sort-chip.on { background: var(--color-text); color: var(--color-bg); border-color: var(--color-text); }
   .mobile-list { margin: 18px 0 0; border-top: 2px solid var(--color-divider); }
   .mobile-row {
     display: grid;
@@ -1639,7 +1641,7 @@ body { text-wrap: pretty; }
     color: var(--color-text);
     cursor: pointer;
   }
-  .mobile-row:hover { background: var(--color-accent-100); }
+  .mobile-row:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
   .mobile-row.cancelled { color: color-mix(in srgb, var(--color-text) 66%, transparent); }
   .mobile-row-main { min-width: 0; }
   .mobile-row-title { display: flex; align-items: center; gap: 8px; }
@@ -1697,7 +1699,7 @@ body { text-wrap: pretty; }
     font-weight: 600;
     font-size: 13px;
     line-height: 1.2;
-    color: var(--color-accent-700);
+    color: var(--color-text);
     text-align: left;
   }
   .mobile-runs-toggle svg { color: inherit; transition: transform 0.15s ease; }
