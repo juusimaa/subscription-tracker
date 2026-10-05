@@ -60,7 +60,7 @@ test("search filters the current list by name, cost and renewal date", async ({ 
 
   await search.fill("Dropbox");
   await expect(list.getByText("No subscriptions match")).toBeVisible();
-  await list.getByRole("button", { name: /Show cancelled/ }).click();
+  await list.getByRole("button", { name: /Show ended/ }).click();
   await expect(list.getByText("Dropbox")).toBeVisible();
 
   await list.locator(".subscription-search").getByRole("button", { name: "Clear search" }).click();

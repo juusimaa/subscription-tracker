@@ -31,7 +31,7 @@ test("a bookmarked period, sort and toggle open as they were left", async ({ pag
   await expect(page.getByRole("button", { name: "Yearly" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Choose period, currently 2025" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: /Cost/ })).toHaveAttribute("aria-sort", "descending");
-  await expect(page.getByRole("button", { name: "Hide cancelled" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Hide ended" })).toBeVisible();
 });
 
 test("changing the view writes it to the URL, and the default stays a plain URL", async ({ page }) => {
@@ -43,7 +43,7 @@ test("changing the view writes it to the URL, and the default stays a plain URL"
   await page.getByRole("button", { name: "Monthly" }).click();
   await page.getByRole("button", { name: "Next period" }).click();
   await expect(page).toHaveURL(/\/$/);
-  await page.getByRole("button", { name: /Show cancelled/ }).click();
+  await page.getByRole("button", { name: /Show ended/ }).click();
   await page.getByRole("columnheader", { name: /^Name/ }).getByRole("button").click();
   await expect(page).toHaveURL(/\?sort=name&cancelled=1$/);
 });
@@ -62,7 +62,7 @@ test("/ focuses search and n goes to the add form", async ({ page }) => {
   await expect(page.locator("#add input").first()).toBeFocused();
 });
 
-test("archive all cancelled, and undo it", async ({ page }) => {
+test("archive all ended, and undo it", async ({ page }) => {
   await openDashboard(page);
   const archived = [];
   const unarchived = [];
@@ -74,13 +74,13 @@ test("archive all cancelled, and undo it", async ({ page }) => {
     unarchived.push(route.request().url());
     return route.fulfill({ json: {} });
   });
-  // Only offered while the cancelled list is on screen.
-  await expect(page.getByRole("button", { name: /Archive all cancelled/ })).toHaveCount(0);
-  await page.getByRole("button", { name: /Show cancelled/ }).click();
-  await page.getByRole("button", { name: "Archive all cancelled — 1" }).click();
+  // Only offered while the ended plans are on screen.
+  await expect(page.getByRole("button", { name: /Archive all ended/ })).toHaveCount(0);
+  await page.getByRole("button", { name: /Show ended/ }).click();
+  await page.getByRole("button", { name: "Archive all ended — 1" }).click();
   await expect(notice(page)).toHaveText("Dropbox archived and hidden from the list. Undo");
   expect(archived).toEqual([expect.stringMatching(/\/subscriptions\/5\/archive$/)]);
   await notice(page).getByRole("button", { name: "Undo" }).click();
-  await expect(notice(page)).toHaveText("Dropbox is back in the cancelled list.");
+  await expect(notice(page)).toHaveText("Dropbox is back in the list.");
   expect(unarchived).toEqual([expect.stringMatching(/\/subscriptions\/5\/unarchive$/)]);
 });

@@ -1,7 +1,7 @@
 // The quiet line that says a write went through (issue #63). Failures
 // already say so where they happened; this is the same idea for success,
 // because a row that moves to another sort position, or out of view into the
-// cancelled list, otherwise leaves no sign the save happened at all.
+// ended list, otherwise leaves no sign the save happened at all.
 //
 // Not a toast (DESIGN.md): it sits in the page flow next to what changed and
 // stays until the next write replaces it. The live region is always mounted,
