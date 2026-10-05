@@ -45,3 +45,7 @@ _site/
 # Editors
 .vscode/
 .idea/
+
+# Dated /impeccable critique reports: point-in-time reviews kept for the
+# tool's own trend comparison. Open findings are filed as issues instead.
+.impeccable/critique/
