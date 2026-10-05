@@ -38,19 +38,11 @@ import Login from "./Login";
 import { MAX_YEAR, MIN_YEAR, ageInWords } from "./format";
 import { GitHub, TriangleAlert } from "./icons";
 import { useModal } from "./useModal";
+import { readPeriod } from "./viewUrl";
 import "./modernist.css";
 import "./dashboard.css";
 
 const YEARS = Array.from({ length: MAX_YEAR - MIN_YEAR + 1 }, (_, i) => MIN_YEAR + i);
-
-// The period the page opens on: this month, or the nearest end of the range
-// if today falls outside it. Clamping rather than showing an empty period
-// keeps the first render meaningful even in 2028.
-function initialPeriod() {
-  const now = new Date();
-  const year = Math.min(MAX_YEAR, Math.max(MIN_YEAR, now.getFullYear()));
-  return { view: "monthly", year, month: year === now.getFullYear() ? now.getMonth() : 0 };
-}
 
 // The session-expired sign-in, as a dialog over the page it is protecting.
 function ReauthDialog({ email, onLogin, onClose }) {
@@ -85,7 +77,7 @@ function App() {
   const [sessionExpired, setSessionExpired] = useState(false);
   const [reauthOpen, setReauthOpen] = useState(false);
   const [staleId, setStaleId] = useState(null);
-  const [period, setPeriod] = useState(initialPeriod);
+  const [period, setPeriod] = useState(readPeriod);
   const [accountOpen, setAccountOpen] = useState(false);
   // Only so the banner's "last updated N minutes ago" stays true while it is
   // on screen; nothing else reads it.
@@ -212,6 +204,20 @@ function App() {
     [load],
   );
 
+  const performAll = useCallback(
+    (writes) =>
+      perform(async () => {
+        const results = await Promise.allSettled(writes.map((write) => write()));
+        const failed = results.find((result) => result.status === "rejected");
+        if (failed) throw failed.reason;
+      }).catch(async (err) => {
+        setCatSpend({});
+        await load();
+        throw err;
+      }),
+    [perform, load],
+  );
+
   const actions = useMemo(
     () => ({
       create: (payload) => perform(() => createSubscription(payload)),
@@ -219,6 +225,12 @@ function App() {
       remove: (id) => perform(() => deleteSubscription(id), id),
       archive: (id) => perform(() => archiveSubscription(id), id),
       unarchive: (id) => perform(() => unarchiveSubscription(id), id),
+      // "Archive all cancelled" and its undo (issue #67). There is no bulk
+      // route, so it is one request per row and one reload at the end. A
+      // partial failure still reloads, since the rows that did go through
+      // have moved, and then reports the first failure.
+      archiveMany: (ids) => performAll(ids.map((id) => () => archiveSubscription(id))),
+      unarchiveMany: (ids) => performAll(ids.map((id) => () => unarchiveSubscription(id))),
       restore: (id, payload) => perform(() => restoreSubscription(id, payload), id),
       createCategory: (name) => perform(() => createCategory(name)),
       renameCategory: (id, name) => perform(() => renameCategory(id, name)),
@@ -231,7 +243,7 @@ function App() {
       exportBackup,
       refresh: () => { setStaleId(null); return load(); },
     }),
-    [perform, load],
+    [perform, performAll, load],
   );
 
   function handleLogout() {
