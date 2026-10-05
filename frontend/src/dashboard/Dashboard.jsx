@@ -22,6 +22,7 @@ import ConfirmDialog from "./ConfirmDialog";
 import EmptyState from "./EmptyState";
 import Hero from "./Hero";
 import ImportExport from "./ImportExport";
+import ListGuide from "./ListGuide";
 import KpiBand from "./KpiBand";
 import NextCharge from "./NextCharge";
 import ReactivateDialog from "./ReactivateDialog";
@@ -608,6 +609,8 @@ function Dashboard({
           staleId={staleId}
           onRefreshStale={actions.refresh}
         />
+
+        <ListGuide />
 
         <section id="add" aria-label="Add a subscription" className={addOpen ? "add-section" : "add-section folded"}>
           <SectionToggle
