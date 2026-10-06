@@ -78,3 +78,54 @@ class TestRateLimit:
                 json={"email": _unique_email(), "password": "password123"},
             )
             assert response.status_code == 201, response.text
+
+
+@contextmanager
+def forwarded_for_trusted():
+    import app.main as main
+
+    main.TRUST_FORWARDED_FOR = True
+    try:
+        yield
+    finally:
+        main.TRUST_FORWARDED_FOR = False
+
+
+def _wrong_login(client, email: str, forwarded_for: str):
+    return client.post(
+        "/token",
+        data={"username": email, "password": "wrong-password"},
+        headers={"X-Forwarded-For": forwarded_for},
+    )
+
+
+class TestClientAddress:
+    """Behind Azure's ingress every request comes from the proxy's address,
+    so the limits have to key on the client Envoy appends to
+    X-Forwarded-For -- otherwise every user shares one budget."""
+
+    def test_clients_behind_the_proxy_get_separate_budgets(self, client):
+        with forwarded_for_trusted(), rate_limiting_enabled():
+            for _ in range(5):
+                assert _wrong_login(client, _unique_email(), "203.0.113.1").status_code == 401
+            assert _wrong_login(client, _unique_email(), "203.0.113.1").status_code == 429
+            # A different client is untouched by the first one's lockout.
+            assert _wrong_login(client, _unique_email(), "203.0.113.2").status_code == 401
+
+    def test_only_the_last_hop_counts(self, client):
+        # Everything before the last entry is whatever the client sent, so
+        # rotating it must not buy a fresh budget.
+        with forwarded_for_trusted(), rate_limiting_enabled():
+            for n in range(5):
+                response = _wrong_login(client, _unique_email(), f"10.0.0.{n}, 203.0.113.1")
+                assert response.status_code == 401
+            response = _wrong_login(client, _unique_email(), "10.0.0.99, 203.0.113.1")
+            assert response.status_code == 429
+
+    def test_header_ignored_unless_trusted(self, client):
+        # Without a proxy in front the header is client-controlled: a fresh
+        # value per request must not dodge the limit.
+        with rate_limiting_enabled():
+            for n in range(5):
+                assert _wrong_login(client, _unique_email(), f"203.0.113.{n}").status_code == 401
+            assert _wrong_login(client, _unique_email(), "203.0.113.50").status_code == 429
