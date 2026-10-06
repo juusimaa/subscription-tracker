@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openDashboard } from "./mocks";
+import { expectBottomSheet, openDashboard } from "./mocks";
 
 test.beforeEach(async ({ page }) => openDashboard(page));
 
@@ -12,5 +12,6 @@ test("mobile edit sheet shows every field", async ({ page }) => {
   const sheet = page.locator(".dialog-sheet-edit");
   await expect(sheet).toBeVisible();
   await expect(sheet.getByText("Started", { exact: true })).toBeVisible();
+  await expectBottomSheet(page, sheet);
   await expect(sheet).toHaveScreenshot("mobile-edit-sheet.png");
 });
