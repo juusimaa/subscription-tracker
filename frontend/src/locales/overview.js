@@ -57,7 +57,7 @@ export default {
     "kpi.noEarlier": "No earlier data",
     "kpi.changeSinceMonth": ({ shortMonth }) => `Change since ${shortMonth}`,
     "kpi.changeSinceYear": ({ year }) => `Change since ${year}`,
-    "kpi.trialNoteOne": ({ name, amount }) => `Not counting the ${name} trial: ${amount} more if kept`,
+    "kpi.trialNoteOne": "Not counting the trial above",
     "kpi.trialNoteMany": ({ n, amount }) => `Not counting ${n} trials: ${amount} more if kept`,
 
     "categoryBars.title": "By category",
@@ -184,7 +184,7 @@ export default {
     // Full month name in the elative: "Muutos elokuusta".
     "kpi.changeSinceMonth": ({ month }) => `Muutos ${month}sta`,
     "kpi.changeSinceYear": ({ year }) => `Muutos vuodesta ${year}`,
-    "kpi.trialNoteOne": ({ name, amount }) => `Ei sisällä kokeilua ${name}: ${amount} lisää, jos pidät sen`,
+    "kpi.trialNoteOne": "Ei sisällä yllä olevaa kokeilua",
     "kpi.trialNoteMany": ({ n, amount }) => `Ei sisällä ${n} kokeilua: ${amount} lisää, jos pidät ne`,
 
     "categoryBars.title": "Kategorioittain",

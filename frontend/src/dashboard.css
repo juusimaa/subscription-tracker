@@ -677,7 +677,7 @@ body { text-wrap: pretty; }
 .coming-up.charged .amount { font-weight: 600; }
 .trial-note {
   font-size: 12px;
-  color: var(--color-accent-700);
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   /* With the space before it in the markup, so the name and the note read as
@@ -1715,7 +1715,11 @@ kbd {
      which is enough room for the brand to sit at full size, untrimmed. */
   .app-nav { padding-inline: 20px; flex-wrap: nowrap; }
   .nav-link { display: none; }
-  .nav-account { min-height: 44px; flex: 0 0 auto; }
+  /* Every button is a 44px touch target at this width (WCAG 2.5.5), however
+     small its label: Log out, Manage and the sheet's Close were 34-35px. */
+  .btn { min-height: 44px; }
+  .nav-account { min-width: 44px; flex: 0 0 auto; justify-content: center; }
+  .app-footer-link { min-height: 44px; }
   .nav-email { display: none; }
   .nav-avatar { display: inline-flex; }
   .app-nav > .btn-secondary { flex: 0 0 auto; }
@@ -1788,7 +1792,6 @@ kbd {
   .next-charge-label { grid-column: 1 / -1; }
   .next-charge-when { display: block; margin-left: 0; font-size: 13px; line-height: 18px; }
   .next-charge-actions { flex-direction: column; align-items: flex-end; gap: 0; }
-  .next-charge-actions .btn { min-height: 44px; }
   /* Desktop's align-items: flex-start (base rule) lets .period sit in the
      hero grid's auto-sized column without stretching to fill it. On mobile
      .hero is block, so .period is already full width -- but flex-start would
@@ -1829,7 +1832,7 @@ kbd {
     font-feature-settings: 'tnum' 1;
   }
   .hint { display: none; }
-  .trend-tick { font-size: 10px; text-align: center; }
+  .trend-tick { font-size: 12px; text-align: center; }
   .tick-full { display: none; }
   .tick-short { display: block; }
 
@@ -1868,7 +1871,7 @@ kbd {
   .trial-head { flex-wrap: wrap; gap: 4px; }
   .trial-row { grid-template-columns: 1fr; gap: 10px; }
   .trial-row-actions { align-items: stretch; }
-  .trial-row-actions .btn { width: 100%; min-height: 44px; }
+  .trial-row-actions .btn { width: 100%; }
   .trial-review { min-height: 44px; margin-inline: calc(-1 * var(--space-3)) 0; }
 
   /* — subscription list (SubscriptionTable.jsx's mobile branch) —
@@ -1889,7 +1892,7 @@ kbd {
   }
   .sort-chip {
     flex: 0 0 auto;
-    min-height: 40px;
+    min-height: 44px;
     padding: 0 14px;
     background: transparent;
     border: 1px solid var(--color-stroke);
@@ -2169,7 +2172,7 @@ kbd {
   .io-export-controls { flex-direction: column; align-items: stretch; }
   .io-export-controls .btn { width: 100%; min-height: 48px; }
   .io-drop { grid-template-columns: 1fr; text-align: left; }
-  .io-drop .btn { width: 100%; min-height: 44px; margin-top: 12px; }
+  .io-drop .btn { width: 100%; margin-top: 12px; }
 }
 
 /* — resilience —
