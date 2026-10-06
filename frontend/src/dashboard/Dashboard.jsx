@@ -671,8 +671,11 @@ function Dashboard({
         </section>
 
         {/* The trial section's own Signal Red top rule takes the place of
-            this divider rather than stacking a second rule under it. */}
-        {trials.length > 0 ? (
+            this divider rather than stacking a second rule under it. It is
+            the full list of running trials, so it only earns its place when
+            there is more to list than the next-charge strip already shows:
+            one trial still to convert is in the strip, actions included. */}
+        {trials.length > 1 || (trials.length === 1 && trials[0].next_renewal_date < today) ? (
           <TrialBanner
             trials={trials}
             year={year}

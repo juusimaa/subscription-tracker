@@ -141,6 +141,32 @@ test("dashboard in three currencies", async ({ page }) => {
   await expect(page).toHaveScreenshot("currency-dashboard.png", { fullPage: true });
 });
 
+// Critique 2026-10-06, issue 2: the per-currency statement pushed the next
+// charge and the trial's keep/cancel actions off the first phone screen.
+// It folds there now, and the strip comes before the period controls.
+test("the next charge and its actions are on the first phone screen", async ({ page, isMobile }) => {
+  test.skip(!isMobile, "mobile first viewport");
+  const toggle = page.getByRole("button", { name: /In each currency/ });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".fx-grid")).toBeHidden();
+
+  const bar = await page.locator(".mobile-action-bar").boundingBox();
+  for (const button of await page.locator(".next-charge button").all()) {
+    const box = await button.boundingBox();
+    expect(box.y + box.height).toBeLessThanOrEqual(bar.y);
+  }
+
+  await toggle.click();
+  await expect(page.locator(".fx-grid")).toBeVisible();
+});
+
+// The one running trial is already in the next-charge strip with both its
+// actions, so the full trial list below would only repeat it.
+test("a single trial is not repeated in a trial section", async ({ page }) => {
+  await expect(page.locator(".next-charge")).toContainText("Notion");
+  await expect(page.locator(".trial-banner")).toHaveCount(0);
+});
+
 test("the change since last month says when it is only the rate", async ({ page }) => {
   await expect(page.locator(".kpis")).toContainText("The difference is the exchange rate.");
 });
