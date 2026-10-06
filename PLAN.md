@@ -52,7 +52,7 @@ docker-subscription-tracker/
 6. ~~**Multi-user auth (JWT)**~~ ✅ — add a `users` table and scope every subscription to its owner, so the app is safe to expose publicly in step 8. Details below.
 7. ~~**Invite code for registration**~~ ✅ — gate `POST /register` behind a shared invite code (env var, checked alongside the existing rate limit) before the app is reachable on a public URL. Registration is architecturally open to anyone (milestone 6), and step 9 is what actually verifies an email belongs to whoever is registering with it — until that exists, an invite code is the stopgap that keeps step 8's public deploy from being genuinely open signup. Removed once step 9 lands.
 8. ~~**Deploy to Azure Container Apps**~~ ✅ — backend + frontend as two container apps, both pulling the images already published to GHCR. Database is [Neon](https://neon.tech)'s free Postgres tier rather than Azure Database for PostgreSQL: Neon costs nothing at this scale and scales to zero on its own, while the cheapest Azure-managed Postgres (Burstable B1ms) runs ~$15–20/month with no free tier. Redis is dropped for this deployment — `app/cache.py` already fails open, so there's nothing worth paying to keep. Details below.
-9. **Password reset and email verification** — the two account-surface gaps milestone 6 deliberately skipped, built for real this time. Needs an actual email-sending path (e.g. [Resend](https://resend.com)), which nothing in this stack has today — only `email-validator`, which checks an address's *format*, not that anyone reads it. New accounts land unverified and stay usable (registering, logging in, tracking subscriptions all still work), but anything that emails the user — password reset, and any future renewal-reminder notification — is gated on verification. Once this exists, step 7's invite code is no longer the thing standing between a public URL and open signup, and can come out.
+9. **Password reset and email verification** — the two account-surface gaps milestone 6 deliberately skipped, built for real this time. Needs an actual email-sending path (e.g. [Resend](https://resend.com)), which nothing in this stack has today — only `email-validator`, which checks an address's *format*, not that anyone reads it. New accounts land unverified and stay usable (registering, logging in, tracking subscriptions all still work), and anything that emails the user unprompted (any future renewal-reminder notification) is gated on verification. Password reset is the exception: it works for unverified accounts too, and completing it verifies the address. Once this exists, step 7's invite code is no longer the thing standing between a public URL and open signup — but it deliberately **stays** while the app is in beta; removing it is a separate, later decision. Provider: Resend (free tier). Details below.
 10. **Multi-currency support** — closes TODO.md's D7, which was recorded as a decision to revisit rather than a task, on the grounds that every subscription today is silently assumed to be EUR. Currency lives on the **subscription**, not the user — `cost` gains a `currency` column, since two subscriptions on one account can legitimately be billed in different currencies (D4's own reasoning: don't force a schema constraint that isn't true about the user's money). Users additionally get a **default currency** setting, pre-filling new subscriptions rather than acting as a source of truth — the first of what will likely be several user-specific settings, so it gets its own typed column(s) rather than a JSONB blob, following the `token_version` precedent (milestone 6) instead of inventing a schemaless settings store. Still to decide, and worth settling before backend work starts since it drives the schema and has real UX impact: how the category panel and the per-month/year cost panel show a mix of currencies once summing raw `cost` across rows stops being meaningful — separate per-currency subtotals, a converted grand total (needing a conversion-rate source, live or cached), or something else.
     * Currency settings at the bottom. TBD how to poll currency rates.
       
@@ -237,6 +237,167 @@ automatically, pinned to the immutable `sha-<short>` tag.
 **GHCR images:** already publicly pullable with no registry secret needed —
 GHCR packages inherit this repo's public visibility by default, so Container
 Apps' anonymous pulls just worked.
+
+## Milestone 9 — Password reset and email verification (planned)
+
+**Provider: [Resend](https://resend.com), free tier.** 3,000 emails/month
+(100/day), 3 domains, €0. That is orders of magnitude more than verification
+and reset mail will ever use here, so no provider is *cheaper*. The
+alternatives were weighed on other grounds:
+
+- Azure Communication Services: ~$0.00025/email, so cents a month on the
+  existing bill. Domain setup is clunkier and new resources start with low
+  send quotas.
+- Brevo: the largest free tier, from an EU company, but a heavy
+  marketing-suite product.
+- Postmark: only 100/month free.
+- Amazon SES: needs an AWS account and has a sandbox-exit process.
+
+The sending code sits behind a small interface, so swapping providers later
+means writing one function. Sending needs `subscriptionstrack.com`'s DNS: an
+SPF/DKIM record from Resend (send from a subdomain such as
+`mail.subscriptionstrack.com`) plus a DMARC record.
+
+**Invite code stays.** The app is still in beta, so `INVITE_CODE` keeps
+gating `POST /register`. Removing it is its own later change. This milestone
+only builds the email path.
+
+### Backend
+
+- **Migration `0006_email_verified_at`:** `users.email_verified_at`, a
+  nullable timestamp. Null means unverified. Existing users start unverified
+  and see the nudge described below; there is no backfill, since nobody has
+  proven an address yet. `User` responses gain `email_verified: bool`.
+- **No token table.** Verify and reset links carry short-lived signed JWTs
+  (the same `SECRET_KEY` and HS256), each with a `purpose` claim:
+  - Verify: `{sub, purpose: "verify", email, exp: 48h}`. Including `email`
+    keeps the token tied to the address it was sent to. Reusing it is
+    harmless, because verifying is idempotent.
+  - Reset: `{sub, purpose: "reset", tv: token_version, exp: 1h}`. Completing a
+    reset goes through `crud.update_password`, which bumps `token_version`. That
+    makes each link **single-use**, and it also signs out every session (the
+    same as change password does today).
+  - `get_current_user` must **reject any token that has a `purpose` claim**,
+    so an emailed link can never be used as an access token.
+- **`app/email.py`:** `send_email(to, subject, text, html)`, switched by
+  `EMAIL_BACKEND`:
+  - `resend`: one `httpx` POST to `api.resend.com/emails`. `httpx` moves from
+    `requirements-dev.txt` into `requirements.txt`.
+  - `console` (the default): logs the message, including the link, which is
+    enough for local dev.
+  - Tests use a fixture that captures an in-memory outbox.
+
+  Mail is sent from FastAPI `BackgroundTasks`, so a slow provider never slows
+  the request, and response timing doesn't reveal whether an account exists.
+  A send failure is logged and never surfaces as a 500.
+- **New env vars:**
+  - `EMAIL_BACKEND`
+  - `RESEND_API_KEY` (a Container Apps secret, referenced with `secretref`)
+  - `EMAIL_FROM` (`Subscription Tracker <no-reply@mail.subscriptionstrack.com>`)
+  - `APP_URL` (`https://subscriptionstrack.com`, the base for the links)
+
+  Add them to `.env.example`, `docker-compose.yml`, the README env table and
+  the Azure app.
+- **Endpoints.** Error statuses are **400, never 401**, because `api.js`
+  treats any 401 as "session expired":
+  - `POST /register`: unchanged, and also queues the verification email.
+  - `POST /me/verification` (authenticated, 3/hour): resends the
+    verification email. Returns 204, or 204 as a no-op if already verified.
+  - `POST /verify-email {token}` (unauthenticated): returns 200 with
+    `{email}`. A bad or expired token gets 400 `{"detail": "expired"}` or
+    `{"detail": "invalid"}`.
+  - `POST /password-reset {email}` (5/hour per IP): **always 202**, whether
+    the account exists or not, so it can't be used to check for an email.
+    Sends only if the account exists.
+  - `POST /password-reset/confirm {token, new_password}`: sets the password
+    (bumping `tv`), marks the email verified, and returns a `Token` so the
+    user lands signed in. A bad, expired or used token gets 400.
+- **Gating rule (approved 2026-10-06):** a password reset
+  **is allowed for unverified accounts**, and completing it **verifies the
+  address**, since clicking the link proves the user reads that inbox.
+  Without this, someone who registers and forgets their password before
+  verifying would be locked out for good. Verification still gates mail the
+  user didn't ask for, meaning future renewal reminders.
+- **Tests:**
+  - Token purpose separation (a reset or verify token used as a bearer
+    token gets 401).
+  - Reset link is single-use, and expires.
+  - Verify is idempotent.
+  - Unknown email still gets 202 with nothing sent.
+  - Rate limits.
+  - The migration, on the SQLite + Postgres matrix.
+
+### Frontend (planned with impeccable shape: Operate mode, inside the existing DESIGN.md world)
+
+No router is added. `main.jsx` reads `?verify=` and `?reset=` once on load,
+hands them to `App`, and clears them from the URL with
+`history.replaceState`. That way a token never sits in history and a reload
+never re-submits it.
+
+1. **Login, "Forgot password?"**
+   - A text link under the password field. Full login only, not the compact
+     re-auth dialog, where Log out is the way out.
+   - It swaps the same card to a single email field and a primary
+     button, "Send reset link".
+   - Success replaces the form with one status line: "If there's an
+     account for *x*, a reset link is on its way. It works for 1 hour." The
+     wording is neutral, so it doesn't reveal whether an account exists.
+   - "Back to sign in" returns to the form.
+2. **Reset screen (`?reset=TOKEN`)**
+   - The login card titled "Set a new password", with one new-password field
+     that uses the same rules and hint as Change password.
+   - Success signs the user straight in. A Save notice on the dashboard
+     reads "Password changed. You've been signed out everywhere else."
+   - If the token is expired or used, the card says so plainly and offers
+     the email field pre-armed, "Send a new link", instead of a dead end.
+3. **Verify landing (`?verify=TOKEN`)** works whether or not the user is
+   signed in, because the link often opens in another browser:
+   - Signed in: the dashboard loads, and the Save-notice line reads "Email
+     confirmed."
+   - Signed out: the login card shows a status line above the form:
+     "*x* is confirmed. Sign in to continue."
+   - Expired: the line says so, and offers a new link (signed in) or says
+     "sign in to send a new one" (signed out).
+4. **Unverified nudge**
+   - One quiet line under the header, on the page ground, in Ink at 78%,
+     with **no Signal Red**. It's not money or a deadline (The One Signal
+     Rule), and it's not an attention banner.
+   - It reads: "Confirm *x* so you can reset your password by email. Send the
+     link again". After a send, the line reads "Sent. Check *x*."
+   - The user can dismiss it, which is remembered per browser in
+     `localStorage` (wrapped in try/catch).
+   - It never blocks anything.
+5. **Account dialog, new "Email" section** above Change password. It shows
+   the address with "Confirmed" or "Not confirmed yet · Send link". This is
+   the permanent home for the status after the nudge is dismissed.
+6. **The emails themselves**
+   - Plain text plus minimal HTML, in a system font with one Ink-coloured
+     square-cornered link button. No images and no tracking pixels.
+   - Resend's open and click tracking is **off**, to match the "no tracking"
+     positioning.
+   - Copy follows the product voice. It says what the link does, when it
+     expires, and "If you didn't ask for this, ignore it. Nothing has
+     changed."
+
+**States to cover in Playwright visual specs** (extend `tests/visual/mocks.js`):
+- forgot form
+- forgot sent
+- reset form
+- reset expired
+- verify success (signed in and signed out)
+- verify expired
+- nudge
+- nudge sent
+- account Email section, both states
+
+Each runs on mobile and desktop.
+
+**Out of scope:**
+- Removing the invite code.
+- Renewal-reminder emails, which also need a scheduler that doesn't exist
+  yet.
+- Changing the account email address.
+- Mailpit in compose, a nice-to-have if the console backend proves too thin.
 
 ## Notes / rationale
 
