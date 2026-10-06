@@ -33,9 +33,10 @@ export default {
 
     "hero.monthlySpend": "Monthly spend",
     "hero.annualSpend": "Annual spend",
-    "hero.body": ({ active, categories, monthly }) =>
+    "hero.body": ({ active, categories, monthly, currencies = 1, shownIn }) =>
       `Across ${active} active subscription${active === 1 ? "" : "s"} in ${categories} ` +
-      `categor${categories === 1 ? "y" : "ies"}. ` +
+      `categor${categories === 1 ? "y" : "ies"}` +
+      (currencies > 1 ? ` and ${currencies} currencies, shown ${shownIn}. ` : ". ") +
       (monthly
         ? "A yearly plan counts in full in the month it renews;"
         : "Monthly plans are shown at twelve times their charge;") +
@@ -158,9 +159,10 @@ export default {
 
     "hero.monthlySpend": "Kuukauden kulut",
     "hero.annualSpend": "Vuoden kulut",
-    "hero.body": ({ active, categories, monthly }) =>
+    "hero.body": ({ active, categories, monthly, currencies = 1, shownIn }) =>
       `${active} ${plural(active, "aktiivinen tilaus", "aktiivista tilausta")}, ` +
-      `${categories} ${plural(categories, "kategoria", "kategoriaa")}. ` +
+      `${categories} ${plural(categories, "kategoria", "kategoriaa")}` +
+      (currencies > 1 ? `, ${currencies} valuuttaa muunnettuna valuuttaan ${shownIn}. ` : ". ") +
       (monthly
         ? "Vuosittain laskutettava tilaus lasketaan kokonaan sille kuukaudelle, jona se uusiutuu;"
         : "Kuukausittain laskutettavat tilaukset näytetään kaksitoistakertaisina;") +

@@ -158,6 +158,10 @@ async function mockApi(page) {
     route.fulfill({ json: { total: 25.98 } }),
   );
   await page.route("**/categories", (route) => route.fulfill({ json: categories }));
+  // Every fixture row is in euros, so there is nothing to convert.
+  await page.route("**/rates", (route) =>
+    route.fulfill({ json: { base: "EUR", currency: "EUR", as_of: null, stale: false, missing: [], rates: {} } }),
+  );
   await page.route("**/subscriptions/summary/spend*", (route) => {
     const url = new URL(route.request().url());
     route.fulfill({ json: spendFor(url.searchParams.get("category")) });

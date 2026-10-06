@@ -10,6 +10,7 @@
 // which is what they already did.
 
 import { todayISO } from "../format";
+import { isForeign, userCurrency } from "../fx";
 
 function newestFirst(a, b) {
   // A run with no start date predates the column, so it sorts as the oldest.
@@ -57,11 +58,38 @@ export function runNumber(group, run) {
   return group.runs.length - group.runs.indexOf(run);
 }
 
+// The one currency every run of the group bills in, or null when a service
+// changed currency between runs (PLAN.md milestone 10).
+export function groupCurrency(group) {
+  const codes = new Set(group.runs.map((s) => s.currency ?? "EUR"));
+  return codes.size === 1 ? [...codes][0] : null;
+}
+
+// Whether the lifetime figure is a converted one: the runs were billed in
+// different currencies, so it can only be added up in the user's.
+export const lifetimeConverted = (group) => groupCurrency(group) == null;
+
+// The currency lifetimePaid is in.
+export const lifetimeCurrency = (group) => groupCurrency(group) ?? userCurrency();
+
 // What every run of the group has been billed, or null when any run's start
-// is unknown (the API then has no honest total for it; see paid_total).
+// is unknown (the API then has no honest total for it; see paid_total). In
+// the group's own currency when it has one; otherwise in the user's, from
+// each run's paid_total_converted (each charge at its own day's rate).
 export function lifetimePaid(group) {
   if (group.runs.some((s) => s.paid_total == null)) return null;
-  return group.runs.reduce((sum, s) => sum + Number(s.paid_total), 0);
+  if (!lifetimeConverted(group)) return group.runs.reduce((sum, s) => sum + Number(s.paid_total), 0);
+  if (group.runs.some((s) => s.paid_total_converted == null)) return null;
+  return group.runs.reduce((sum, s) => sum + Number(s.paid_total_converted), 0);
+}
+
+// The lifetime figure in the user's currency, for a "≈" beside a foreign
+// one and for sorting across currencies. Null when it cannot be had.
+export function lifetimePaidConverted(group) {
+  if (group.runs.some((s) => s.paid_total_converted == null)) {
+    return isForeign(lifetimeCurrency(group)) ? null : lifetimePaid(group);
+  }
+  return group.runs.reduce((sum, s) => sum + Number(s.paid_total_converted), 0);
 }
 
 // The earliest known start across the group: "since Mar 2022".

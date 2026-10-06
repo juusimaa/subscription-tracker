@@ -20,6 +20,7 @@ import {
   exportBackup,
   getCategories,
   getMe,
+  getRates,
   getSpend,
   getSubscriptions,
   getToken,
@@ -31,6 +32,7 @@ import {
   renameCategory,
   restoreSubscription,
   unarchiveSubscription,
+  updateMe,
   updateSubscription,
   verifyEmail,
 } from "./api";
@@ -40,6 +42,7 @@ import EmailStrip from "./EmailStrip";
 import Login from "./Login";
 import ResetPassword from "./ResetPassword";
 import { MAX_YEAR, MIN_YEAR, ageInWords } from "./format";
+import { applyFx, isForeign } from "./fx";
 import { t } from "./i18n";
 import { GitHub, TriangleAlert } from "./icons";
 import { linkParams } from "./linkParams";
@@ -78,6 +81,8 @@ function App() {
   // From GET /me. Left undefined when the API doesn't say, which shows no
   // nudge (EmailStrip.jsx).
   const [emailVerified, setEmailVerified] = useState(undefined);
+  // The currency totals are shown in, from GET /me (PLAN.md milestone 10).
+  const [currency, setCurrency] = useState("EUR");
   // The token from an emailed link this page was opened with (linkParams.js),
   // cleared once it has been dealt with.
   const [resetToken, setResetToken] = useState(linkParams.reset);
@@ -110,10 +115,13 @@ function App() {
 
   const load = useCallback(async () => {
     try {
-      const [subscriptions, categories, upcoming, ...spends] = await Promise.all([
+      const [subscriptions, categories, upcoming, rates, ...spends] = await Promise.all([
         getSubscriptions(),
         getCategories(),
         getUpcoming(30),
+        // Only for the per-item "≈" figures; every total arrives converted.
+        // A failure here costs those figures, never the page.
+        getRates().catch(() => null),
         // One request per year in the picker's range. Three requests buys the
         // whole trend strip in both views plus every "change since" figure,
         // and they are the server's real month-by-month totals rather than
@@ -123,7 +131,14 @@ function App() {
       setData({
         subscriptions,
         categories,
+        // The currency these totals were converted into, as the server says,
+        // so figures and their symbol can never come from different loads.
+        currency: upcoming.currency ?? "EUR",
         upcomingTotal: upcoming.total,
+        upcomingApprox: (upcoming.renewals ?? []).some(
+          (r) => (r.subscription.currency ?? "EUR") !== (upcoming.currency ?? "EUR"),
+        ),
+        rates,
         spendByYear: Object.fromEntries(YEARS.map((year, index) => [year, spends[index]])),
       });
       setLoadedAt(Date.now());
@@ -148,6 +163,7 @@ function App() {
         const me = await getMe();
         setEmail(me.email);
         setEmailVerified(me.email_verified);
+        setCurrency(me.currency ?? "EUR");
         await load();
       } catch (err) {
         if (!(err instanceof ApiError && err.status === 401)) setLoadError(err);
@@ -297,6 +313,7 @@ function App() {
     setToken(null);
     setEmail(null);
     setEmailVerified(undefined);
+    setCurrency("EUR");
     setLinkMessage(null);
     // Drop the previous user's data so it can't flash on screen if someone
     // else logs in on the same browser.
@@ -323,6 +340,15 @@ function App() {
     await changePassword(current, next);
   }
 
+  // Every total changes currency, so everything is fetched again; the
+  // category caches hold totals in the old one.
+  async function handleChangeCurrency(code) {
+    const me = await updateMe({ currency: code });
+    setCurrency(me.currency);
+    setCatSpend({});
+    await load();
+  }
+
   async function handleDeleteAccount(password) {
     await deleteAccount(password);
     // The account is gone; there is nothing left to sign out of but this tab.
@@ -333,6 +359,9 @@ function App() {
     setAccountOpen(false);
     document.getElementById("io")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+
+  // Read by money() and the "≈" helpers during this render (fx.js).
+  applyFx(data?.currency ?? currency, data?.rates);
 
   // A reset link comes first, signed in or not: it may be this browser's
   // own forgotten password, or a different account altogether.
@@ -479,6 +508,7 @@ function App() {
           spendByYear={data.spendByYear}
           spendByCategory={catSpend}
           upcomingTotal={data.upcomingTotal}
+          upcomingApprox={data.upcomingApprox}
           period={period}
           setPeriod={setPeriod}
           actions={actions}
@@ -493,6 +523,10 @@ function App() {
           emailVerified={emailVerified}
           subscriptionCount={data.subscriptions.length}
           categoryCount={data.categories.length}
+          currency={currency}
+          onChangeCurrency={handleChangeCurrency}
+          rates={data.rates}
+          usesForeign={data.subscriptions.some((s) => isForeign(s.currency))}
           onChangePassword={handleChangePassword}
           onDeleteAccount={handleDeleteAccount}
           onExportFirst={handleExportFirst}

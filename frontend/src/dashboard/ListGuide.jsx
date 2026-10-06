@@ -24,6 +24,10 @@ const terms = () => [
   { term: <span className="tag tag-outline">{statusLabel("archived")}</span>, text: t("listGuide.archived") },
   { term: <span className="guide-term">{t("table.earlierRun")}</span>, text: t("listGuide.earlierRun") },
   { term: <span className="guide-term">{t("table.col.paid")}</span>, text: t("listGuide.paid", { zero: money(0) }) },
+  // Currencies (PLAN.md milestone 10): what "≈" means, and why a
+  // subscription's currency cannot be edited.
+  { term: <span className="guide-term">≈</span>, text: t("listGuide.approx") },
+  { term: <span className="guide-term">{t("fx.currency")}</span>, text: t("fx.locked") },
 ];
 
 const shortcuts = () => [

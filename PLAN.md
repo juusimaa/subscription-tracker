@@ -68,7 +68,7 @@ docker-subscription-tracker/
 7. ~~**Invite code for registration**~~ ✅ — gate `POST /register` behind a shared invite code (env var, checked alongside the existing rate limit) before the app is reachable on a public URL. Registration is architecturally open to anyone (milestone 6), and step 9 is what actually verifies an email belongs to whoever is registering with it — until that exists, an invite code is the stopgap that keeps step 8's public deploy from being genuinely open signup. Originally meant to go once step 9 landed; it stays while the app is in beta (see step 9).
 8. ~~**Deploy to Azure Container Apps**~~ ✅ — backend + frontend as two container apps, both pulling the images already published to GHCR. Database is [Neon](https://neon.tech)'s free Postgres tier rather than Azure Database for PostgreSQL: Neon costs nothing at this scale and scales to zero on its own, while the cheapest Azure-managed Postgres (Burstable B1ms) runs ~$15–20/month with no free tier. Redis is dropped for this deployment — `app/cache.py` already fails open, so there's nothing worth paying to keep. Details below.
 9. ~~**Password reset and email verification**~~ ✅ — the two account-surface gaps milestone 6 deliberately skipped, built for real this time. Needs an actual email-sending path (e.g. [Resend](https://resend.com)), which nothing in this stack has today — only `email-validator`, which checks an address's *format*, not that anyone reads it. New accounts land unverified and stay usable (registering, logging in, tracking subscriptions all still work), and anything that emails the user unprompted (any future renewal-reminder notification) is gated on verification. Password reset is the exception: it works for unverified accounts too, and completing it verifies the address. Once this exists, step 7's invite code is no longer the thing standing between a public URL and open signup — but it deliberately **stays** while the app is in beta; removing it is a separate, later decision. Provider: Resend (free tier). Details below.
-10. **Multi-currency support** — closes TODO.md's D7, which was recorded as a decision to revisit rather than a task, on the grounds that every subscription today is silently assumed to be EUR. Currency lives on the **subscription**, not the user — `cost` gains a `currency` column, since two subscriptions on one account can legitimately be billed in different currencies (D4's own reasoning: don't force a schema constraint that isn't true about the user's money). Users additionally get a **default currency** setting, pre-filling new subscriptions rather than acting as a source of truth — the first of what will likely be several user-specific settings, so it gets its own typed column(s) rather than a JSONB blob, following the `token_version` precedent (milestone 6) instead of inventing a schemaless settings store. How totals show a mix of currencies is settled: every total is **converted into the user's currency at ECB reference rates** and marked ≈, with a per-currency statement under the headline when the period holds more than one currency.
+10. ~~**Multi-currency support**~~ ✅ — closes TODO.md's D7, which was recorded as a decision to revisit rather than a task, on the grounds that every subscription today is silently assumed to be EUR. Currency lives on the **subscription**, not the user — `cost` gains a `currency` column, since two subscriptions on one account can legitimately be billed in different currencies (D4's own reasoning: don't force a schema constraint that isn't true about the user's money). Users additionally get a **default currency** setting, pre-filling new subscriptions rather than acting as a source of truth — the first of what will likely be several user-specific settings, so it gets its own typed column(s) rather than a JSONB blob, following the `token_version` precedent (milestone 6) instead of inventing a schemaless settings store. How totals show a mix of currencies is settled: every total is **converted into the user's currency at ECB reference rates** and marked ≈, with a per-currency statement under the headline when the period holds more than one currency.
     Decided 2026-10-06. Details and a refreshed mock are below.
 
 ## Milestone 5 — GitHub Actions to GHCR (done)
@@ -403,7 +403,21 @@ Each runs on mobile and desktop.
 - Changing the account email address.
 - Mailpit in compose, a nice-to-have if the console backend proves too thin.
 
-## Milestone 10 — Multi-currency support (planned)
+## Milestone 10 — Multi-currency support (done)
+
+**As built, where it differs from the plan below:**
+- `GET /subscriptions` returns `paid_total_converted` beside `paid_total`, so
+  a lifetime total across runs in different currencies is converted on the
+  server, each charge at its own day's rate. The frontend's `fx.js` converts
+  only the per-item "≈" figures and sort order, from `GET /rates`.
+- The Reactivate dialog has a currency picker joined to its cost field. It
+  is the one place a service's currency can change, and the list guide says
+  so.
+- An account whose subscriptions are all in its own currency never asks the
+  rate source for anything. Its dashboard is pixel-identical to before:
+  `dashboard.png` did not change.
+- The UI mock harness (`ui.html`) seeds a USD and a GBP plan with fixed
+  sample rates, so the published mock shows the feature.
 
 **Mock:** [`docs/mocks/milestone-10-multi-currency.html`](docs/mocks/milestone-10-multi-currency.html).
 It is a static page that uses the shipped `modernist.css` and `dashboard.css`

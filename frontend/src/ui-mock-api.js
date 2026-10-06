@@ -11,12 +11,30 @@ const seedSubscriptions = [
   { id: 3, group_id: 3, name: "Adobe Creative Cloud", cost: 239.88, billing_cycle: "yearly", status: "active", category: "Work", started_date: "2025-03-12", next_renewal_date: "2027-03-12" },
   { id: 4, group_id: 4, name: "Notion", cost: 8, billing_cycle: "monthly", status: "trial", category: "Work", started_date: "2026-09-01", next_renewal_date: "2026-09-25" },
   { id: 5, group_id: 5, name: "Dropbox", cost: 11.99, billing_cycle: "monthly", status: "cancelled", category: "Work", started_date: "2022-02-14", next_renewal_date: "2026-07-01", cancelled_date: "2026-07-01" },
-].map((row) => ({ cancelled_date: null, paused_date: null, archived_date: null, ...row }));
+  // Two plans billed in other currencies (PLAN.md milestone 10).
+  { id: 6, group_id: 6, name: "ChatGPT Plus", cost: 20, currency: "USD", billing_cycle: "monthly", status: "active", category: "Work", started_date: "2025-09-28", next_renewal_date: "2026-09-28" },
+  { id: 7, group_id: 7, name: "The Economist", cost: 15, currency: "GBP", billing_cycle: "monthly", status: "active", category: "News", started_date: "2026-03-09", next_renewal_date: "2026-09-09" },
+].map((row) => ({ currency: "EUR", cancelled_date: null, paused_date: null, archived_date: null, ...row }));
+
+// Fixed sample rates, units per 1 EUR, as if the ECB had published these on
+// 14 Sep 2026 and nothing else. The real API converts each charge at its own
+// day's rate; one rate for every day is enough for a harness.
+const RATES = {
+  EUR: 1, USD: 1.173, GBP: 0.8695, SEK: 11.02, NOK: 11.7, DKK: 7.46, CHF: 0.935, PLN: 4.27,
+  CZK: 24.4, AUD: 1.77, BRL: 6.38, CAD: 1.61, CNY: 8.36, HKD: 9.14, HUF: 392.5, IDR: 19210,
+  ILS: 4.38, INR: 98.6, ISK: 143.1, JPY: 172.4, KRW: 1625, MXN: 21.6, MYR: 4.95, NZD: 1.97,
+  PHP: 66.8, RON: 5.07, SGD: 1.5, THB: 37.9, TRY: 48.3, ZAR: 20.6,
+};
+const RATES_AS_OF = "2026-09-14";
+let currency = "EUR";
+const round2 = (n) => Math.round(n * 100) / 100;
+const toUser = (amount, code = "EUR") =>
+  code === currency ? round2(Number(amount)) : round2((Number(amount) / RATES[code]) * RATES[currency]);
 
 let subscriptions = structuredClone(seedSubscriptions);
-let categories = [{ id: 1, name: "Entertainment" }, { id: 2, name: "Work" }];
-let nextId = 6;
-let nextCategoryId = 3;
+let categories = [{ id: 1, name: "Entertainment" }, { id: 2, name: "Work" }, { id: 3, name: "News" }];
+let nextId = 8;
+let nextCategoryId = 4;
 let email = "demo@example.com";
 let password = "demo-password";
 
@@ -41,7 +59,7 @@ function addMonths(anchor, count) {
 // separate next_renewal_date schedule in renewals.js, just as the app does.
 function spend(year, category) {
   const months = Array.from({ length: 12 }, (_, index) => ({
-    month: index + 1, total: 0, subscription_ids: [],
+    month: index + 1, total: 0, subscription_ids: [], by: {},
   }));
   for (const row of subscriptions) {
     if (row.status === "trial") continue;
@@ -57,24 +75,52 @@ function spend(year, category) {
       if (date.slice(0, 4) > String(year)) break;
       if (date.slice(0, 4) !== String(year) || (stop && date > stop)) continue;
       const entry = months[Number(date.slice(5, 7)) - 1];
-      entry.total = Math.round((entry.total + Number(row.cost)) * 100) / 100;
+      const converted = toUser(row.cost, row.currency);
+      entry.total = round2(entry.total + converted);
       entry.subscription_ids.push(row.id);
+      const line = (entry.by[row.currency] ??= { native: 0, converted: 0 });
+      line.native = round2(line.native + Number(row.cost));
+      line.converted = round2(line.converted + converted);
     }
   }
-  return { year, months, total: Math.round(months.reduce((sum, row) => sum + row.total, 0) * 100) / 100 };
+  // The user's own currency first, then the largest share, as the API does.
+  const lines = (by) => Object.entries(by)
+    .sort(([a, x], [b, y]) => (a !== currency) - (b !== currency) || y.converted - x.converted)
+    .map(([code, line]) => ({ currency: code, ...line }));
+  const yearBy = {};
+  for (const entry of months) {
+    for (const [code, line] of Object.entries(entry.by)) {
+      const sum = (yearBy[code] ??= { native: 0, converted: 0 });
+      sum.native = round2(sum.native + line.native);
+      sum.converted = round2(sum.converted + line.converted);
+    }
+  }
+  return {
+    year,
+    currency,
+    months: months.map(({ by, ...entry }) => ({ ...entry, by_currency: lines(by) })),
+    total: round2(months.reduce((sum, row) => sum + row.total, 0)),
+    by_currency: lines(yearBy),
+    rates_as_of: RATES_AS_OF,
+    rates_stale: false,
+  };
 }
 
 function upcoming(days) {
   const through = new Date(2026, 8, 15 + days);
   const end = iso(through.getFullYear(), through.getMonth() + 1, through.getDate());
   let total = 0;
+  const renewals = [];
   for (let offset = 0; offset <= 1; offset += 1) {
     const month = new Date(2026, 8 + offset, 1);
     for (const charge of chargesInMonth(subscriptions, month.getFullYear(), month.getMonth())) {
-      if (charge.iso >= today && charge.iso <= end) total += charge.cost;
+      if (charge.iso < today || charge.iso > end) continue;
+      const converted = toUser(charge.cost, charge.subscription.currency);
+      total += converted;
+      renewals.push({ subscription: charge.subscription, renewal_date: charge.iso, cost: charge.cost, converted_cost: converted });
     }
   }
-  return { total: Math.round(total * 100) / 100, upcoming: [] };
+  return { total: round2(total), currency, renewals, rates_as_of: RATES_AS_OF, rates_stale: false };
 }
 
 function csvCell(value) {
@@ -83,7 +129,7 @@ function csvCell(value) {
 }
 
 function exportData(format) {
-  const fields = ["name", "category", "status", "billing_cycle", "cost", "next_renewal_date", "started_date", "cancelled_date", "paused_date", "archived_date"];
+  const fields = ["name", "category", "status", "billing_cycle", "cost", "next_renewal_date", "started_date", "cancelled_date", "paused_date", "archived_date", "currency"];
   if (format === "csv") {
     return [fields.join(","), ...subscriptions.map((row) => fields.map((field) => csvCell(row[field])).join(","))].join("\n");
   }
@@ -127,7 +173,24 @@ function paidTotal(row) {
 }
 
 // Read-only and computed on every response, as the API does.
-const withPaid = (row) => ({ ...row, paid_total: paidTotal(row) });
+const withPaid = (row) => {
+  const paid = paidTotal(row);
+  return { ...row, paid_total: paid, paid_total_converted: paid == null ? null : toUser(paid, row.currency) };
+};
+
+// GET /rates: the codes on the account plus the user's own, one rate each.
+function rates() {
+  const codes = new Set([...subscriptions.map((row) => row.currency), currency]);
+  codes.delete("EUR");
+  return {
+    base: "EUR",
+    currency,
+    as_of: RATES_AS_OF,
+    stale: false,
+    missing: [],
+    rates: Object.fromEntries([...codes].map((code) => [code, [["2020-01-01", RATES[code]]]])),
+  };
+}
 
 async function route(path, method, body, params) {
   if (path === "/token" && method === "POST") {
@@ -144,19 +207,24 @@ async function route(path, method, body, params) {
   }
   if (path === "/me") {
     if (method === "DELETE") { subscriptions = []; categories = []; return new Response(null, { status: 204 }); }
-    return json({ email });
+    if (method === "PATCH") {
+      if (!RATES[body.currency]) return failure(422, "Unsupported currency");
+      currency = body.currency;
+    }
+    return json({ email, email_verified: true, currency });
   }
   if (path === "/me/password" && method === "PUT") {
     if (body.current_password !== password) return failure(400, "Current password is incorrect.");
     password = body.new_password;
     return json({ access_token: "ui-mock-token", token_type: "bearer" });
   }
+  if (path === "/rates") return json(rates());
   if (path === "/subscriptions/summary/spend") return json(spend(Number(params.get("year") || 2026), params.get("category")));
   if (path === "/subscriptions/upcoming") return json(upcoming(Number(params.get("days") || 30)));
   if (path === "/subscriptions") {
     if (method === "GET") return json([...subscriptions].sort((a, b) => a.next_renewal_date.localeCompare(b.next_renewal_date) || a.name.localeCompare(b.name)).map(withPaid));
     if (method === "POST") {
-      const row = { ...body, id: nextId, group_id: nextId++, cancelled_date: null, paused_date: null, archived_date: null };
+      const row = { currency, ...body, id: nextId, group_id: nextId++, cancelled_date: null, paused_date: null, archived_date: null };
       subscriptions.push(row);
       return json(withPaid(row), 201);
     }

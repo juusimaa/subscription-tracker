@@ -11,7 +11,9 @@
 
 import { useState } from "react";
 import { describeWriteError } from "../api";
+import { Converted } from "../Approx";
 import { cycleSuffix, money, shortDate, todayISO } from "../format";
+import { convert as toUserCurrency, isForeign } from "../fx";
 import { t } from "../i18n";
 import { TriangleAlert } from "../icons";
 
@@ -60,9 +62,14 @@ function NextCharge({ subscriptions, onConvert, onCancel }) {
             <p className="next-charge-what">
               <span className="next-charge-name">{s.name}</span>{" "}
               <span className="next-charge-amount">
-                {money(s.cost)}
+                {money(s.cost, s.currency)}
                 {isTrial && cycleSuffix(s.billing_cycle)}
                 {isTrial && <>{" "}<span className="if-kept">{t("trial.ifKept")}</span></>}
+                {/* What it comes to in the user's currency, at the latest
+                    rate: the charge is still to come. */}
+                {isForeign(s.currency) && (
+                  <>{" "}<Converted amount={toUserCurrency(s.cost, s.currency, s.next_renewal_date)} /></>
+                )}
               </span>{" "}
               <span className="next-charge-when">
                 {shortDate(s.next_renewal_date)}, {daysUntil(s.next_renewal_date, today)}

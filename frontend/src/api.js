@@ -206,6 +206,10 @@ export const register = (email, password, inviteCode) =>
   });
 
 export const getMe = () => request("/me");
+// The user's settings: today only the currency totals are shown in.
+export const updateMe = (patch) => request("/me", { method: "PATCH", body: JSON.stringify(patch) });
+// ECB rates for the currencies on the user's own subscriptions (fx.js).
+export const getRates = () => request("/rates");
 
 export function logout() {
   // Purely client-side: the token stays technically valid until it expires,

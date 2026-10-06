@@ -7,10 +7,11 @@
 // back its message is rendered at the field that caused it, or on the form
 // line with what it means and what to do next (see describeWriteError).
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ApiError, describeWriteError } from "../api";
 import { TriangleAlert } from "../icons";
 import { costProblem, cycleLabel, monthName, parseAmount, todayISO } from "../format";
+import { CURRENCIES, inCurrency, userCurrency } from "../fx";
 import { t } from "../i18n";
 import { nextRenewalFrom } from "../renewals";
 
@@ -23,6 +24,9 @@ export const NAME_MAX = 100;
 const blank = () => ({
   name: "",
   cost: "",
+  // The user's own currency, which is what most of their plans bill in
+  // (PLAN.md milestone 10). Reset to it after every save, like the cost.
+  currency: userCurrency(),
   billing_cycle: "monthly",
   // Defaulted to today because that is what the API does with a missing start
   // date anyway (crud.create_subscription); showing it makes the assumption
@@ -94,6 +98,9 @@ function AddForm({
   // inline form does not.
   onSuccess,
 }) {
+  // The form appears twice on a page at most (inline and in the sheet), so
+  // the cost label's htmlFor needs an id that is unique per instance.
+  const idBase = useId();
   const [form, setFormRaw] = useState(() => withSuggestion(blank()));
   const setForm = (next) =>
     setFormRaw((current) => withSuggestion(typeof next === "function" ? next(current) : next));
@@ -160,6 +167,7 @@ function AddForm({
       await onSubmit({
         name: form.name.trim(),
         cost: parseAmount(form.cost),
+        currency: form.currency,
         billing_cycle: form.billing_cycle,
         // Cleared means "not stated", which the API answers with today. Sent
         // as null rather than "": an empty string is a 422, not a default.
@@ -210,6 +218,7 @@ function AddForm({
   }
 
   const field = (key) => (errors[key] ? "field invalid" : "field");
+  const foreign = form.currency !== userCurrency();
   const labels = planLabels(form.is_trial);
   const startMonth = countsFrom(form.started_date);
   // Only while the date is still the suggestion. A plan started today
@@ -252,7 +261,7 @@ function AddForm({
         </p>
       </div>
 
-      <div className={endAligned ? "add-grid baseline" : "add-grid"}>
+      <div className={`add-grid with-currency${endAligned ? " baseline" : ""}`}>
         <label className={field("name")}>
           <span className="field-label">{t("addForm.service")}</span>
           <input
@@ -279,25 +288,47 @@ function AddForm({
           )}
         </label>
 
-        <label className={field("cost")}>
-          <span className="field-label">{labels.cost}</span>
-          {/* Text with a decimal keypad, not type="number": a number input
-              hands back "" for "9,99" in most browsers, which would read as
-              a missing cost to the one audience this app prices for. */}
-          <input
-            ref={costRef}
-            data-autofocus={prefill ? "" : undefined}
-            className="input tnum"
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            placeholder={t("addForm.costPlaceholder")}
-            value={form.cost}
-            aria-invalid={errors.cost ? "true" : undefined}
-            onChange={set("cost")}
-          />
+        {/* A div, not a label: the field holds two controls, the amount and
+            its currency, joined into one (.money-field). The label names the
+            amount; the select carries its own name. */}
+        <div className={field("cost")}>
+          <label className="field-label" htmlFor={`${idBase}-cost`}>{labels.cost}</label>
+          <span className="money-field">
+            {/* Text with a decimal keypad, not type="number": a number input
+                hands back "" for "9,99" in most browsers, which would read as
+                a missing cost to the one audience this app prices for. */}
+            <input
+              id={`${idBase}-cost`}
+              ref={costRef}
+              data-autofocus={prefill ? "" : undefined}
+              className="input tnum"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder={t("addForm.costPlaceholder")}
+              value={form.cost}
+              aria-invalid={errors.cost ? "true" : undefined}
+              aria-describedby={foreign ? `${idBase}-cost-hint` : undefined}
+              onChange={set("cost")}
+            />
+            <select
+              className="input"
+              aria-label={t("fx.currency")}
+              value={form.currency}
+              onChange={set("currency")}
+            >
+              {CURRENCIES.map((code) => (
+                <option key={code} value={code}>{code}</option>
+              ))}
+            </select>
+          </span>
           {errors.cost && <span role="alert" className="field-error">{errors.cost}</span>}
-        </label>
+          {!errors.cost && foreign && (
+            <span className="field-hint" id={`${idBase}-cost-hint`}>
+              {t("fx.addHint", { shownIn: inCurrency() })}
+            </span>
+          )}
+        </div>
 
         <label className="field">
           <span className="field-label">{t("addForm.cycle")}</span>

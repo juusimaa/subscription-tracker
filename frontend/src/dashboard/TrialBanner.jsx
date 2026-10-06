@@ -7,6 +7,8 @@
 import { useState } from "react";
 import { describeWriteError } from "../api";
 import { cycleSuffix, longDate, money } from "../format";
+import { Converted } from "../Approx";
+import { convert as toUserCurrency, isForeign } from "../fx";
 import { t } from "../i18n";
 import { TriangleAlert } from "../icons";
 
@@ -57,9 +59,15 @@ function TrialBanner({ trials, year, month, onReview, onConvert, onCancel }) {
               <p className="trial-row-name">{trial.name}</p>
               <p className="trial-row-detail tnum">
                 {t("trial.rowDetail", {
-                  price: money(trial.cost) + cycleSuffix(trial.billing_cycle),
+                  price: money(trial.cost, trial.currency) + cycleSuffix(trial.billing_cycle),
                   date: longDate(trial.next_renewal_date),
                 })}
+                {isForeign(trial.currency) && (
+                  <>
+                    {" · "}
+                    <Converted amount={toUserCurrency(trial.cost, trial.currency, trial.next_renewal_date)} />
+                  </>
+                )}
               </p>
             </div>
             <div className="trial-row-actions">

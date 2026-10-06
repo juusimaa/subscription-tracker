@@ -1,3 +1,4 @@
+import { ApproxMark } from "../Approx";
 import { t } from "../i18n";
 
 // Four figures across the page, separated by hairlines. Each one answers a
@@ -26,6 +27,7 @@ function KpiBand({ cells }) {
       {cells.map((cell) => (
         <div className="kpi" key={cell.label}>
           <p className={cell.figure.length > LONG_FIGURE ? "kpi-figure long" : "kpi-figure"}>
+            {cell.approx && <ApproxMark />}
             <Figure text={cell.figure} />
           </p>
           <p className="kpi-label">{cell.label}</p>

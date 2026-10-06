@@ -18,6 +18,7 @@ import { useState } from "react";
 import { describeWriteError } from "../api";
 import { TriangleAlert } from "../icons";
 import { cycleSuffix, money, perMonth } from "../format";
+import { comparable, isForeign } from "../fx";
 import { t } from "../i18n";
 import { useModal } from "../useModal";
 
@@ -80,9 +81,12 @@ function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDel
         live.length === 0
           ? cancelled > 0 ? t("categories.onlyCancelled") : t("categories.unused")
           : t("categories.count", { n: live.length }),
+      // In the user's currency, "≈" when a plan in another one is converted.
       monthly: charging.length === 0
         ? "—"
-        : `${money(charging.reduce((sum, s) => sum + perMonth(s), 0))}${cycleSuffix("monthly")}`,
+        : `${charging.some((s) => isForeign(s.currency)) ? "≈ " : ""}${money(
+            charging.reduce((sum, s) => sum + comparable(perMonth(s), s.currency), 0),
+          )}${cycleSuffix("monthly")}`,
     };
   }
 

@@ -11,7 +11,9 @@
 // those keep one list and the heading names the month instead.
 
 import { Fragment } from "react";
+import { Converted } from "../Approx";
 import { money, shortDate } from "../format";
+import { convert, isForeign } from "../fx";
 import { t } from "../i18n";
 
 function ChargeGrid({ charges, past = false }) {
@@ -31,11 +33,18 @@ function ChargeGrid({ charges, past = false }) {
             <span className={`amount${first}`}>
               {charge.isTrialConversion ? (
                 <>
-                  {money(charge.subscription.cost)}{" "}
+                  {money(charge.subscription.cost, charge.subscription.currency)}{" "}
                   <span className="if-kept">{t("trial.ifKept")}</span>
                 </>
               ) : (
-                money(charge.cost)
+                money(charge.cost, charge.subscription.currency)
+              )}
+              {/* Each at its own day's rate: a charge already taken at the
+                  rate of the day it was taken. */}
+              {isForeign(charge.subscription.currency) && (
+                <Converted
+                  amount={convert(charge.subscription.cost, charge.subscription.currency, charge.iso)}
+                />
               )}
             </span>
           </Fragment>

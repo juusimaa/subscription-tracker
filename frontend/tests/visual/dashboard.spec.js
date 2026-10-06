@@ -33,6 +33,8 @@ test("reactivation sends changed terms as a new run", async ({ page }) => {
   await expect(dialog).not.toBeVisible();
   expect(submitted).toEqual({
     cost: 12.5,
+    // Unchanged from the cancelled run unless picked (PLAN.md milestone 10).
+    currency: "EUR",
     billing_cycle: "monthly",
     started_date: "2026-10-01",
     next_renewal_date: "2026-10-01",
