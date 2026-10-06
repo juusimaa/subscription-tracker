@@ -7,22 +7,34 @@ A learning project to get hands-on with **Docker**, **PostgreSQL**, and a **CI/C
 - **Backend:** Python + FastAPI + SQLAlchemy, talking to Postgres
 - **Frontend:** React (Vite), calling the API
 - **Database:** PostgreSQL
-- **Containers:** 3 total — `frontend`, `backend`, `db`
+- **Containers:** 3 total — `frontend`, `backend`, `db`. A fourth, `redis`,
+  was later added to local Compose as an optional cache (`backend/app/cache.py`,
+  fails open); production runs without it (milestone 8).
 
-## Data model (minimal to start)
+## Data model
+
+Started minimal; `backend/app/models.py` is the source of truth. As it stands:
 
 - `subscriptions` table:
   - name (Netflix, HBO, ...)
   - cost
-  - billing cycle (monthly/yearly)
-  - next renewal date
-  - category
-  - active / cancelled
+  - billing cycle (monthly/quarterly/yearly)
+  - next renewal date (an anchor; the next renewal is derived from it)
+  - category (a plain name, kept in step with `categories`)
+  - status: active / trial / paused / cancelled (replaced the original
+    active/cancelled boolean in migration 0002)
+  - started, paused, cancelled and archived dates
+  - group_id — links the runs of a service that was cancelled and reactivated
   - user_id — owner of the row (added in milestone 6)
 - `users` table (milestone 6):
   - email (unique)
   - hashed_password (bcrypt — never the plaintext)
-- Later, optional: `payment_history` table to track past charges
+  - token_version — bumped on password change or reset to sign out every
+    session (migration 0004)
+  - email_verified_at (milestone 9)
+- `categories` and `subscription_groups` tables
+- No `payment_history` table: past charges are derived from the dates and the
+  cycle (`/subscriptions/summary/spend`, and each row's `paid_total`)
 
 ## Folder structure
 
@@ -30,15 +42,18 @@ A learning project to get hands-on with **Docker**, **PostgreSQL**, and a **CI/C
 docker-subscription-tracker/
 ├── backend/
 │   ├── app/            # FastAPI app, models, routes
+│   ├── alembic/        # migrations
+│   ├── tests/
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
+│   ├── tests/visual/   # Playwright visual regression
 │   ├── Dockerfile
 │   └── package.json
-├── docker-compose.yml   # local dev: frontend + backend + postgres
-├── .github/workflows/
-│   └── build-and-push.yml
+├── docs/               # published API reference and design mocks
+├── docker-compose.yml   # local dev: frontend + backend + postgres + redis
+├── .github/workflows/  # tests, visual tests, build-and-push (+ deploy), docs
 └── README.md
 ```
 
@@ -50,10 +65,30 @@ docker-subscription-tracker/
 4. ~~**docker-compose.yml**~~ ✅ ties all three together for local dev (`docker compose up`).
 5. ~~**GitHub Actions**~~ ✅ — on push to `main`, build both images and push them to GitHub Container Registry. Details below.
 6. ~~**Multi-user auth (JWT)**~~ ✅ — add a `users` table and scope every subscription to its owner, so the app is safe to expose publicly in step 8. Details below.
-7. ~~**Invite code for registration**~~ ✅ — gate `POST /register` behind a shared invite code (env var, checked alongside the existing rate limit) before the app is reachable on a public URL. Registration is architecturally open to anyone (milestone 6), and step 9 is what actually verifies an email belongs to whoever is registering with it — until that exists, an invite code is the stopgap that keeps step 8's public deploy from being genuinely open signup. Removed once step 9 lands.
+7. ~~**Invite code for registration**~~ ✅ — gate `POST /register` behind a shared invite code (env var, checked alongside the existing rate limit) before the app is reachable on a public URL. Registration is architecturally open to anyone (milestone 6), and step 9 is what actually verifies an email belongs to whoever is registering with it — until that exists, an invite code is the stopgap that keeps step 8's public deploy from being genuinely open signup. Originally meant to go once step 9 landed; it stays while the app is in beta (see step 9).
 8. ~~**Deploy to Azure Container Apps**~~ ✅ — backend + frontend as two container apps, both pulling the images already published to GHCR. Database is [Neon](https://neon.tech)'s free Postgres tier rather than Azure Database for PostgreSQL: Neon costs nothing at this scale and scales to zero on its own, while the cheapest Azure-managed Postgres (Burstable B1ms) runs ~$15–20/month with no free tier. Redis is dropped for this deployment — `app/cache.py` already fails open, so there's nothing worth paying to keep. Details below.
 9. ~~**Password reset and email verification**~~ ✅ — the two account-surface gaps milestone 6 deliberately skipped, built for real this time. Needs an actual email-sending path (e.g. [Resend](https://resend.com)), which nothing in this stack has today — only `email-validator`, which checks an address's *format*, not that anyone reads it. New accounts land unverified and stay usable (registering, logging in, tracking subscriptions all still work), and anything that emails the user unprompted (any future renewal-reminder notification) is gated on verification. Password reset is the exception: it works for unverified accounts too, and completing it verifies the address. Once this exists, step 7's invite code is no longer the thing standing between a public URL and open signup — but it deliberately **stays** while the app is in beta; removing it is a separate, later decision. Provider: Resend (free tier). Details below.
 10. **Multi-currency support** — closes TODO.md's D7, which was recorded as a decision to revisit rather than a task, on the grounds that every subscription today is silently assumed to be EUR. Currency lives on the **subscription**, not the user — `cost` gains a `currency` column, since two subscriptions on one account can legitimately be billed in different currencies (D4's own reasoning: don't force a schema constraint that isn't true about the user's money). Users additionally get a **default currency** setting, pre-filling new subscriptions rather than acting as a source of truth — the first of what will likely be several user-specific settings, so it gets its own typed column(s) rather than a JSONB blob, following the `token_version` precedent (milestone 6) instead of inventing a schemaless settings store. Still to decide, and worth settling before backend work starts since it drives the schema and has real UX impact: how the category panel and the per-month/year cost panel show a mix of currencies once summing raw `cost` across rows stops being meaningful — separate per-currency subtotals, a converted grand total (needing a conversion-rate source, live or cached), or something else.
+    > **These mocks date from 2026-09-06** and predate a month of dashboard
+    > changes. Treat them as the intent, not the layout, and refresh them before
+    > implementation starts. What has moved on since:
+    > - The **Account dialog** now exists and holds the language picker, so it
+    >   is the natural home for a display-currency setting, rather than a
+    >   section at the bottom of the page.
+    > - The hero has a **Next charge / Trial converts strip** directly under it
+    >   (#70). The mock puts the per-currency breakdown in that spot; the two
+    >   need ordering.
+    > - **Coming up** now splits at today into "Already charged this month"
+    >   (#69) and shows trials as "Trial converts … if kept" (#80).
+    > - The list gained **Per month** and **Paid to date** columns (#88), and a
+    >   group's lifetime total. None of the mocks shows how those convert:
+    >   today's rate or the rate at each charge.
+    > - The **KPI band** (Charging in the next 30 days, Largest single charge,
+    >   Change since …) and **By category** are not mocked either.
+    > - The add form is folded behind "Add a subscription" on desktop and is a
+    >   sheet on mobile (#84); the cost field mock still applies inside it.
+    > - The UI is now bilingual (#92), so currency names and the "≈" copy need
+    >   Finnish strings, and number formatting follows the language.
     * Currency settings at the bottom. TBD how to poll currency rates.
       
        <img width="1874" height="596" alt="Currency settings at the bottom of the page" src="https://github.com/user-attachments/assets/080681c0-1b1c-42e3-a798-914f770ec632" />
@@ -69,7 +104,7 @@ docker-subscription-tracker/
     * Coming up panel
    
       <img width="904" height="1110" alt="image" src="https://github.com/user-attachments/assets/6f772707-5aac-407b-96d6-4bb0bcb5abd3" />
-    * Strip uses only selected currency
+    * Trend strip (per-month chart) uses only selected currency
    
       <img width="2206" height="456" alt="image" src="https://github.com/user-attachments/assets/e13a8ca2-baeb-4c15-b8b7-90eec78bb4a4" />
 
@@ -181,6 +216,8 @@ refuses to boot without a `SECRET_KEY`.
 stays cryptographically valid until it expires, since real revocation needs a
 token blocklist. There is also no password reset and no email verification —
 both are milestone 9. The 12-hour expiry is the only thing that ends a session.
+(Later, change password added a `token_version` claim, so a password change
+or reset now signs out every session at once.)
 
 **Session behaviour to expect:** `localStorage` is per-origin, per-browser. Same
 browser tomorrow means still logged in (until the token expires); a different
@@ -201,9 +238,8 @@ on the resource group notifies at 80% and 100% of spend.
 
 **Secrets:** `SECRET_KEY` and `INVITE_CODE` were freshly generated for
 production (never reused from local dev), and `DATABASE_URL` is Neon's
-**unpooled** connection string — see milestone 7's note and
-`backend/app/database.py`/`backend/alembic/env.py`, which both read the one
-`DATABASE_URL` var, and Neon's pooler (PgBouncer, transaction mode) can
+**unpooled** connection string — `backend/app/database.py` and
+`backend/alembic/env.py` both read the one `DATABASE_URL` var, and Neon's pooler (PgBouncer, transaction mode) can
 misbehave with Alembic's DDL/locking. All three are Container Apps secrets,
 referenced by the containers via `secretref`, never plain env values.
 `CORS_ORIGINS` on the backend points at the frontend app's own FQDN.

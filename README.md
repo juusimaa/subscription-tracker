@@ -23,8 +23,13 @@ at all.
 - **Frontend:** React 19 (Vite)
 - **Database:** PostgreSQL 16
 - **Auth:** JWT bearer tokens, bcrypt-hashed passwords
-- Three containers (`db`, `backend`, `frontend`), orchestrated with Docker
-  Compose for local dev; images published to GHCR by GitHub Actions.
+- **Cache:** Redis 7, optional — the backend fails open without it
+- Four containers locally (`db`, `redis`, `backend`, `frontend`), orchestrated
+  with Docker Compose; images published to GHCR by GitHub Actions and deployed
+  to Azure Container Apps, with [Neon](https://neon.tech) Postgres and no Redis
+  in production (see [PLAN.md](PLAN.md), milestone 8).
+- **Languages:** English and Finnish, picked on the sign-in screen or in the
+  Account dialog
 
 ## Running locally
 
@@ -71,13 +76,15 @@ that need them ([.env.example](.env.example) documents the same list):
 | `POSTGRES_DB` | `db` | Database created on first start. |
 | `POSTGRES_PASSWORD` | `db` | Superuser password for the `postgres` role. |
 | `DATABASE_URL` | `backend` | Full SQLAlchemy URL. Host is `db`, not `localhost` — see [Docker & Compose](#9-docker--compose). |
+| `REDIS_URL` | `backend` | The cache. If Redis can't be reached, every read falls through to Postgres — see [cache.py](backend/app/cache.py). |
+| `CORS_ORIGINS` | `backend` | Comma-separated origins allowed to call the API. Locally the Vite dev server. |
 | `SECRET_KEY` | `backend` | Signs the JWTs. Changing it logs everyone out. |
 | `INVITE_CODE` | `backend` | Optional. Set it to gate `/register` behind a shared code — see [Accounts](#accounts). Left blank, signup stays open. |
 | `EMAIL_BACKEND` | `backend` | `console` (default) logs verification and reset emails instead of sending them; `resend` sends through [Resend](https://resend.com). See [Email](#email). |
 | `RESEND_API_KEY` | `backend` | Required when `EMAIL_BACKEND=resend`. |
 | `EMAIL_FROM` | `backend` | Sender, on a domain verified in Resend. |
 | `APP_URL` | `backend` | The frontend's address, used to build the links in emails. |
-| `VITE_API_URL` | `frontend` | Baked into the browser bundle, so it must be an address *your browser* can reach. |
+| `VITE_API_URL` | `frontend` | Baked into the browser bundle, so it must be an address *your browser* can reach. The production image reads `API_URL` at container start instead, so one image works against any backend. |
 
 ---
 
@@ -97,12 +104,15 @@ Browser (localhost:5173)
 │                                              │
 │   main.py     HTTP: routes, status codes     │
 │   auth.py     tokens, password hashing       │
+│   mailer.py   verification and reset emails  │
+│   cache.py    Redis cache-aside (fails open) │
 │   schemas.py  what JSON may go in and out    │
 │   crud.py     the queries                    │
 │   models.py   the tables                     │
 │   database.py engine + per-request session   │
 └──────────────────────────────────────────────┘
-   │  SQL over Docker's internal network (db:5432)
+   │  SQL over Docker's internal network (db:5432);
+   │  cached reads from the redis container (redis:6379)
    ▼
 ┌──────────────────────────────────────────────┐
 │ db container — PostgreSQL 16                 │
@@ -153,7 +163,9 @@ network instead.
 Python classes that map to tables. This file is the source of truth for the
 schema; [Alembic](#3-migrations--backendalembic) is what applies it to a database.
 
-Three tables: `users`, `categories`, `subscriptions`. Details worth noticing:
+Four tables: `users`, `categories`, `subscriptions`, and `subscription_groups`,
+which links the runs of a service cancelled and later reactivated. Details
+worth noticing:
 
 - **`Numeric(10, 2)` for money, never `Float`.** Binary floating point cannot
   represent `0.10` exactly; summing a column of them drifts. `Numeric` maps to
@@ -316,7 +328,8 @@ rather than silently stripping the category off rows the caller forgot about.
 
 **CORS middleware.** The page is served from `localhost:5173` and the API from
 `localhost:8000` — different origins, which browsers block by default.
-`CORSMiddleware` allows that one origin. Because the token travels in a header
+`CORSMiddleware` allows the origins listed in `CORS_ORIGINS`: the dev server
+locally, the frontend's own domain in production. Because the token travels in a header
 rather than a cookie, no CSRF or SameSite configuration is needed.
 
 **The OpenAPI metadata is functional.** The `title`, `description` and
@@ -326,6 +339,11 @@ that the type annotations feed, and the same document that gets published to
 [GitHub Pages](https://juusimaa.github.io/subscription-tracker). Every docstring
 and `description=` on a `Query` is therefore public API documentation, not just
 a note to the next reader.
+
+**Rate limits** come from [slowapi](https://github.com/laurentS/slowapi): the
+routes that take a password or send an email are limited per client IP
+(`/register` and `/token` at 5/minute, reset and verification mail per hour).
+The counts are kept in memory, per process.
 
 > Note the routes are `def`, not `async def`. That is correct here: SQLAlchemy's
 > synchronous `Session` blocks, and FastAPI runs plain `def` handlers in a
@@ -358,9 +376,11 @@ Password hashing, token minting, and the dependency that turns an
   `username` and `password` — so the email goes in `username`. Following the
   spec is what makes the **Authorize** button on `/docs` a real login.
 
-Nothing invalidates an issued token, so the 12-hour expiry is the only thing
-that ever revokes one; logout is purely client-side. Real revocation needs a
-token blocklist, which is out of scope here.
+Each token also carries the user's `token_version` (`tv`). Changing or
+resetting the password bumps it, so every token issued before then stops
+working: that is the "signs you out on other devices" in the Account dialog.
+Logout itself is still purely client-side. A single token can't be revoked
+on its own; that would need a blocklist, which is out of scope here.
 
 ### 8. React frontend — [frontend/src/](frontend/src/)
 
@@ -370,8 +390,10 @@ screen, so `useState` is the right amount of machinery.
 
 The UI is the **spending dashboard** from the design handoff: a headline total
 for a selected period, a trend strip, four KPIs, spend by category, the charges
-coming up, the full subscription list with inline editing, and the import
-and export panel at the page foot. The split is
+coming up, the full subscription list (edited inline on desktop and in a
+sheet on mobile), and the import and export panel at the page foot. The
+Account dialog holds the language picker, change password, the email
+confirmation status and account deletion. The split is
 [App.jsx](frontend/src/App.jsx) for the data and the error states,
 [dashboard/](frontend/src/dashboard/) for the view. That line is where the
 design's most demanding rule lives: **a failed fetch must never blank the
@@ -424,6 +446,11 @@ rendering the failure.
   the server because the design requires the diff *before* anything is written;
   a bad row is reported by name and row number, since editing that file is the
   user's only repair path.
+- **Every user-facing string goes through [i18n.js](frontend/src/i18n.js).**
+  The English and Finnish strings live in [locales/](frontend/src/locales/),
+  and `npm run check:locales` fails if one language is missing a key the other
+  has. The choice is remembered per browser; the backend doesn't know it,
+  which is why emails are English only.
 - **[renewals.js](frontend/src/renewals.js) mirrors the backend's date
   arithmetic**, because `/subscriptions/upcoming` is anchored to today while
   the period picker reaches back to 2025 and forward to 2027. It is a mirror,
@@ -468,16 +495,20 @@ development:
 
 ### 10. CI — [.github/workflows/](.github/workflows/)
 
-Three workflows, each triggered by what it actually depends on:
+Four workflows:
 
 | Workflow | Runs on | Does |
 | --- | --- | --- |
-| [`test.yml`](.github/workflows/test.yml) | pushes and **pull requests** touching `backend/**` | The test suite, twice — against SQLite and against Postgres 16 |
-| [`build-and-push.yml`](.github/workflows/build-and-push.yml) | pushes to `main` | Builds both images, publishes them to GHCR |
+| [`test.yml`](.github/workflows/test.yml) | pushes to `main` and **pull requests** | The backend test suite, twice — against SQLite and against Postgres 16. Skips the work when `backend/` didn't change. |
+| [`frontend-visual.yml`](.github/workflows/frontend-visual.yml) | pushes to `main` and **pull requests** | Playwright screenshots of the frontend against fixture data, compared with the committed baselines. Skips the work when `frontend/` didn't change. |
+| [`build-and-push.yml`](.github/workflows/build-and-push.yml) | pushes to `main` | Builds both images, publishes them to GHCR, and deploys them to Azure |
 | [`docs.yml`](.github/workflows/docs.yml) | pushes to `main` touching `backend/**` or `docs/**` | Generates `openapi.json` from the app and publishes the [API reference](https://juusimaa.github.io/subscription-tracker) |
 
-`test.yml` is the only one that also runs on pull requests: a suite that only
-runs after a merge reports the problem too late to be worth much. It runs both
+The two test workflows also run on pull requests, because a suite that only
+runs after a merge reports the problem too late to be worth much. They have no
+`paths:` filter: their jobs are required status checks on `main`, and a
+required check that never runs blocks the merge forever. A filter step inside
+the job skips the work instead, and the check still reports. `test.yml` runs both
 database legs because they are not the same database in the way that matters —
 Postgres returns a `Numeric` column as a `Decimal`, SQLite as a float — so
 Postgres is the leg that must be green, and the SQLite leg is what stops the
@@ -503,10 +534,10 @@ and **`permissions`** grants the automatic `GITHUB_TOKEN` only what each job
 needs, so the build can publish images but cannot push commits, and the tests
 can do neither.
 
-Packages are private by default — make them public, or `docker login ghcr.io`
-with a personal access token, to pull them elsewhere. Every push to `main`
-also rolls the new images out to the live deployment above (milestone 8),
-via `build-and-push.yml`'s `deploy` job.
+The packages inherit this repository's public visibility, so anyone can pull
+them without logging in. Every push to `main` also rolls the new images out to
+the live deployment above (milestone 8), via `build-and-push.yml`'s `deploy`
+job, pinned to the `sha-` tag.
 
 ---
 
@@ -567,11 +598,13 @@ Design proposals for open issues live in [`docs/mocks/`](docs/mocks/) as
 standalone pages that need no build, and are published next to the UI mock:
 
 - [Issue #49 — group subscriptions](https://juusimaa.github.io/subscription-tracker/mocks/issue-49-group-subscriptions.html)
+- [Issue #88 — lifetime spend](https://juusimaa.github.io/subscription-tracker/mocks/issue-88-lifetime-spend.html)
 
 ## API reference
 
-Everything except the first three requires `Authorization: Bearer <token>`, and
-only ever sees the calling user's own data.
+Everything except `/health`, `/register`, `/token`, `/verify-email` and the two
+`/password-reset` routes requires `Authorization: Bearer <token>`, and only
+ever sees the calling user's own data.
 
 **Published reference: https://juusimaa.github.io/subscription-tracker** — the
 full API, browsable without running anything. It is generated from the app
@@ -592,15 +625,18 @@ http://localhost:8000/docs (Swagger UI) and http://localhost:8000/redoc.
 | `POST` | `/register` | Create an account. Rejects the request with 403 if `INVITE_CODE` is set and `invite_code` doesn't match. |
 | `POST` | `/token` | Exchange email + password for a JWT (form-encoded; email goes in `username`). |
 | `GET` | `/me` | The logged-in user — used to check a stored token is still valid. Includes `email_verified`. |
+| `PUT` | `/me/password` | Change password, given the current one. Signs out every other session and returns a fresh JWT. |
+| `DELETE` | `/me` | Delete the account and everything in it, given the password. No undo. |
 | `POST` | `/me/verification` | Email the logged-in user a fresh confirmation link. No-op once confirmed. 3/hour. |
 | `POST` | `/verify-email` | Confirm the address in a `?verify=` link's token. Unauthenticated; 400 `expired`/`invalid` for a bad token. |
 | `POST` | `/password-reset` | Email a reset link if the address has an account. Always 202, so it can't reveal which addresses are registered. 5/hour. |
 | `POST` | `/password-reset/confirm` | Set a new password from a `?reset=` link's token and return a fresh JWT. Each link works once, for 1 hour; using it signs out every other session and confirms the address. |
-| `GET` | `/subscriptions` | List, with optional `category`, `billing_cycle`, `status`, `active` filters. |
+| `GET` | `/subscriptions` | List, with optional `category`, `billing_cycle`, `status`, `active` filters. Each row includes `paid_total`, what that run has been billed so far. |
 | `POST` | `/subscriptions` | Create one. |
 | `GET` | `/subscriptions/upcoming` | What is about to be charged: every renewal in the next `days` (default 30), with the full amount due on each day, plus any trial converting in the window. |
 | `GET` | `/subscriptions/{id}` | Fetch one. |
 | `PUT` | `/subscriptions/{id}` | Partial update — send only the fields that change. A cancelled run cannot move to another status in place; use `/restore`. |
+| `POST` | `/subscriptions/{id}/archive` | Hide a cancelled subscription from the main list. Only for cancelled rows; `/unarchive` undoes it. |
 | `POST` | `/subscriptions/{id}/restore` | Reactivate a cancelled service as a linked new run. Optional `cost`, `billing_cycle`, `started_date` and `next_renewal_date` set its new terms. The old run and its spend stay intact. |
 | `DELETE` | `/subscriptions/{id}` | Delete one. |
 | `GET` | `/subscriptions/summary/monthly-total` | What is being paid *now*: active subscriptions normalised to a monthly figure, plus the yearly equivalent. |
@@ -690,8 +726,8 @@ period it just paid for, not nothing.
 
 ## Accounts
 
-Every subscription belongs to a user, and all API routes except `/health`,
-`/register` and `/token` require a login. Sign up on the frontend, or straight
+Every subscription belongs to a user, and every API route except `/health`,
+`/register`, `/token` and the email-link routes requires a login. Sign up on the frontend, or straight
 against the API:
 
 ```
@@ -809,7 +845,7 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-143 tests, no services required: `conftest.py` points the app at a throwaway
+254 tests across 21 files, no services required: `conftest.py` points the app at a throwaway
 SQLite file, so a clean checkout can run the suite with nothing else started.
 To run the identical suite against real Postgres — the one place the two
 databases differ is `Numeric`, which comes back as a `Decimal` from Postgres
@@ -832,13 +868,25 @@ What they cover, and why those things:
 | `test_upcoming.py` | The window, one entry per charge, and what is deliberately left out. |
 | `test_status.py` | The four subscription statuses: that a pause stops the spend without erasing the months already billed, that a trial costs nothing and converts once, and that the legacy `active` boolean still means what it always meant. |
 | `test_migrations.py` | That the revisions and `models.py` describe the same schema, that a downgrade leaves nothing behind, and — since revision 0002 — what a data migration does to the rows themselves. |
+| `test_restore.py`, `test_archive.py`, `test_paid_total.py` | Reactivating a cancelled service as a new run, archiving, and what each run has cost to date. |
+| `test_account.py`, `test_email_links.py`, `test_invite_code.py` | Change password, delete account, the verify and reset links, and the invite-code gate. |
+| `test_rate_limit.py`, `test_races.py`, `test_cors.py`, `test_health.py`, `test_logging.py`, `test_backup.py`, `test_categories.py` | The rest of the HTTP surface: limits, concurrent writes, allowed origins, the healthcheck, request logging, import and export, and categories. |
+
+The frontend has a Playwright visual suite instead: it screenshots the app
+against fixed fixture data, with no backend, on mobile and desktop, and fails on
+any pixel diff. See [frontend/tests/visual/README.md](frontend/tests/visual/README.md):
+
+```
+cd frontend
+npm run test:visual
+```
 
 Two conventions worth keeping if you add more: no test may depend on what
 today's date is (the spend tests all use a year fully in the past), and tests
 call the API over HTTP rather than `crud.py` directly, because the status code
 is as much a part of the contract as the body.
 
-CI runs all of this on every push and pull request that touches `backend/`,
+CI runs the backend suite on every push to `main` and every pull request,
 against both databases — see [`test.yml`](.github/workflows/test.yml). The badge
 at the top of this README is that workflow's result on `main`; it is scoped to
 `branch=main&event=push` so an in-flight pull request cannot turn it red.
@@ -850,20 +898,16 @@ It goes red if *either* database leg fails, which is the point of running both.
 Things a production app would do differently, listed so they read as choices
 rather than oversights:
 
-- **The tests cover the backend only.** The suite (see [Tests](#tests)) runs in
-  CI against both databases, but nothing tests the React frontend, and no test
-  drives a browser.
-- **No token revocation.** Logout is client-side only; the 12-hour expiry is the
-  only thing that invalidates a token.
-- **CORS allows exactly one hardcoded origin**, which will need to become
-  configurable before a deployed frontend can call the API.
-- **Postgres runs as the superuser** with a password from `.env`; a real
-  deployment would use a least-privilege role and a managed secret store.
-- **Some of the dashboard is computed client-side because the API cannot
-  answer it yet**: the charges in an arbitrary month (the `upcoming` route only
-  looks forward from today), and the per-category split for a period, which
-  costs one request per category instead of one grouped response. Both are
-  written up as D2 and D3 in [TODO.md](TODO.md).
+- **The frontend has visual tests only.** The Playwright suite catches layout
+  changes, but there are no unit tests for its logic, and nothing runs the
+  frontend against the real backend.
+- **No per-token revocation.** Logout is client-side only. A password change
+  signs out every session at once, but nothing can revoke one token on its own.
+- **Postgres runs as the superuser locally** with a password from `.env`.
+- **Some of the dashboard is computed client-side**: the charges in an
+  arbitrary month (the `upcoming` route only looks forward from today), and the
+  per-category split for a period. TODO.md's D2 and D3 record why that was
+  kept rather than moved to the API.
 - **No currency anywhere in the schema.** `cost` is a bare `Numeric(10, 2)` and
   the frontend hardcodes EUR, which is an unstated assumption rather than a
   decision anyone made.
@@ -881,27 +925,39 @@ backend/
   alembic/            # env.py + versions/ — the schema's history
   tests/              # see Tests above
   app/
-    main.py           # FastAPI app: routes, status codes, CORS, OpenAPI metadata
+    main.py           # FastAPI app: routes, status codes, CORS, rate limits, OpenAPI metadata
     backup_csv.py     # the CSV side of GET /export (JSON is the real backup)
     auth.py           # bcrypt hashing, JWT mint/verify, get_current_user dependency
+    mailer.py         # send_email: console in dev, Resend in production
+    cache.py          # Redis cache-aside for the list reads; fails open
+    renewals.py       # the renewal date arithmetic
+    logging_config.py # structured request logging
     schemas.py        # Pydantic: the API contract (validation + serialization)
     crud.py           # every database query, all scoped by user_id
     models.py         # SQLAlchemy tables — source of truth for the schema
     database.py       # engine, session factory, get_db dependency
 docs/
   index.html          # Redoc page for the published API reference
+  mocks/              # standalone design proposals for open issues
 .github/workflows/
   test.yml            # pytest on SQLite and Postgres, on push and PR
-  build-and-push.yml  # builds and publishes both images to GHCR
+  frontend-visual.yml # Playwright visual regression, on push and PR
+  build-and-push.yml  # builds and publishes both images to GHCR, deploys to Azure
   docs.yml            # publishes the API reference to GitHub Pages
 frontend/
   ui.html             # entry page for the clickable current UI mock
   Dockerfile          # multi-stage: Node builds, Nginx serves
+  docker-entrypoint.sh # writes config.js with API_URL at container start
+  tests/visual/       # Playwright specs, fixtures and baseline screenshots
   src/
     App.jsx           # auth gate, data loading, and the page-level error states
     api.js            # the only module that talks to the backend
     backup.js         # parses an import file and diffs it against the page
-    Login.jsx         # register / log in; also the re-auth dialog
+    Login.jsx         # register / log in / forgot password; also the re-auth dialog
+    ResetPassword.jsx # the ?reset= link's "Set a new password" card
+    AccountDialog.jsx # language, email status, change password, delete account
+    EmailStrip.jsx    # the unconfirmed-email nudge and link results
+    i18n.js, locales/ # the string lookup, and the English and Finnish strings
     modernist.css     # the design system's tokens and component classes
     dashboard.css     # layout for the dashboard, built from those tokens
     format.js         # money, dates, and the period range
@@ -910,10 +966,11 @@ frontend/
     icons.jsx         # the four Lucide glyphs the design uses
     MonoTile.jsx      # the 20px brand square
     dashboard/        # Hero, TrendStrip, KpiBand, CategoryBars, ComingUp,
-                      # TrialBanner, SubscriptionTable, AddForm, ImportExport,
-                      # dialogs
-docker-compose.yml    # db + backend + frontend for local dev
+                      # NextCharge, TrialBanner, SubscriptionTable, AddForm,
+                      # ImportExport, dialogs
+docker-compose.yml    # db + redis + backend + frontend for local dev
 .env.example          # every variable the stack reads
-.github/workflows/    # CI: build and push images to GHCR
 PLAN.md               # project plan and milestones
+TODO.md               # open follow-ups and decisions, plus what got fixed
+DESIGN.md, PRODUCT.md # the design system and the product's positioning
 ```
