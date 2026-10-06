@@ -2101,7 +2101,6 @@ kbd {
     color: color-mix(in srgb, var(--color-text) 68%, transparent);
     margin: 4px 0 0;
   }
-  .dialog-sheet { width: 440px; max-width: calc(100vw - 64px); }
 
   /* — add form, restacked inside the add sheet —
      Service, Started and the submit button run full width; Cost pairs with

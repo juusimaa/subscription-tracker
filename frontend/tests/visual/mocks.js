@@ -1,3 +1,5 @@
+import { expect } from "@playwright/test";
+
 // Fixed fixture data + route mocking for the visual regression suite.
 //
 // Every screenshot in this suite is taken against these exact numbers, dates
@@ -202,4 +204,18 @@ export async function openSignedOut(page, path = "/", { routes } = {}) {
   await mockApi(page);
   if (routes) await routes(page);
   await page.goto(path);
+}
+
+/**
+ * Asserts a dialog renders as a mobile bottom sheet: edge to edge across the
+ * viewport and resting on its bottom edge. A screenshot of the sheet element
+ * alone can't catch an inset panel -- it crops to whatever width the sheet
+ * has -- so the mobile sheet specs check the geometry directly.
+ */
+export async function expectBottomSheet(page, sheet) {
+  const box = await sheet.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box.x).toBe(0);
+  expect(box.width).toBe(viewport.width);
+  expect(Math.round(box.y + box.height)).toBe(viewport.height);
 }
