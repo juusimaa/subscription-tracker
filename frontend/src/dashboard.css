@@ -1774,11 +1774,16 @@ kbd {
   .account-delete-field { margin-top: 16px; }
 
   /* — hero — */
-  .hero { display: block; padding: 40px 0 0; }
+  .hero,
+  .hero:has(> .next-charge) { display: block; padding: 28px 0; }
   .hero .eyebrow { margin: 0 0 16px; }
   .hero-total { font-size: clamp(44px, 14vw, 64px); }
   .hero-body { font-size: 14px; line-height: 22px; margin: 18px 0 0; }
   .next-charge { margin: 28px 0 0; }
+  /* Here the strip sits above the period controls (Hero.jsx), so it closes
+     with a hairline of its own before them, and the hero keeps its bottom
+     padding under the controls. */
+  .next-charge-row:last-child { border-bottom: 1px solid var(--color-divider); padding-bottom: 12px; }
   .next-charge-row { grid-template-columns: minmax(0, 1fr) auto; padding: 12px 0; }
   .next-charge-label { grid-column: 1 / -1; }
   .next-charge-when { display: block; margin-left: 0; font-size: 13px; line-height: 18px; }
@@ -2336,7 +2341,13 @@ kbd {
 .account-saved { margin: 8px 0 0; font-size: 13px; color: var(--color-text); min-height: 19px; }
 
 @media (max-width: 760px) {
-  .fx-breakdown { max-width: none; }
+  .fx-breakdown { max-width: none; margin-top: 20px; }
+  /* Folded to its label (Hero.jsx), so the next charge reaches the first
+     screen. The toggle keeps the label's type; its negative margins give
+     back the height of the 44px target, as on every folding section. */
+  .fx-breakdown .fx-toggle { display: inline-flex; margin: -15px 0 -15px -4px; }
+  .fx-codes { font-feature-settings: 'tnum' 1; }
+  .fx-breakdown-body { margin-top: 14px; }
   .money-field { grid-template-columns: minmax(0, 1fr) 96px; }
   /* Cost and its currency take a row of their own; Cycle pairs with
      Started instead, and Next renewal with Category as before. */

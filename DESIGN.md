@@ -279,6 +279,9 @@ are separated by 2px rules and spacing on the 14px cadence: 14px inside rows,
 32) handles padding inside controls.
 
 At 760px and below:
+- the hero puts the next-charge strip before the period controls, and the
+  per-currency statement folds to one line naming its currencies, so the
+  next charge and a trial's keep or cancel actions sit on the first screen;
 - the KPI band becomes a 2×2 grid;
 - the split stacks;
 - the table becomes a stacked list with sort chips;
@@ -384,7 +387,9 @@ nothing is ever a toast.
 ### Trial section
 The full list of running trials, below the split. The next-charge strip under
 the hero already shows the soonest conversion with its actions, so this
-section is not a second alarm: it sits on the page ground with Ink text, and
+section appears only when there is more to list than the strip shows (two or
+more trials, or one whose conversion date has passed). It is not a second
+alarm: it sits on the page ground with Ink text, and
 only its 2px Signal Red top rule marks the deadline. That rule takes the place
 of the 2px divider between the split and the table, and the section closes
 with a 2px Rule. Trials are 1px-ruled rows, each with its own actions

@@ -27,7 +27,7 @@ test("converting a trial can be undone", async ({ page }) => {
     bodies.push(route.request().postDataJSON());
     return route.fulfill({ json: { id: 4 } });
   });
-  await page.locator(".trial-banner")
+  await page.locator(".next-charge")
     .getByRole("button", { name: "Convert to paid" }).first().click();
   await expect(notice(page)).toHaveText("Notion converted to paid. Undo");
   await notice(page).getByRole("button", { name: "Undo" }).click();
@@ -76,7 +76,7 @@ test("the cancel dialog says it only updates records, and when access ends", asy
 });
 
 test("cancelling a trial asks for no date", async ({ page }) => {
-  await page.locator(".trial-banner, .trial-row-actions").getByRole("button", { name: "Cancel before it charges" }).first().click();
+  await page.locator(".next-charge").getByRole("button", { name: "Cancel before it charges" }).first().click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("To avoid the charge on 25 Sep 2026, cancel the trial with Notion too.");
   await expect(dialog.getByLabel("Cancelled on")).toHaveCount(0);
