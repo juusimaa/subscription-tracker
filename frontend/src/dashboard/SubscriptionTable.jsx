@@ -20,19 +20,23 @@ import { ChevronRight, Search, TriangleAlert } from "../icons";
 import { SHORT_MONTHS, costProblem, cycleSuffix, longDate, money, parseAmount, perMonth, todayISO } from "../format";
 import { NAME_MAX } from "./AddForm";
 import { useIsMobile } from "../useMediaQuery";
-import { accessEnded, buildGroups, endedGroupCount, groupSince, lifetimePaid, runNumber } from "./groups";
+import { accessEnded, buildGroups, endedGroupCount, groupSince, lifetimePaid, runNumber, stoppedDate } from "./groups";
 
-// The sort chip row (mobile only) offers five of the desktop table's seven
-// columns, in the order the handoff lists them -- "Started" and "Per month"
-// are left out, the same way the mobile row shows a combined cost line
-// instead of a separate Per month column.
+// The sort chip row (mobile only) offers six of the desktop table's seven
+// columns -- "Per month" is left out, the same way the mobile row shows a
+// combined cost line instead of a separate Per month column.
 const CHIPS = [
   { key: "renewal", label: "Renewal" },
   { key: "name", label: "Name" },
   { key: "cost", label: "Cost" },
+  { key: "paid", label: "Paid" },
   { key: "category", label: "Category" },
   { key: "status", label: "Status" },
 ];
+
+// Columns whose first click sorts largest first: what a service has cost is
+// asked as "which cost me the most", not "which cost me the least".
+const DESC_FIRST = new Set(["paid"]);
 
 // The mobile row's one meta line combines category with whatever the
 // desktop table says in two places (the Next renewal cell's date and its
@@ -130,17 +134,53 @@ function monthYear(iso) {
   return `${SHORT_MONTHS[Number(m) - 1]} ${y}`;
 }
 
-// "Lifetime with Netflix: €610.53 across 3 runs since Mar 2022". The amount
-// is left out when a run's start, and so what it paid, is unknown.
+// "Lifetime with Netflix: €610.53 across 3 runs since Mar 2022. This run
+// €303.81, earlier runs €306.72." The head row's Paid to date is this same
+// total, so the line splits it into the shares the rows above it add up to.
+// The amount is left out when a run's start, and so what it paid, is unknown.
 function LifetimeLine({ group, prefix }) {
   const paid = lifetimePaid(group);
   const since = groupSince(group);
+  const own = Number(group.head.paid_total);
   return (
     <>
       {prefix}
       {paid != null && <>: <strong>{money(paid)}</strong></>}
       {` across ${group.runs.length} runs`}
       {since && ` since ${monthYear(since)}`}
+      {paid != null && `. This run ${money(own)}, earlier runs ${money(paid - own)}.`}
+    </>
+  );
+}
+
+// What the Paid to date figure covers, said under it (issue #88). A range for
+// anything that has stopped growing, "since" for the rest, and the reason
+// when there is no figure or it is still zero.
+function paidNote(group) {
+  const head = group.head;
+  const runs = group.runs.length;
+  if (lifetimePaid(group) == null) return "start date unknown";
+  if (head.status === "trial" && runs === 1) return "free trial, nothing charged";
+  if (isScheduled(head) && Number(lifetimePaid(group)) === 0) {
+    return `first charge ${monthYear(head.started_date)}`;
+  }
+  const since = monthYear(groupSince(group));
+  const stopped = stoppedDate(head);
+  if (stopped) return `${runs > 1 ? `${runs} runs, ` : ""}${since} – ${monthYear(stopped)}`;
+  return runs > 1 ? `${runs} runs since ${since}` : `since ${since}`;
+}
+
+// The mobile row's third line: the desktop note, shorter, because the run
+// count already sits under the row as "Show N earlier runs".
+function MobilePaid({ group }) {
+  const paid = lifetimePaid(group);
+  if (paid == null) return "Paid to date unknown";
+  if (paid === 0) return "Nothing paid yet";
+  const since = monthYear(groupSince(group));
+  const stopped = stoppedDate(group.head);
+  return (
+    <>
+      <strong>{money(paid)}</strong> paid {stopped ? `${since} – ${monthYear(stopped)}` : `since ${since}`}
     </>
   );
 }
@@ -151,11 +191,14 @@ const COLUMNS = [
   { key: "status", label: "Status" },
   { key: "cost", label: "Cost" },
   { key: "perMonth", label: "Per month" },
-  { key: "started", label: "Started" },
+  { key: "paid", label: "Paid to date" },
   { key: "renewal", label: "Next renewal" },
 ];
 
-function sortValue(subscription, key) {
+// Sorting works on groups: every column but one reads the head row, and Paid
+// to date is the whole group's total, the figure the row shows.
+function sortValue(group, key) {
+  const subscription = group.head;
   switch (key) {
     case "category": return (subscription.category || "").toLowerCase();
     case "status": return STATUS_ORDER[subscription.status];
@@ -169,10 +212,10 @@ function sortValue(subscription, key) {
     case "perMonth": return subscription.status === "active" && !isScheduled(subscription)
       ? perMonth(subscription)
       : -1;
-    // Rows restored from a backup taken before this column existed have no
-    // start date; "" groups those together at one end rather than scattering
-    // them, the same idea as the -1 above.
-    case "started": return subscription.started_date || "";
+    // null when a run's start is unknown; the comparator puts those last
+    // whichever way the list is sorted, since an unknown has no place in an
+    // order of amounts.
+    case "paid": return lifetimePaid(group);
     case "renewal": return subscription.next_renewal_date;
     default: return subscription.name.toLowerCase();
   }
@@ -182,8 +225,10 @@ function sortValue(subscription, key) {
 // checked separately, so text from adjacent columns cannot form a false match.
 // Dates have both display and ISO forms: users can type "20 Sep 2026" or paste
 // "2026-09-20". The caller has already trimmed and lowercased the query.
-function matchesSearch(subscription, query) {
+// A head row passes its group, so the Paid to date it shows is searchable.
+function matchesSearch(subscription, query, group = null) {
   if (!query) return true;
+  const groupPaid = group && lifetimePaid(group);
   const values = [
     subscription.name,
     subscription.category,
@@ -200,6 +245,8 @@ function matchesSearch(subscription, query) {
     subscription.cancelled_date,
     longDate(subscription.cancelled_date),
     subscription.archived_date ? "Archived" : null,
+    subscription.paid_total == null ? null : money(subscription.paid_total),
+    groupPaid == null ? null : money(groupPaid),
   ];
   return values.some((value) => value?.toLowerCase().includes(query));
 }
@@ -387,13 +434,13 @@ function SubscriptionTable({
   const visible = available
     .filter((g) => {
       if (!query) return true;
-      const headHit = matchesSearch(g.head, query);
+      const headHit = matchesSearch(g.head, query, g);
       const hits = g.earlier.filter((s) => matchesSearch(s, query));
       hits.forEach((s) => matchedEarlier.add(s.id));
       if (hits.length && !headHit) autoOpen.add(g.key);
       return headHit || hits.length > 0;
     })
-    // Sorting uses the head row; the earlier runs travel with it.
+    // Sorting moves whole groups; the earlier runs travel with their head.
     .sort((ga, gb) => {
       const a = ga.head;
       const b = gb.head;
@@ -403,8 +450,11 @@ function SubscriptionTable({
       const ended = Number(accessEnded(a)) - Number(accessEnded(b));
       if (ended) return ended;
       const direction = sort.dir === "desc" ? -1 : 1;
-      const va = sortValue(a, sort.key);
-      const vb = sortValue(b, sort.key);
+      const va = sortValue(ga, sort.key);
+      const vb = sortValue(gb, sort.key);
+      // An unknown figure goes last both ways, the same as ended plans.
+      const unknown = Number(va == null) - Number(vb == null);
+      if (unknown) return unknown;
       if (va < vb) return -direction;
       if (va > vb) return direction;
       return a.name.localeCompare(b.name);
@@ -464,7 +514,8 @@ function SubscriptionTable({
   // Entering a sort, or toggling cancelled visibility, closes any open editor:
   // the row would otherwise move out from under the cursor mid-edit.
   function sortBy(key) {
-    setSort({ key, dir: sort.key === key && sort.dir === "asc" ? "desc" : "asc" });
+    const first = DESC_FIRST.has(key) ? "desc" : "asc";
+    setSort({ key, dir: sort.key === key ? (sort.dir === "asc" ? "desc" : "asc") : first });
     closeEditor();
     setMenuOpenId(null);
   }
@@ -652,6 +703,7 @@ function SubscriptionTable({
                     {archived && <span className="tag tag-outline">Archived</span>}
                   </span>
                   <span className="mobile-row-meta">{mobileMeta(subscription)}</span>
+                  <span className="mobile-row-paid"><MobilePaid group={group} /></span>
                 </span>
                 <span className="mobile-row-cost">
                   <span className="mobile-row-amount">
@@ -746,7 +798,24 @@ function SubscriptionTable({
                     : longDate(detailSub.next_renewal_date),
                 ],
                 ["Counts toward", detailSub.status === "active" && !isScheduled(detailSub) ? "Your totals" : "Nothing right now"],
-                ...(detailSub.paid_total == null ? [] : [["Paid", money(detailSub.paid_total)]]),
+                // The list shows only the month it started; the day is here.
+                ["Started", detailSub.started_date ? longDate(detailSub.started_date) : "—"],
+                // A head row's sheet repeats the row's Paid to date, the whole
+                // group's total, and splits out this run's share when there
+                // are others. An earlier run's sheet is about that run alone.
+                ...(detailIsEarlier
+                  ? detailSub.paid_total == null ? [] : [["Paid", money(detailSub.paid_total)]]
+                  : [
+                      [
+                        "Paid to date",
+                        lifetimePaid(detailGroup) == null
+                          ? "Unknown — no start date"
+                          : `${money(lifetimePaid(detailGroup))} · ${paidNote(detailGroup)}`,
+                      ],
+                      ...(detailGroup.runs.length > 1 && detailSub.paid_total != null
+                        ? [["This run", money(detailSub.paid_total)]]
+                        : []),
+                    ]),
                 ...(detailIsEarlier ? [["Run", `${runNumber(detailGroup, detailSub)} of ${detailGroup.runs.length}`]] : []),
               ].map(([label, value]) => (
                 <div className="row-detail-fact" key={label}>
@@ -1104,10 +1173,13 @@ function SubscriptionTable({
           {subscription.status === "active" ? money(perMonth(subscription)) : "—"}
         </td>
         <td className="tnum">
-          {/* Blank for rows imported from a backup written before the
-              column existed -- an em dash says "not recorded", which
-              is what the spend summary reads it as. */}
-          {subscription.started_date ? longDate(subscription.started_date) : "—"}
+          {/* The whole group's total, set like the Cost and Per month
+              figures beside it, with a note saying what span it covers. A
+              row restored from a backup written before started_date
+              existed has no honest total, so it says so rather than
+              showing a partial sum. */}
+          <span>{lifetimePaid(group) == null ? "—" : money(lifetimePaid(group))}</span>
+          <span className="sub-note">{paidNote(group)}</span>
         </td>
         <td className="tnum">
           {/* A cancelled plan is never charged again -- billing is
@@ -1257,12 +1329,17 @@ function SubscriptionTable({
               <span className="sub-note">{run.billing_cycle}</span>
             </td>
             <td className="tnum">—</td>
-            <td className="tnum">{run.started_date ? longDate(run.started_date) : "—"}</td>
+            <td className="tnum">
+              <span>{run.paid_total == null ? "—" : money(run.paid_total)}</span>
+              <span className="sub-note">
+                {run.started_date ? monthYear(run.started_date) : "—"}
+                {" – "}
+                {run.cancelled_date ? monthYear(run.cancelled_date) : "—"}
+              </span>
+            </td>
             <td className="tnum">
               <span>{run.cancelled_date ? longDate(run.cancelled_date) : "—"}</span>
-              <span className="sub-note">
-                {run.paid_total == null ? "cancelled" : `cancelled · paid ${money(run.paid_total)}`}
-              </span>
+              <span className="sub-note">cancelled</span>
             </td>
             <td className="row-actions">
               {moreMenu(
@@ -1329,11 +1406,11 @@ function SubscriptionTable({
                     className={on ? "sort-button on" : "sort-button"}
                     onClick={() => sortBy(column.key)}
                     title={
-                      on && asc
-                        ? "Sorted A–Z — click to reverse"
-                        : on
-                          ? "Sorted Z–A — click to reverse"
-                          : `Sort by ${column.label.toLowerCase()}`
+                      !on
+                        ? `Sort by ${column.label.toLowerCase()}`
+                        : DESC_FIRST.has(column.key)
+                          ? `${asc ? "Least" : "Most"} first — click to reverse`
+                          : `Sorted ${asc ? "A–Z" : "Z–A"} — click to reverse`
                     }
                   >
                     <span>{column.label}</span>

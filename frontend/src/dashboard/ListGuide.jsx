@@ -49,6 +49,11 @@ const TERMS = [
     text:
       "Reactivating a cancelled plan starts a new run. The earlier ones fold under the current one, so a service's whole history stays in one row.",
   },
+  {
+    term: <span className="guide-term">Paid to date</span>,
+    text:
+      "Everything a service has charged, from its first charge up to today, counted the same way as your totals. It includes every run, and a trial or a plan that hasn't started is €0.00 until it charges.",
+  },
 ];
 
 const KEYS = [

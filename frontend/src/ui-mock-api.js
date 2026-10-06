@@ -109,6 +109,26 @@ function importData(backup, mode) {
   }
 }
 
+// models.Subscription.paid_total: one charge per cycle from started_date up
+// to the day it stopped or today. A trial is a real zero; no start is null.
+function paidTotal(row) {
+  if (row.status === "trial") return 0;
+  if (!row.started_date) return null;
+  const stop = row.status === "cancelled" ? row.cancelled_date
+    : row.status === "paused" ? row.paused_date : null;
+  if ((row.status === "cancelled" || row.status === "paused") && !stop) return 0;
+  const end = stop && stop < today ? stop : today;
+  let total = 0;
+  for (let n = 0; n < 1200; n += 1) {
+    if (addMonths(row.started_date, n * cycleMonths[row.billing_cycle]) > end) break;
+    total += Number(row.cost);
+  }
+  return Math.round(total * 100) / 100;
+}
+
+// Read-only and computed on every response, as the API does.
+const withPaid = (row) => ({ ...row, paid_total: paidTotal(row) });
+
 async function route(path, method, body, params) {
   if (path === "/token" && method === "POST") {
     const form = new URLSearchParams(body);
@@ -134,11 +154,11 @@ async function route(path, method, body, params) {
   if (path === "/subscriptions/summary/spend") return json(spend(Number(params.get("year") || 2026), params.get("category")));
   if (path === "/subscriptions/upcoming") return json(upcoming(Number(params.get("days") || 30)));
   if (path === "/subscriptions") {
-    if (method === "GET") return json([...subscriptions].sort((a, b) => a.next_renewal_date.localeCompare(b.next_renewal_date) || a.name.localeCompare(b.name)));
+    if (method === "GET") return json([...subscriptions].sort((a, b) => a.next_renewal_date.localeCompare(b.next_renewal_date) || a.name.localeCompare(b.name)).map(withPaid));
     if (method === "POST") {
       const row = { ...body, id: nextId, group_id: nextId++, cancelled_date: null, paused_date: null, archived_date: null };
       subscriptions.push(row);
-      return json(row, 201);
+      return json(withPaid(row), 201);
     }
   }
   if (path.startsWith("/subscriptions/")) {
@@ -154,10 +174,10 @@ async function route(path, method, body, params) {
       if (body.status === "cancelled") row.cancelled_date = body.cancelled_date || today;
       if (body.status === "paused") row.paused_date = today;
       if (body.status === "active") row.paused_date = null;
-      return json(row);
+      return json(withPaid(row));
     }
-    if (action === "archive") { row.archived_date = today; return json(row); }
-    if (action === "unarchive") { row.archived_date = null; return json(row); }
+    if (action === "archive") { row.archived_date = today; return json(withPaid(row)); }
+    if (action === "unarchive") { row.archived_date = null; return json(withPaid(row)); }
     if (action === "restore") {
       const restored = { ...row, ...body, id: nextId++, status: "active", cancelled_date: null, paused_date: null, archived_date: null };
       subscriptions.push(restored);
