@@ -25,6 +25,9 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # docker-entrypoint.sh on every container start -- see that file and
 # config.template.js for why this can't just be baked in here.
 COPY config.template.js /etc/nginx/config.template.js
+# Same idea for the server config, which carries the security headers: the
+# CSP has to name the API_URL too. See nginx.conf.template.
+COPY nginx.conf.template /etc/nginx/nginx.conf.template
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 EXPOSE 80

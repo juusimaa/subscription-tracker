@@ -1,0 +1,42 @@
+# Rendered into /etc/nginx/conf.d/default.conf by docker-entrypoint.sh at
+# container start, the same way config.template.js is, so the CSP's
+# connect-src can name whatever API_URL the Container App is given.
+# Otherwise this is nginx:alpine's stock default.conf plus the headers.
+#
+# Why the headers matter: the session JWT lives in localStorage
+# (src/api.js), so any script that gets onto the page can read it. The CSP
+# is the main line of defence if an XSS ever gets in.
+server {
+    listen       80;
+    server_name  localhost;
+
+    root   /usr/share/nginx/html;
+    index  index.html;
+
+    # Declared here, at server level, and nowhere else: nginx drops every
+    # inherited add_header the moment a location block adds one of its own.
+    # `always` keeps them on 404s and errors too.
+    #
+    # Each origin is one the app really uses:
+    #   challenges.cloudflare.com  Turnstile's script and iframe (src/Turnstile.jsx)
+    #   fonts.googleapis.com       the @import in src/modernist.css
+    #   fonts.gstatic.com          the font files that stylesheet points at
+    #   ${API_URL}                 the backend (src/api.js)
+    # style-src needs no 'unsafe-inline': React applies style={} through the
+    # DOM's style object, which CSP doesn't police, and the app sets no style
+    # attributes in markup.
+    #
+    # Report-Only for now (issue #106): browsers log what an enforced policy
+    # would block, without blocking it. Once the console is clean on the
+    # live site (sign-in, signup with Turnstile, the dashboard, a real
+    # iPhone), drop the "-Report-Only" to enforce it.
+    add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' ${API_URL}; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    # Emailed ?verify=/?reset= tokens are already stripped from the URL on
+    # load (src/linkParams.js); this is cheap cover in case one ever isn't.
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+
+    error_page   500 502 503 504  /50x.html;
+}
