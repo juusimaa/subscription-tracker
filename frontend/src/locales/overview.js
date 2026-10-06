@@ -33,10 +33,10 @@ export default {
 
     "hero.monthlySpend": "Monthly spend",
     "hero.annualSpend": "Annual spend",
-    "hero.body": ({ active, categories, monthly, currencies = 1, shownIn }) =>
+    "hero.body": ({ active, categories, monthly, currencies = 1 }) =>
       `Across ${active} active subscription${active === 1 ? "" : "s"} in ${categories} ` +
       `categor${categories === 1 ? "y" : "ies"}` +
-      (currencies > 1 ? ` and ${currencies} currencies, shown ${shownIn}. ` : ". ") +
+      (currencies > 1 ? ` and ${currencies} currencies. ` : ". ") +
       (monthly
         ? "A yearly plan counts in full in the month it renews;"
         : "Monthly plans are shown at twelve times their charge;") +
@@ -52,7 +52,8 @@ export default {
     "kpi.averagePerMonth": "Average per month",
     "kpi.renewalsMonth": "Renewals this month",
     "kpi.renewalsYear": "Renewals this year",
-    "kpi.largest": ({ name }) => `Largest single charge — ${name}`,
+    "kpi.largestMonth": ({ name }) => `Largest charge this month — ${name}`,
+    "kpi.largestYear": ({ name }) => `Largest charge this year — ${name}`,
     "kpi.largestNone": "none",
     "kpi.noEarlier": "No earlier data",
     "kpi.changeSinceMonth": ({ shortMonth }) => `Change since ${shortMonth}`,
@@ -159,10 +160,10 @@ export default {
 
     "hero.monthlySpend": "Kuukauden kulut",
     "hero.annualSpend": "Vuoden kulut",
-    "hero.body": ({ active, categories, monthly, currencies = 1, shownIn }) =>
+    "hero.body": ({ active, categories, monthly, currencies = 1 }) =>
       `${active} ${plural(active, "aktiivinen tilaus", "aktiivista tilausta")}, ` +
       `${categories} ${plural(categories, "kategoria", "kategoriaa")}` +
-      (currencies > 1 ? `, ${currencies} valuuttaa muunnettuna valuuttaan ${shownIn}. ` : ". ") +
+      (currencies > 1 ? `, ${currencies} valuuttaa. ` : ". ") +
       (monthly
         ? "Vuosittain laskutettava tilaus lasketaan kokonaan sille kuukaudelle, jona se uusiutuu;"
         : "Kuukausittain laskutettavat tilaukset näytetään kaksitoistakertaisina;") +
@@ -178,7 +179,8 @@ export default {
     "kpi.averagePerMonth": "Keskimäärin kuukaudessa",
     "kpi.renewalsMonth": "Uusiutumisia tässä kuussa",
     "kpi.renewalsYear": "Uusiutumisia tänä vuonna",
-    "kpi.largest": ({ name }) => `Suurin yksittäinen veloitus — ${name}`,
+    "kpi.largestMonth": ({ name }) => `Suurin veloitus tässä kuussa — ${name}`,
+    "kpi.largestYear": ({ name }) => `Suurin veloitus tänä vuonna — ${name}`,
     "kpi.largestNone": "ei mitään",
     "kpi.noEarlier": "Ei aiempia tietoja",
     // Full month name in the elative: "Muutos elokuusta".

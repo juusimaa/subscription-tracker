@@ -17,7 +17,7 @@
 //   minted before it (see auth.get_current_user), so this isn't aspirational
 //   copy.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { describeWriteError, resendVerification } from "./api";
 import { longDate } from "./format";
 import { CURRENCIES, currencyName, inCurrency } from "./fx";
@@ -34,8 +34,14 @@ function stop(event) {
 // (PLAN.md milestone 10). Saved on change, like the language, with one plain
 // status line under it. Changing it reloads the page's figures; no
 // subscription changes.
-function CurrencySection({ currency, onChange, rates, usesForeign }) {
+function CurrencySection({ currency, onChange, rates, usesForeign, focus }) {
   const [save, setSave] = useState({ state: "idle", message: null });
+  const select = useRef(null);
+  // useModal focuses without scrolling; on a phone the section can start
+  // below the sheet's first screen.
+  useEffect(() => {
+    if (focus) select.current?.scrollIntoView({ block: "nearest" });
+  }, [focus]);
 
   async function choose(event) {
     const code = event.target.value;
@@ -60,9 +66,12 @@ function CurrencySection({ currency, onChange, rates, usesForeign }) {
       <h3 className="account-heading" id="account-currency-heading">{t("account.currency")}</h3>
       <p className="account-explainer">{t("account.currencyNote")}</p>
       <select
+        ref={select}
         className="input currency-select"
         aria-labelledby="account-currency-heading"
         value={currency}
+        // Opened from the hero's "Change currency", the dialog lands here.
+        data-autofocus={focus || undefined}
         disabled={save.state === "saving"}
         onChange={choose}
       >
@@ -136,6 +145,7 @@ function AccountDialog({
   subscriptionCount,
   categoryCount,
   currency,
+  focusCurrency = false,
   onChangeCurrency,
   rates,
   usesForeign,
@@ -254,6 +264,7 @@ function AccountDialog({
 
         <CurrencySection
           currency={currency}
+          focus={focusCurrency}
           onChange={onChangeCurrency}
           rates={rates}
           usesForeign={usesForeign}

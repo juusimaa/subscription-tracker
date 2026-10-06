@@ -108,6 +108,26 @@ function mobilePerMonthNote(subscription) {
   return cycleNote(subscription.billing_cycle);
 }
 
+// The Per month cell: a comparison across rows, so it is in the user's
+// currency like the mobile row's note and the column's sort, "≈"-marked when
+// converted, with the native figure under it. The Cost cell beside it keeps
+// what actually charges in its own currency.
+function PerMonthCell({ subscription }) {
+  if (subscription.status !== "active") return "—";
+  const monthly = perMonth(subscription);
+  const converted = isForeign(subscription.currency) ? convert(monthly, subscription.currency) : null;
+  if (converted == null) return money(monthly, subscription.currency);
+  return (
+    <>
+      <span>
+        <ApproxMark />
+        {money(converted)}
+      </span>
+      <span className="sub-note">{money(monthly, subscription.currency)}</span>
+    </>
+  );
+}
+
 // A cost cell's sub-note: the cycle, then "≈ €17.05" when the cost is in
 // another currency than the user's, at the latest rate.
 function CostNote({ subscription }) {
@@ -305,6 +325,9 @@ function matchesSearch(subscription, query, group = null) {
     subscription.currency,
     subscription.status === "trial" ? money(0, subscription.currency) : null,
     subscription.status === "active" ? money(perMonth(subscription), subscription.currency) : null,
+    subscription.status === "active" && isForeign(subscription.currency)
+      ? money(convert(perMonth(subscription), subscription.currency) ?? 0)
+      : null,
     subscription.started_date,
     longDate(subscription.started_date),
     subscription.next_renewal_date,
@@ -1257,7 +1280,7 @@ function SubscriptionTable({
           </span>
         </td>
         <td className="tnum">
-          {subscription.status === "active" ? money(perMonth(subscription), subscription.currency) : "—"}
+          <PerMonthCell subscription={subscription} />
         </td>
         <td className="tnum">
           {/* The whole group's total, set like the Cost and Per month

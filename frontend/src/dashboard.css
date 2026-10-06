@@ -234,6 +234,14 @@ body { text-wrap: pretty; }
   max-width: 52ch;
   color: color-mix(in srgb, var(--color-text) 78%, transparent);
 }
+/* Which currency the totals are in, and the way to change it. A qualifier
+   under the prose, set like the rates note rather than like body copy. */
+.hero-currency {
+  margin: 14px 0 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
 
 /* — next charge — */
 
@@ -1799,6 +1807,10 @@ kbd {
      of that full width, which is what .seg/.stepper's own align-items:
      stretch below needs to have something to stretch into. */
   .period { margin-top: 24px; align-items: stretch; }
+  /* Here the currency line leads the view settings (Hero.jsx), so it takes
+     the gap above them and sits close over the period controls. */
+  .hero-currency { margin-top: 24px; }
+  .hero-currency + .period { margin-top: 14px; }
   .period-controls { flex-direction: column; align-items: stretch; gap: 10px; }
   .seg { display: grid; grid-template-columns: 1fr 1fr; }
   .seg-opt { min-height: 44px; justify-content: center; }
@@ -2350,6 +2362,8 @@ kbd {
      back the height of the 44px target, as on every folding section. */
   .fx-breakdown .fx-toggle { display: inline-flex; margin: -15px 0 -15px -4px; }
   .fx-codes { font-feature-settings: 'tnum' 1; }
+  /* A 44px target that does not open up the line it sits in. */
+  .hero-currency .link-button { display: inline-flex; align-items: center; min-height: 44px; margin: -11px 0; }
   .fx-breakdown-body { margin-top: 14px; }
   .money-field { grid-template-columns: minmax(0, 1fr) 96px; }
   /* Cost and its currency take a row of their own; Cycle pairs with

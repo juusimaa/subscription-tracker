@@ -23,7 +23,7 @@ import {
 } from "../format";
 import { comparable, convert, inCurrency, isForeign } from "../fx";
 import { t } from "../i18n";
-import { chargeCountInYear, chargesInMonth } from "../renewals";
+import { chargesInMonth } from "../renewals";
 import { useIsMobile } from "../useMediaQuery";
 import { readListView, writeView } from "../viewUrl";
 import AddForm from "./AddForm";
@@ -59,6 +59,8 @@ function Dashboard({
   setPeriod,
   actions,
   staleId,
+  // Opens the Account dialog at its Currency section.
+  onChangeCurrency,
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   // Sort and the two toggles open as the URL left them (see viewUrl.js);
@@ -311,11 +313,17 @@ function Dashboard({
 
   // --- KPIs ---
 
-  const largestPool = monthly ? activeSubs.filter((s) => s.billing_cycle === "monthly") : activeSubs;
-  // Compared in the user's currency, so $20.00 ranks beside €17.05 rather
-  // than beside €20.00; shown in its own.
-  const largest = largestPool
-    .slice()
+  // The biggest single charge that falls in the selected period, so a yearly
+  // plan renewing this month counts and one renewing in June does not. A
+  // trial's conversion costs nothing yet, so it never ranks. Compared in the
+  // user's currency, so $20.00 ranks beside €17.05 rather than beside €20.00;
+  // shown in its own.
+  const periodCharges = monthly
+    ? monthCharges
+    : Array.from({ length: 12 }, (_, m) => chargesInMonth(subscriptions, year, m)).flat();
+  const largest = periodCharges
+    .filter((charge) => !charge.isTrialConversion)
+    .map((charge) => charge.subscription)
     .sort((a, b) => comparable(b.cost, b.currency) - comparable(a.cost, a.currency))[0];
 
   // Trials converting inside the same 30 days. The route counts them at 0 --
@@ -352,12 +360,12 @@ function Dashboard({
       note: monthly ? trialsSoonNote : null,
     },
     {
-      figure: String(monthly ? monthCharges.length : chargeCountInYear(subscriptions, year)),
+      figure: String(periodCharges.length),
       label: monthly ? t("kpi.renewalsMonth") : t("kpi.renewalsYear"),
     },
     {
       figure: largest ? money(largest.cost, largest.currency) : "—",
-      label: t("kpi.largest", { name: largest ? largest.name : t("kpi.largestNone") }),
+      label: t(monthly ? "kpi.largestMonth" : "kpi.largestYear", { name: largest ? largest.name : t("kpi.largestNone") }),
       note:
         largest && isForeign(largest.currency)
           ? approxText(convert(largest.cost, largest.currency) ?? 0)
@@ -365,7 +373,9 @@ function Dashboard({
     },
     {
       figure: change == null ? "—" : signed(change),
-      approx: change != null && changeApprox,
+      // No "≈" on a change that rounds to nothing: "≈ €0.00" hedges a figure
+      // that is exact.
+      approx: change != null && changeApprox && Math.round(change * 100) !== 0,
       note: rateOnly
         ? t("fx.rateOnly", monthly ? { month: monthName((month + 11) % 12) } : { year: year - 1 })
         : null,
@@ -624,6 +634,7 @@ function Dashboard({
           byCurrency={periodSummary?.by_currency ?? []}
           ratesAsOf={spendByYear[year]?.rates_as_of}
           ratesStale={spendByYear[year]?.rates_stale}
+          onChangeCurrency={onChangeCurrency}
           onChange={changePeriod}
           pickerOpen={pickerOpen}
           setPickerOpen={setPickerOpen}

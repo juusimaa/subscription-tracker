@@ -11,11 +11,17 @@
 // says what charged in each currency (PLAN.md milestone 10). On mobile that
 // statement folds to one line: open, it pushed the next charge and the trial
 // actions below the first screen, and those are what can still be stopped.
+//
+// Every total is in one currency, so a line under the prose names it and
+// links to where it is changed. Otherwise a stranger whose plans bill in
+// dollars would see euros and have to find the setting behind the avatar.
+// It is a view setting like the period, so on mobile it waits below the
+// next charge with the period controls.
 
 import { Fragment, useState } from "react";
 import { ApproxMark, Converted } from "../Approx";
 import { longDate, monthName, money } from "../format";
-import { inCurrency, userCurrency } from "../fx";
+import { userCurrency } from "../fx";
 import { t } from "../i18n";
 import { ChevronRight } from "../icons";
 import { useIsMobile } from "../useMediaQuery";
@@ -77,6 +83,22 @@ function CurrencyBreakdown({ lines, ratesAsOf, ratesStale }) {
   );
 }
 
+function TotalsCurrency({ onChange }) {
+  return (
+    <p className="hero-currency">
+      {t("fx.totalsIn", { code: userCurrency() })}
+      {onChange && (
+        <>
+          <span aria-hidden="true"> · </span>
+          <button type="button" className="link-button" onClick={onChange}>
+            {t("fx.changeCurrency")}
+          </button>
+        </>
+      )}
+    </p>
+  );
+}
+
 function Hero({
   view,
   year,
@@ -88,6 +110,7 @@ function Hero({
   byCurrency = [],
   ratesAsOf,
   ratesStale,
+  onChangeCurrency,
   children,
   ...periodProps
 }) {
@@ -111,12 +134,13 @@ function Hero({
             categories: categoryCount,
             monthly,
             currencies: currencyCount,
-            shownIn: inCurrency(),
           })}
         </p>
+        {!mobile && <TotalsCurrency onChange={onChangeCurrency} />}
         {converted && <CurrencyBreakdown lines={byCurrency} ratesAsOf={ratesAsOf} ratesStale={ratesStale} />}
       </div>
       {mobile && children}
+      {mobile && <TotalsCurrency onChange={onChangeCurrency} />}
       <PeriodControls view={view} year={year} month={month} {...periodProps} />
       {!mobile && children}
     </section>

@@ -190,3 +190,39 @@ test("a new subscription can be added in another currency", async ({ page }) => 
   await form.getByRole("button", { name: "Add", exact: true }).click();
   await expect.poll(() => submitted?.currency).toBe("USD");
 });
+
+// Critique 2026-10-06, issue 4: currency honesty gaps.
+
+test("the hero names the totals' currency and links to changing it", async ({ page }) => {
+  const line = page.locator(".hero-currency");
+  await expect(line).toContainText("Totals in EUR");
+  await line.getByRole("button", { name: "Change currency" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator(".currency-select")).toBeFocused();
+  await expect(dialog.locator(".currency-select")).toBeInViewport();
+});
+
+test("Per month is in the user's currency on desktop too, native under it", async ({ page, isMobile }) => {
+  test.skip(isMobile, "the mobile row already shows the converted note");
+  const row = page.locator("tr", { hasText: "ChatGPT Plus" });
+  const cell = row.locator("td").nth(4);
+  await expect(cell).toContainText(/≈.*€17\.05/);
+  await expect(cell.locator(".sub-note")).toHaveText("$20.00");
+});
+
+test("Largest charge names its period", async ({ page }) => {
+  await expect(page.locator(".kpis")).toContainText("Largest charge this month — ");
+});
+
+test("a change that rounds to nothing carries no ≈", async ({ page }) => {
+  // August at September's total: the same charges, and this time the same
+  // converted figure too.
+  const flat = summary(OVERALL.months.map((m, i) => (i === 7 ? { ...OVERALL.months[8], month: 8 } : m)));
+  await page.route("**/subscriptions/summary/spend*", (route) =>
+    new URL(route.request().url()).searchParams.get("category") ? route.fallback() : route.fulfill({ json: flat }),
+  );
+  await page.reload();
+  const change = page.locator(".kpis > *", { hasText: "Change since" });
+  await expect(change).toContainText("€0.00");
+  await expect(change.locator(".approx")).toHaveCount(0);
+});
