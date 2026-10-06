@@ -155,5 +155,11 @@ export default {
     "server.Subscription is not archived": "Tilausta ei ole arkistoitu.",
     "server.Only a cancelled subscription can be restored": "Vain lopetetun tilauksen voi palauttaa.",
     "server.This subscription already has a current run": "Tällä tilauksella on jo käynnissä oleva kausi.",
+    // The numbers mirror crud.MAX_SUBSCRIPTIONS / MAX_CATEGORIES and
+    // main.MAX_BODY_BYTES. If those change, these keys stop matching and the
+    // English sentence is shown instead -- still right, just untranslated.
+    "server.An account can hold at most 500 subscriptions": "Tilillä voi olla enintään 500 tilausta.",
+    "server.An account can hold at most 100 categories": "Tilillä voi olla enintään 100 kategoriaa.",
+    "server.Request body is larger than 1 MB": "Lähetettävä tieto on yli 1 Mt.",
   },
 };

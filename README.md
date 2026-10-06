@@ -780,6 +780,13 @@ have is:
   (`TRUST_FORWARDED_FOR`).
 - **A bot check** on signup and reset, when `TURNSTILE_SECRET_KEY` and the
   frontend's site key are set.
+- **A ceiling on what one account stores**, because the whole app shares
+  Neon's 0.5 GB free tier: 500 subscriptions and 100 categories
+  (`crud.MAX_SUBSCRIPTIONS` / `MAX_CATEGORIES`). A create, restore or import
+  that would go over answers 409 and writes nothing. An import is counted
+  after a `replace` has emptied the account and after a merge has matched
+  rows, so it is judged on what the account would end up holding. Request
+  bodies over 1 MB get a 413.
 
 ### Email
 

@@ -49,6 +49,53 @@ class CurrentRunExistsError(Exception):
     """A linked run of the same subscription is still active or paused."""
 
 
+# --- Per-account limits ---
+#
+# Signup is open (PLAN.md milestone 11) and the database is Neon's free tier:
+# 0.5 GB for the whole app. Text fields are already length-capped, so what was
+# left unbounded was the number of rows -- one scripted account could fill the
+# database and stop writes for everyone (issue #105). Both numbers are far
+# above any real use.
+#
+# Checked by counting before the insert, so two concurrent requests at the
+# very edge can both pass and land one or two rows over. That is fine: the
+# point is that nobody can store thousands, not that 500 is exact.
+MAX_SUBSCRIPTIONS = 500
+MAX_CATEGORIES = 100
+
+
+class LimitError(Exception):
+    """A write would take the account past one of the limits above. Carries
+    the message the route answers with (409, see main.py)."""
+
+    def __init__(self, detail: str):
+        super().__init__(detail)
+        self.detail = detail
+
+
+def subscription_limit_error() -> LimitError:
+    return LimitError(f"An account can hold at most {MAX_SUBSCRIPTIONS} subscriptions")
+
+
+def category_limit_error() -> LimitError:
+    return LimitError(f"An account can hold at most {MAX_CATEGORIES} categories")
+
+
+def _check_room(db: Session, model, user_id: int, limit: int, error) -> None:
+    """Raises `error()` if the account already holds `limit` rows of `model`,
+    so one more would be over."""
+    if db.query(model).filter(model.user_id == user_id).count() >= limit:
+        raise error()
+
+
+def check_subscription_room(db: Session, user_id: int) -> None:
+    _check_room(db, models.Subscription, user_id, MAX_SUBSCRIPTIONS, subscription_limit_error)
+
+
+def check_category_room(db: Session, user_id: int) -> None:
+    _check_room(db, models.Category, user_id, MAX_CATEGORIES, category_limit_error)
+
+
 # --- Users ---
 
 
@@ -228,6 +275,7 @@ def count_subscriptions_in_category(db: Session, name: str, user_id: int) -> int
 
 
 def create_category(db: Session, name: str, user_id: int) -> models.Category:
+    check_category_room(db, user_id)
     db_category = models.Category(name=name.strip(), user_id=user_id)
     db.add(db_category)
     try:
@@ -311,6 +359,9 @@ def ensure_category(db: Session, name: str | None, user_id: int) -> str | None:
     existing = get_category_by_name(db, name, user_id)
     if existing is not None:
         return existing.name
+    # A new name is a new row, so it counts against the limit like one added
+    # through POST /categories would.
+    check_category_room(db, user_id)
     # No commit here: this runs inside the caller's create/update transaction,
     # so the category and the subscription are saved together or not at all.
     db.add(models.Category(name=name, user_id=user_id))
@@ -538,6 +589,7 @@ def create_subscription(
         schemas.check_archived(row.status, row.archived_date)
         return row
 
+    check_subscription_room(db, user_id)
     db_subscription = build()
     db.add(db_subscription)
     try:
@@ -697,6 +749,8 @@ def restore_subscription(
         )
         if current_run is not None:
             raise CurrentRunExistsError
+    # The new run is a row of its own, so it counts like any other.
+    check_subscription_room(db, user_id)
 
     today = date.today()
     # A cancelled run may already be paid through a later date. The next run
@@ -837,6 +891,7 @@ def import_backup(
     # popping from the front pairs them off in a stable order instead of
     # letting one of them win arbitrarily.
     existing_by_name: dict[str, list[models.Subscription]] = {}
+    kept = 0
     if replace:
         removed = (
             db.query(models.Subscription)
@@ -854,6 +909,7 @@ def import_backup(
             existing_by_name.setdefault(_match_key(db_subscription.name), []).append(
                 db_subscription
             )
+            kept += 1
 
     # Categories are resolved against this dict rather than through
     # ensure_category, which asks the database each time. The session is
@@ -932,6 +988,19 @@ def import_backup(
     # today's date on a subscription that has been running for years would
     # quietly rewrite its history in the spend summary -- and stamping one on
     # an *update* would do it to a row that already had the truth in it.
+    #
+    # The limits are checked here, on what the account would hold once the
+    # file is in: after a `replace` has emptied it, and after a merge has
+    # matched what it can. Over either one, nothing is written -- the rollback
+    # also undoes a `replace`'s delete, so the account is left as it was. Only
+    # when the file adds rows, so an account that is somehow already over
+    # (it predates the limits) can still re-import its own unchanged backup.
+    if imported and kept + imported > MAX_SUBSCRIPTIONS:
+        db.rollback()
+        raise subscription_limit_error()
+    if categories_added and len(known_categories) > MAX_CATEGORIES:
+        db.rollback()
+        raise category_limit_error()
     db.commit()
 
     return schemas.ImportResult(
