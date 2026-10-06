@@ -178,3 +178,61 @@ def money(value) -> Decimal:
     assertion here is quietly asserting which database it ran against.
     """
     return Decimal(str(value))
+
+
+class FakeFrankfurter:
+    """Stands in for app.fx._fetch. Holds `rates[code][iso_day] = rate`
+    (units per EUR) and answers the two request shapes fx makes -- /latest
+    and a /{start}..{end} time series -- from them, recording every call.
+    `down = True` makes every request fail, like a provider outage."""
+
+    def __init__(self):
+        self.rates: dict[str, dict[str, float]] = {}
+        self.calls: list[str] = []
+        self.down = False
+
+    def set(self, code: str, day, rate: float) -> None:
+        self.rates.setdefault(code, {})[str(day)] = rate
+
+    def __call__(self, path: str, params: dict) -> dict:
+        self.calls.append(path)
+        if self.down:
+            raise RuntimeError("rate provider is down")
+        symbols = set(params["symbols"].split(",")) if "symbols" in params else set(self.rates)
+        if path == "/latest":
+            days = sorted({day for series in self.rates.values() for day in series})
+            if not days:
+                raise RuntimeError("no rates")
+            latest = days[-1]
+            return {
+                "base": "EUR",
+                "date": latest,
+                "rates": {
+                    code: series[latest]
+                    for code, series in self.rates.items()
+                    if latest in series and code in symbols
+                },
+            }
+        start, end = path.strip("/").split("..")
+        out: dict[str, dict[str, float]] = {}
+        for code, series in self.rates.items():
+            if code not in symbols:
+                continue
+            for day, rate in series.items():
+                if start <= day <= end:
+                    out.setdefault(day, {})[code] = rate
+        return {"base": "EUR", "start_date": start, "end_date": end, "rates": out}
+
+
+@pytest.fixture(autouse=True)
+def frankfurter(monkeypatch):
+    """No test may reach the real rate provider. Autouse, and empty by
+    default: an account in one currency never asks for a rate at all, which
+    is most of the suite. Tests about conversion fill it in."""
+    from app import fx
+
+    fake = FakeFrankfurter()
+    monkeypatch.setattr(fx, "_fetch", fake)
+    fx.reset()
+    yield fake
+    fx.reset()

@@ -31,6 +31,18 @@ class CancelledRunTransitionError(Exception):
     """A cancelled run must stay intact when the service starts again."""
 
 
+class CurrencyChangeError(ValueError):
+    """An update tried to change a subscription's currency. A ValueError, so
+    the route's existing 422 handling answers it; its message says what to
+    do instead."""
+
+    def __init__(self):
+        super().__init__(
+            "A subscription's currency cannot be changed; "
+            "cancel it and restore it as a new run in the new currency"
+        )
+
+
 class CurrentRunExistsError(Exception):
     """A linked run of the same subscription is still active or paused."""
 
@@ -67,6 +79,15 @@ def update_password(db: Session, user: models.User, new_password: str) -> models
     set_archived."""
     user.hashed_password = hash_password(new_password)
     user.token_version += 1
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def update_user_currency(db: Session, user: models.User, currency: str) -> models.User:
+    """Sets the currency totals are shown in. Changes no subscription: each
+    keeps the currency it is billed in (PLAN.md milestone 10)."""
+    user.currency = currency
     db.commit()
     db.refresh(user)
     return user
@@ -301,6 +322,10 @@ def _columns(fields: dict) -> dict:
     # a real one; SubscriptionUpdate uses None to mean "not sent".
     if "status" in fields and fields["status"] is None:
         del fields["status"]
+    # Likewise "not sent" for currency: create fills in the user's own, and
+    # an update never writes one (see update_subscription).
+    if "currency" in fields and fields["currency"] is None:
+        del fields["currency"]
     return fields
 
 
@@ -449,14 +474,22 @@ def _sync_status_dates(
 
 
 def create_subscription(
-    db: Session, subscription: schemas.SubscriptionCreate, user_id: int
+    db: Session,
+    subscription: schemas.SubscriptionCreate,
+    user_id: int,
+    default_currency: str = "EUR",
 ) -> models.Subscription:
+    """`default_currency` is the user's own, used when the request names
+    none -- what the add form pre-selects anyway (PLAN.md milestone 10)."""
+
     def build() -> models.Subscription:
         # model_dump() turns the Pydantic schema into a plain dict, which is
         # then unpacked as keyword args to build the SQLAlchemy model
         # instance. The owner is added separately -- it comes from the token,
         # and deliberately isn't a field the client can send.
         row = models.Subscription(**_columns(subscription.model_dump()), user_id=user_id)
+        if row.currency is None:
+            row.currency = default_currency
         row.category = ensure_category(db, row.category, user_id)
         # A subscription being added now almost always starts now. Recording
         # that beats leaving it unknown: without a start date the spend
@@ -516,6 +549,11 @@ def update_subscription(
         # request, so a partial update doesn't overwrite existing values with None.
         fields = subscription.model_dump(exclude_unset=True)
         columns = _columns(fields)
+        # Every past charge of this run was taken in its currency, so a
+        # different one would rewrite them all. Repeating the stored one is
+        # fine: the editable row sends the whole draft back.
+        if columns.pop("currency", row.currency) != row.currency:
+            raise CurrencyChangeError
         if (
             row.status == models.SubscriptionStatus.cancelled
             and columns.get("status", models.SubscriptionStatus.cancelled)
@@ -655,6 +693,11 @@ def restore_subscription(
     new_subscription = models.Subscription(
         name=db_subscription.name,
         cost=(payload.cost if payload and payload.cost is not None else db_subscription.cost),
+        currency=(
+            payload.currency
+            if payload and payload.currency is not None
+            else db_subscription.currency
+        ),
         billing_cycle=(
             payload.billing_cycle
             if payload and payload.billing_cycle is not None
@@ -727,7 +770,11 @@ def _same_stored_value(current, incoming) -> bool:
 
 
 def import_backup(
-    db: Session, backup: schemas.Backup, user_id: int, replace: bool = False
+    db: Session,
+    backup: schemas.Backup,
+    user_id: int,
+    replace: bool = False,
+    default_currency: str = "EUR",
 ) -> schemas.ImportResult:
     """Writes a backup file's contents into one user's account.
 
@@ -825,6 +872,10 @@ def import_backup(
         # name no search or sort agrees with.
         fields["name"] = fields["name"].strip()
         fields["category"] = register_category(fields.get("category"))
+        # A file from before currencies (version 3 or older) has none: its
+        # rows are in the importing user's currency, which for every such
+        # file was euros. Set explicitly, so a merge compares like with like.
+        fields["currency"] = subscription.currency or default_currency
         matches = existing_by_name.get(_match_key(subscription.name))
         if matches:
             db_subscription = matches.pop(0)

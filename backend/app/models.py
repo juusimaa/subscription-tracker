@@ -94,6 +94,10 @@ class User(Base):
     # unverified. Unverified accounts work normally; only mail the user did
     # not ask for (future renewal reminders) is gated on this.
     email_verified_at = Column(DateTime(timezone=True), nullable=True)
+    # The currency every total is shown in, and the one a new subscription
+    # starts in (PLAN.md milestone 10). A preference, never a fact about any
+    # subscription: each one keeps its own `currency`.
+    currency = Column(String(3), nullable=False, default="EUR", server_default="EUR")
 
     @property
     def email_verified(self) -> bool:
@@ -149,6 +153,11 @@ class Subscription(Base):
     name = Column(String, nullable=False)
     # Numeric (not Float) avoids floating-point rounding errors on money values.
     cost = Column(Numeric(10, 2), nullable=False)
+    # What `cost` is counted in: an ISO 4217 code from app/currencies.py.
+    # Fixed once the row exists (crud.update_subscription refuses a change),
+    # because every past charge of this run was taken in it; a service that
+    # switches currency is a new run, the same as a price change on restore.
+    currency = Column(String(3), nullable=False, default="EUR", server_default="EUR")
     billing_cycle = Column(Enum(BillingCycle), nullable=False, default=BillingCycle.monthly)
     # The renewal date the client last told us about -- an *anchor*, not a
     # deadline. Every future renewal is derived from it by the property below
@@ -356,3 +365,20 @@ class Subscription(Base):
                 charge_anchor, self.cycle_months, stopped + timedelta(days=1)
             )
         return renewals.next_occurrence(self.renewal_anchor_date, self.cycle_months, date.today())
+
+
+class FxRate(Base):
+    """One European Central Bank reference rate: units of `currency` per
+    1 EUR on `day`. Filled on demand by app/fx.py and never edited, so the
+    table is a cache of a public record rather than user data -- it belongs
+    to nobody and is not touched by account deletion or import.
+
+    Only days the ECB published appear (no weekends or TARGET holidays); a
+    charge on such a day uses the latest rate before it (fx.RateTable.rate_on).
+    """
+
+    __tablename__ = "fx_rates"
+
+    day = Column(Date, primary_key=True)
+    currency = Column(String(3), primary_key=True)
+    rate = Column(Numeric(14, 6), nullable=False)

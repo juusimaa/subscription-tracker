@@ -21,6 +21,7 @@ from pydantic import (
     model_validator,
 )
 
+from app import currencies
 from app.models import BillingCycle, SubscriptionStatus
 
 
@@ -118,6 +119,10 @@ SubscriptionName = Annotated[
 Cost = Annotated[
     Decimal, Field(gt=0, le=Decimal("99999999.99"), decimal_places=2)
 ]
+# An ISO 4217 code this app can convert (app/currencies.py), stored upper
+# case. Only requests use it; responses read `currency` as a plain string for
+# the same reason `Subscription` takes the unconstrained base.
+CurrencyCode = Annotated[str, AfterValidator(currencies.normalize)]
 
 
 class SubscriptionBase(BaseModel):
@@ -128,6 +133,9 @@ class SubscriptionBase(BaseModel):
 
     name: str
     cost: Decimal
+    # What `cost` is in (PLAN.md milestone 10). Every figure on a subscription
+    # -- cost, paid_total -- is in this currency; only the summaries convert.
+    currency: str = currencies.DEFAULT_CURRENCY
     billing_cycle: BillingCycle = BillingCycle.monthly
     # Read and written through the same name, but not quite the same thing on
     # each side: what a client sends is the *anchor* the schedule is measured
@@ -175,6 +183,9 @@ class SubscriptionCreate(SubscriptionBase):
 
     name: SubscriptionName
     cost: Cost
+    # Left off, the subscription takes the user's own currency (see
+    # crud.create_subscription), which is what the add form defaults to.
+    currency: CurrencyCode | None = None
     # Both optional here, unlike the base, so that "not sent" is distinguishable
     # from "sent as the default" -- without which a client sending only
     # active=false could not be told apart from one sending nothing, and the
@@ -203,6 +214,11 @@ class SubscriptionUpdate(BaseModel):
 
     name: SubscriptionName | None = None
     cost: Cost | None = None
+    # Accepted only when it repeats the stored currency, so a client that
+    # sends the whole row back still works. A different one is a 422 from
+    # crud.update_subscription: a run's past charges were taken in its
+    # currency, and a service that switches is restored as a new run.
+    currency: CurrencyCode | None = None
     billing_cycle: BillingCycle | None = None
     next_renewal_date: date | None = None
     started_date: date | None = None
@@ -266,6 +282,9 @@ class SubscriptionRestore(BaseModel):
     started_date: date | None = None
     next_renewal_date: date | None = None
     cost: Cost | None = None
+    # The new run's currency, when the service now bills in another one. The
+    # one way to change currency at all (see SubscriptionUpdate.currency).
+    currency: CurrencyCode | None = None
     billing_cycle: BillingCycle | None = None
 
 
@@ -289,6 +308,17 @@ class SubscriptionRestore(BaseModel):
 Money = Annotated[Decimal, PlainSerializer(float, return_type=float)]
 
 
+class CurrencyAmount(BaseModel):
+    """One currency's share of a converted total: what charged in it, and
+    what that came to in the user's currency. `converted` is None when no
+    rate for the currency has ever been stored, in which case the charges
+    are left out of the total rather than guessed at."""
+
+    currency: str
+    native: Money
+    converted: Money | None
+
+
 class SpendMonth(BaseModel):
     """One month's share of a period's cost. `month` is 1-12.
 
@@ -303,6 +333,9 @@ class SpendMonth(BaseModel):
     month: int = Field(ge=1, le=12)
     total: Money
     subscription_ids: list[int] = []
+    # One entry per currency that charged this month, the user's own first.
+    # `total` is the sum of the `converted` figures.
+    by_currency: list[CurrencyAmount] = []
 
 
 class SpendSummary(BaseModel):
@@ -314,9 +347,17 @@ class SpendSummary(BaseModel):
     """
 
     year: int
+    # The currency every total here is in: the user's (PLAN.md milestone 10).
+    currency: str = currencies.DEFAULT_CURRENCY
     total: Money
     # One entry when a single month was asked for, twelve otherwise.
     months: list[SpendMonth]
+    # The whole period, per currency.
+    by_currency: list[CurrencyAmount] = []
+    # How fresh the rates behind any conversion are. `rates_as_of` is None
+    # when nothing needed converting.
+    rates_as_of: date | None = None
+    rates_stale: bool = False
 
 
 class MonthlyTotal(BaseModel):
@@ -325,6 +366,8 @@ class MonthlyTotal(BaseModel):
 
     monthly_total: Money
     yearly_total: Money
+    # Both totals are in this currency, converted at the latest rate.
+    currency: str = currencies.DEFAULT_CURRENCY
 
 
 # --- Upcoming renewals ---
@@ -345,7 +388,11 @@ class UpcomingRenewal(BaseModel):
     # date arithmetic (and without disagreeing with the server about what
     # today is, which is a real risk across timezones).
     days_until: int
+    # In the subscription's own currency, which is what will actually charge.
     cost: Money
+    # The same charge in the user's currency, at the latest rate; None when
+    # the currency has no rate.
+    converted_cost: Money | None = None
 
 
 class UpcomingSummary(BaseModel):
@@ -361,8 +408,30 @@ class UpcomingSummary(BaseModel):
     # The last day covered, inclusive. Returned rather than left to the client
     # to work out, so what the window meant is never in doubt.
     through: date
+    # In `currency`, the user's: each renewal's converted_cost, summed.
     total: Money
+    currency: str = currencies.DEFAULT_CURRENCY
     renewals: list[UpcomingRenewal]
+    rates_as_of: date | None = None
+    rates_stale: bool = False
+
+
+class RateSeries(BaseModel):
+    """What GET /rates returns: the ECB rates the frontend needs to convert
+    the per-subscription figures the summaries do not cover, using the same
+    rule as app/fx.py.
+
+    `rates[code]` is a list of [day, rate] pairs, oldest first, each rate in
+    units of `code` per 1 EUR. EUR itself is never listed (its rate is 1).
+    Only the currencies on the user's own subscriptions, plus their display
+    currency, are included."""
+
+    base: Literal["EUR"] = "EUR"
+    currency: str
+    as_of: date | None = None
+    stale: bool = False
+    missing: list[str] = []
+    rates: dict[str, list[tuple[date, float]]] = {}
 
 
 # --- Categories ---
@@ -459,6 +528,15 @@ class User(BaseModel):
     # Read from models.User.email_verified, a property over
     # email_verified_at -- the timestamp itself is never exposed.
     email_verified: bool = False
+    # Totals are shown in this, and new subscriptions start in it.
+    currency: str = currencies.DEFAULT_CURRENCY
+
+
+class UserUpdate(BaseModel):
+    """What PATCH /me accepts. Only the currency today; the first of the
+    per-user settings PLAN.md milestone 10 expects more of."""
+
+    currency: CurrencyCode
 
 
 class Token(BaseModel):
@@ -523,10 +601,10 @@ class AccountDelete(BaseModel):
 # nothing there.
 
 
-# Bumped to 3 when subscriptions gained archived_date. Version 1 and 2 files
-# are still read -- see SUPPORTED_BACKUP_VERSIONS -- so every backup taken
-# before this change restores exactly as it did.
-BACKUP_VERSION = 3
+# Bumped to 3 when subscriptions gained archived_date, and to 4 when they
+# gained currency. Older files are still read -- see SUPPORTED_BACKUP_VERSIONS
+# -- so every backup taken before either change restores exactly as it did.
+BACKUP_VERSION = 4
 
 # What POST /import accepts. A version 1 file carries `active` and no
 # `status`, which BackupSubscription resolves the same way it resolves a
@@ -534,7 +612,7 @@ BACKUP_VERSION = 3
 # permission to try. This is the migration the `version` field was put there
 # to make possible: refusing a file this build genuinely cannot read stays the
 # behaviour for anything outside this set.
-SUPPORTED_BACKUP_VERSIONS = frozenset({1, 2, 3})
+SUPPORTED_BACKUP_VERSIONS = frozenset({1, 2, 3, 4})
 
 
 class BackupSubscription(SubscriptionBase):
@@ -557,6 +635,10 @@ class BackupSubscription(SubscriptionBase):
 
     status: SubscriptionStatus | None = None
     active: bool | None = None
+    # Version 4 files carry it. Older ones do not, and their rows import in
+    # the importing user's currency (crud.import_backup) -- which, for every
+    # file written before currencies existed, was euros.
+    currency: str | None = None
 
     @model_validator(mode="after")
     def _resolve_status(self):
@@ -581,6 +663,7 @@ class BackupSubscriptionImport(BackupSubscription):
 
     name: SubscriptionName
     cost: Cost
+    currency: CurrencyCode | None = None
 
     @model_validator(mode="after")
     def _validate(self):

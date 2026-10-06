@@ -42,6 +42,7 @@ class TestCsvExport:
             "cancelled_date",
             "paused_date",
             "archived_date",
+            "currency",
         ]
 
     def test_a_row_says_what_the_json_says(self, client, auth):

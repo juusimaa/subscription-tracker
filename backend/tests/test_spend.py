@@ -247,6 +247,7 @@ class TestMonthlyTotal:
         assert client.get("/subscriptions/summary/monthly-total", headers=auth).json() == {
             "monthly_total": 20.0,
             "yearly_total": 240.0,
+            "currency": "EUR",
         }
 
     def test_normalizes_quarterly_plans_to_a_monthly_figure(self, client, auth):
@@ -257,6 +258,7 @@ class TestMonthlyTotal:
         assert client.get("/subscriptions/summary/monthly-total", headers=auth).json() == {
             "monthly_total": 20.0,
             "yearly_total": 240.0,
+            "currency": "EUR",
         }
 
     def test_ignores_cancelled_subscriptions(self, client, auth):
@@ -265,6 +267,7 @@ class TestMonthlyTotal:
         assert client.get("/subscriptions/summary/monthly-total", headers=auth).json() == {
             "monthly_total": 0.0,
             "yearly_total": 0.0,
+            "currency": "EUR",
         }
 
 
@@ -318,7 +321,12 @@ class TestSubscriptionIds:
         )
         summary = spend(client, auth, LAST_YEAR, month=3)
         assert summary["months"] == [
-            {"month": 3, "total": 10.0, "subscription_ids": [created["id"]]}
+            {
+                "month": 3,
+                "total": 10.0,
+                "subscription_ids": [created["id"]],
+                "by_currency": [{"currency": "EUR", "native": 10.0, "converted": 10.0}],
+            }
         ]
 
     def test_a_cancelled_plan_is_still_named_for_a_month_it_billed(self, client, auth):

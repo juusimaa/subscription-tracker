@@ -45,7 +45,7 @@ class TestTheOtherRoutesAreScopedToo:
     def test_summaries_only_count_your_own(self, client, auth, other_auth):
         add_subscription(client, other_auth, name="Theirs", cost="100.00")
         totals = client.get("/subscriptions/summary/monthly-total", headers=auth).json()
-        assert totals == {"monthly_total": 0.0, "yearly_total": 0.0}
+        assert totals == {"monthly_total": 0.0, "yearly_total": 0.0, "currency": "EUR"}
 
     def test_upcoming_only_lists_your_own(self, client, auth, other_auth):
         add_subscription(client, other_auth, name="Theirs")
