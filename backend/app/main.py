@@ -19,7 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app import auth, backup_csv, cache, crud, fx, mailer, models, renewals, schemas
+from app import auth, backup_csv, cache, crud, fx, mailer, models, renewals, schemas, turnstile
 from app.database import get_db
 from app.logging_config import configure_logging, request_logger
 
@@ -46,12 +46,13 @@ app = FastAPI(
     version="0.1.0",
     description=(
         "Track recurring subscriptions and what they cost.\n\n"
-        "Every route except `/health`, `/register`, `/token`, `/verify-email` "
-        "and the two `/password-reset` routes needs a Bearer "
+        "Every route except `/health`, `/register`, `/token`, `/verification`, "
+        "`/verify-email` and the two `/password-reset` routes needs a Bearer "
         "token, and only ever sees the calling user's own data. To try them "
-        "out in the Swagger UI at `/docs`: register, then use **Authorize** "
-        "(the OAuth2 password flow posts to `/token`, where the email goes in "
-        "the `username` field)."
+        "out in the Swagger UI at `/docs`: register, open the confirmation "
+        "link (with EMAIL_BACKEND=console it is in the backend's log), then "
+        "use **Authorize** (the OAuth2 password flow posts to `/token`, where "
+        "the email goes in the `username` field)."
     ),
     openapi_tags=[
         {"name": "Health", "description": "Liveness check. No authentication."},
@@ -156,17 +157,6 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-# PLAN.md milestone 7: a stopgap for the gap between "registration is
-# architecturally open to anyone" (milestone 6) and "an email is verified"
-# (milestone 9). Milestone 9 has landed, but the invite code deliberately
-# stays while the app is in beta; dropping it is a separate decision. Unset
-# -- the default for local dev and the whole test suite -- /register stays
-# open, the same as before this existed.
-#
-# `or None` so an explicitly empty value (INVITE_CODE=) is also "disabled",
-# the same convention TEST_DATABASE_URL uses in conftest.py.
-INVITE_CODE = os.getenv("INVITE_CODE") or None
-
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -245,7 +235,26 @@ def health(db: Session = Depends(get_db)):
 # --- Auth routes ---
 
 
-@app.post("/register", response_model=schemas.User, status_code=201, tags=["Auth"])
+def queue_email(db: Session, background_tasks: BackgroundTasks, to: str, send, *args) -> None:
+    """Sends `send(to, *args)` after the response, unless the address or the
+    whole app has reached its daily email cap (crud.claim_email_slot). Either
+    way the caller's response is the same, so a cap never reveals anything
+    about an address."""
+    if crud.claim_email_slot(
+        db, to, mailer.EMAILS_PER_ADDRESS_PER_DAY, mailer.EMAIL_DAILY_CAP
+    ):
+        background_tasks.add_task(send, to, *args)
+    else:
+        request_logger.warning("email cap reached; not sending %s", send.__name__)
+
+
+def require_turnstile(token: str | None, request: Request, action: str) -> None:
+    """`action` names the form, matching the widget's in frontend/src/Login.jsx."""
+    if not turnstile.passes(token, client_address(request), action):
+        raise HTTPException(status_code=400, detail="captcha")
+
+
+@app.post("/register", status_code=202, tags=["Auth"])
 @limiter.limit("5/minute")
 def register(
     request: Request,
@@ -253,36 +262,50 @@ def register(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    """Create an account. Returns the new user without a token: the frontend
-    follows this immediately with a call to /token.
+    """Starts an account and emails the address a confirmation link. The
+    account can't sign in until that link is opened (see /token).
 
-    Rate limited to 5/minute per remote address -- otherwise nothing stops
-    this from being scripted into a mass-registration or email-enumeration
-    tool (see /token's docstring for the enumeration angle on login itself).
+    Always 202 with an empty body, whether or not the address already has an
+    account: answering "Email already registered" would tell anyone which
+    addresses are signed up. The difference goes to the inbox instead, where
+    only the address's owner reads it:
 
-    Checked before the email lookup below, on purpose: if INVITE_CODE is set,
-    a wrong or missing one is rejected without ever touching the users table,
-    so no response here can be used to probe which emails are registered.
+    - new address: a confirmation link.
+    - verified account: a note that the account exists, and how to sign in.
+    - account never confirmed: a link to choose the password, which confirms
+      the address too. Not a fresh confirmation link -- that would confirm
+      the account with whatever password its first registrant chose, and
+      that may not have been the person who owns this inbox.
 
-    The new account starts unverified and fully usable; a verification link
-    goes out after the response (see app/mailer.py).
+    Rate limited to 5/minute per client, and behind the Turnstile check when
+    it is configured.
     """
-    if INVITE_CODE and user.invite_code != INVITE_CODE:
-        raise HTTPException(status_code=403, detail="Invalid invite code")
-    if crud.get_user_by_email(db, user.email):
-        raise HTTPException(status_code=400, detail="Email already registered")
-    try:
-        db_user = crud.create_user(db, user)
-    except crud.DuplicateError:
-        # Two concurrent registrations for the same email can both pass the
-        # check above before either commits (TODO.md item 5) -- this gives
-        # the second one the same answer the check would have, instead of an
-        # unhandled IntegrityError surfacing as a 500.
-        raise HTTPException(status_code=400, detail="Email already registered") from None
-    background_tasks.add_task(
-        mailer.send_verification_email, db_user.email, auth.create_verify_token(db_user)
-    )
-    return db_user
+    require_turnstile(user.turnstile_token, request, "signup")
+    existing = crud.get_user_by_email(db, user.email)
+    if existing is None:
+        try:
+            created = crud.create_user(db, user)
+        except crud.DuplicateError:
+            # A concurrent registration for the same address committed first
+            # (TODO.md item 5). Answer it as the existing account it now is.
+            existing = crud.get_user_by_email(db, user.email)
+        else:
+            queue_email(
+                db, background_tasks, created.email,
+                mailer.send_verification_email, auth.create_verify_token(created),
+            )
+    if existing is not None:
+        # create_user's bcrypt hash takes long enough to time. Hashing here
+        # too keeps a taken address from answering measurably faster.
+        auth.hash_password(user.password)
+        if existing.email_verified:
+            queue_email(db, background_tasks, existing.email, mailer.send_already_registered_email)
+        else:
+            queue_email(
+                db, background_tasks, existing.email,
+                mailer.send_finish_signup_email, auth.create_reset_token(existing),
+            )
+    return Response(status_code=202)
 
 
 @app.post("/token", response_model=schemas.Token, tags=["Auth"])
@@ -299,9 +322,14 @@ def login(
     the email goes in "username". Following the spec is what lets the
     "Authorize" button on /docs log in against this endpoint.
 
-    Rate limited to 5/minute per remote address: bcrypt's cost factor is the
-    only other thing standing between this route and a password-guessing
-    script, and it isn't much of one on its own.
+    An account whose address isn't confirmed yet gets 403 with the detail
+    "email_not_verified", and no token. Only after the password checks out,
+    so the answer says nothing about an address to someone who doesn't hold
+    its password.
+
+    Rate limited to 5/minute per client: bcrypt's cost factor is the only
+    other thing standing between this route and a password-guessing script,
+    and it isn't much of one on its own.
     """
     user = crud.get_user_by_email(db, form_data.username)
     # One combined check with one generic message: replying "no such user"
@@ -313,6 +341,8 @@ def login(
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if not user.email_verified:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="email_not_verified")
     return schemas.Token(access_token=auth.create_access_token(user.id, user.token_version))
 
 
@@ -408,21 +438,32 @@ def _link_error(exc: auth.LinkTokenError) -> HTTPException:
     return HTTPException(status_code=400, detail=exc.reason)
 
 
-@app.post("/me/verification", status_code=204, tags=["Auth"])
-@limiter.limit("3/hour")
+@app.post("/verification", status_code=204, tags=["Auth"])
+@limiter.limit("5/hour")
 def resend_verification(
     request: Request,
+    payload: schemas.VerificationResend,
     background_tasks: BackgroundTasks,
-    current_user: models.User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db),
 ):
-    """Sends the calling user a fresh verification link. A no-op for an
-    address that is already verified. Limited to 3/hour per remote address so
-    the button can't be used to flood someone's inbox."""
-    if not current_user.email_verified:
-        background_tasks.add_task(
-            mailer.send_verification_email,
-            current_user.email,
-            auth.create_verify_token(current_user),
+    """Sends a fresh confirmation link, for the sign-in /token just refused
+    with "email_not_verified", and for the "check your inbox" screen after
+    signing up. Takes the same email and password, so only the account's
+    owner can make it send anything.
+
+    Always 204, whatever the pair: the signup screen offers this button for
+    an address that may already belong to someone else, and an "incorrect
+    password" answer there would say the address is taken -- the very thing
+    /register's identical answers keep quiet."""
+    user = crud.get_user_by_email(db, payload.email)
+    if user is None:
+        # Same bcrypt cost as a real check, so timing can't tell them apart.
+        auth.hash_password(payload.password)
+        return
+    if auth.verify_password(payload.password, user.hashed_password) and not user.email_verified:
+        queue_email(
+            db, background_tasks, user.email,
+            mailer.send_verification_email, auth.create_verify_token(user),
         )
 
 
@@ -456,11 +497,16 @@ def request_password_reset(
 
     Works for unverified accounts too: a user who forgets their password
     before verifying would otherwise be locked out for good. Opening the link
-    proves the address, so completing the reset also verifies it."""
+    proves the address, so completing the reset also verifies it.
+
+    Behind the Turnstile check when it is configured, like /register: both
+    mail an address the caller hasn't proven is theirs."""
+    require_turnstile(payload.turnstile_token, request, "password_reset")
     user = crud.get_user_by_email(db, payload.email)
     if user is not None:
-        background_tasks.add_task(
-            mailer.send_password_reset_email, user.email, auth.create_reset_token(user)
+        queue_email(
+            db, background_tasks, user.email,
+            mailer.send_password_reset_email, auth.create_reset_token(user),
         )
     return Response(status_code=202)
 

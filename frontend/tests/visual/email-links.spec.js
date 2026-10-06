@@ -2,9 +2,9 @@ import { expect, test } from "@playwright/test";
 import { openDashboard, openSignedOut } from "./mocks";
 
 // PLAN.md milestone 9: forgot password, the reset screen, what a
-// confirmation link did, and the nudge for an unconfirmed address. Each
-// state gets a baseline at both viewports, because the sign-in screen and
-// the strip under the header both change layout at 760px.
+// confirmation link did, and the "check your inbox" screens open signup
+// added. Each state gets a baseline at both viewports, because the sign-in
+// screen and the strip under the header both change layout at 760px.
 
 const expired = (route) => route.fulfill({ status: 400, json: { detail: "expired" } });
 
@@ -90,40 +90,7 @@ test.describe("confirmation link, signed out", () => {
   });
 });
 
-test.describe("unconfirmed address, signed in", () => {
-  test("the nudge under the header, and sending the link again", async ({ page }) => {
-    await openDashboard(page, "/", {
-      me: { email_verified: false },
-      routes: (p) => p.route("**/me/verification", (route) => route.fulfill({ status: 204 })),
-    });
-
-    const strip = page.locator(".email-strip");
-    await expect(strip).toHaveScreenshot("nudge.png");
-
-    await strip.getByRole("button", { name: "Send the link again" }).click();
-    await expect(strip).toContainText("Sent. Check demo@example.com");
-    await expect(strip).toHaveScreenshot("nudge-sent.png");
-  });
-
-  test("dismissing the nudge sticks across a reload", async ({ page }) => {
-    await openDashboard(page, "/", { me: { email_verified: false } });
-    await page.locator(".email-strip").getByRole("button", { name: "Dismiss" }).click();
-    await expect(page.locator(".email-strip")).toHaveCount(0);
-
-    await page.reload();
-    await page.getByText("Netflix").first().waitFor();
-    await expect(page.locator(".email-strip")).toHaveCount(0);
-  });
-
-  test("the Account dialog keeps the status", async ({ page }) => {
-    await openDashboard(page, "/", { me: { email_verified: false } });
-    await page.getByRole("button", { name: /^Account/ }).click();
-
-    const identity = page.getByRole("dialog", { name: "Account" }).locator(".account-identity");
-    await expect(identity).toContainText("Not confirmed yet.");
-    await expect(identity).toHaveScreenshot("account-unconfirmed.png");
-  });
-
+test.describe("confirmation link, signed in", () => {
   test("a confirmation link opened while signed in", async ({ page }) => {
     let verified = false;
     await openDashboard(page, "/?verify=visual-verify-token", {
@@ -144,7 +111,49 @@ test.describe("unconfirmed address, signed in", () => {
   });
 });
 
-test("a confirmed address shows no nudge", async ({ page }) => {
-  await openDashboard(page, "/", { me: { email_verified: true } });
-  await expect(page.locator(".email-strip")).toHaveCount(0);
+test.describe("signing up and confirming", () => {
+  // Open signup: an account can't sign in until its address is confirmed.
+
+  test("signing up has no invite code, and ends on check your inbox", async ({ page }) => {
+    await openSignedOut(page, "/", {
+      routes: (p) => p.route("**/register", (route) => route.fulfill({ status: 202, body: "" })),
+    });
+    await page.getByRole("button", { name: "Need an account? Sign up" }).click();
+    await expect(page.getByLabel("Invite code")).toHaveCount(0);
+
+    await page.getByLabel("Email").fill("new@example.com");
+    await page.getByLabel("Password").fill("password123");
+    await page.getByRole("button", { name: "Sign up" }).click();
+
+    await expect(page.getByText(/We've emailed new@example.com/)).toBeVisible();
+    await expect(page.locator(".login")).toHaveScreenshot("signup-check-inbox.png");
+  });
+
+  test("an unconfirmed sign-in is asked to confirm, and can send the link again", async ({ page }) => {
+    let resent = null;
+    await openSignedOut(page, "/", {
+      routes: async (p) => {
+        await p.route("**/token", (route) =>
+          route.fulfill({ status: 403, json: { detail: "email_not_verified" } }),
+        );
+        await p.route("**/verification", (route) => {
+          resent = route.request().postDataJSON();
+          route.fulfill({ status: 204 });
+        });
+      },
+    });
+    await page.getByLabel("Email").fill("new@example.com");
+    await page.getByLabel("Password").fill("password123");
+    await page.getByRole("button", { name: "Log in" }).click();
+
+    await expect(page.getByText("Confirm new@example.com before you log in.", { exact: false })).toBeVisible();
+    await expect(page.locator(".login")).toHaveScreenshot("confirm-first.png");
+
+    await page.getByRole("button", { name: "Send the link again" }).click();
+    await expect(page.getByText("Sent. Check new@example.com")).toBeVisible();
+    expect(resent).toEqual({ email: "new@example.com", password: "password123" });
+
+    await page.getByRole("button", { name: "Back to log in" }).click();
+    await expect(page.getByLabel("Email")).toHaveValue("new@example.com");
+  });
 });

@@ -78,8 +78,8 @@ function App() {
   // means localStorage is read once on mount, not on every render.
   const [token, setToken] = useState(() => getToken());
   const [email, setEmail] = useState(null);
-  // From GET /me. Left undefined when the API doesn't say, which shows no
-  // nudge (EmailStrip.jsx).
+  // From GET /me, for the Account dialog. Left undefined when the API
+  // doesn't say.
   const [emailVerified, setEmailVerified] = useState(undefined);
   // The currency totals are shown in, from GET /me (PLAN.md milestone 10).
   const [currency, setCurrency] = useState("EUR");
@@ -491,7 +491,6 @@ function App() {
           key={email}
           email={email}
           confirmedEmail={verifiedEmail}
-          verified={emailVerified}
           message={["verified", "verifyExpired", "verifyInvalid", "resetDone"].includes(linkMessage) ? linkMessage : null}
           onDismissMessage={() => setLinkMessage(null)}
         />

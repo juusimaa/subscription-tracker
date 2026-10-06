@@ -32,7 +32,6 @@ export default {
     "login.headline": "Subscriptions.",
     "login.email": "Email",
     "login.password": "Password",
-    "login.invite": "Invite code",
     "login.signUp": "Sign up",
     "login.logIn": "Log in",
     "login.toLogin": "Already have an account? Log in",
@@ -49,6 +48,13 @@ export default {
     "login.verifyInvalid": "That confirmation link doesn't work. Log in to send yourself a new one.",
     "login.resetExpired":
       "That reset link has expired or was already used. Each link works once, for 1 hour. Send yourself a new one below.",
+    "login.eyebrowInbox": "Check your inbox",
+    // Signing up answers the same for a taken address, whose owner gets a
+    // different email instead, so this can't promise a confirmation link.
+    "login.checkInbox": ({ email }) =>
+      `We've emailed ${email}. Open the link in it to finish signing up, then log in. If nothing arrives, check your spam folder.`,
+    "login.confirmFirst": ({ email }) =>
+      `Confirm ${email} before you log in. Open the link we emailed you when you signed up.`,
 
     // Where a reset email's link lands (ResetPassword.jsx).
     "reset.eyebrow": "Reset password",
@@ -58,12 +64,10 @@ export default {
     "reset.submit": "Set password and log in",
     "reset.done": "Password changed. Every other device has been signed out.",
 
-    // The strip under the header about the account's email (EmailStrip.jsx).
+    // What a confirmation link did (EmailStrip.jsx), and sending another
+    // from the sign-in screen (Login.jsx).
     "verify.checking": "Checking your confirmation link…",
-    "verify.nudge": ({ email }) =>
-      `Confirm ${email} with the link we emailed you, so you can reset your password by email if you forget it.`,
     "verify.sendAgain": "Send the link again",
-    "verify.sendNew": "Send a new one",
     "verify.sent": ({ email }) => `Sent. Check ${email}; the link works for 48 hours.`,
     "verify.nothingSent": "Nothing was sent.",
     "verify.done": ({ email }) => `${email} is confirmed.`,
@@ -151,7 +155,6 @@ export default {
     "login.headline": "Tilaukset.",
     "login.email": "Sähköposti",
     "login.password": "Salasana",
-    "login.invite": "Kutsukoodi",
     "login.signUp": "Luo tili",
     "login.logIn": "Kirjaudu sisään",
     "login.toLogin": "Onko sinulla jo tili? Kirjaudu sisään",
@@ -168,6 +171,11 @@ export default {
     "login.verifyInvalid": "Vahvistuslinkki ei toimi. Kirjaudu sisään, niin voit lähettää itsellesi uuden.",
     "login.resetExpired":
       "Palautuslinkki on vanhentunut tai jo käytetty. Jokainen linkki toimii kerran, tunnin ajan. Lähetä itsellesi uusi alla.",
+    "login.eyebrowInbox": "Katso sähköpostisi",
+    "login.checkInbox": ({ email }) =>
+      `Lähetimme viestin osoitteeseen ${email}. Avaa siinä oleva linkki viimeistelläksesi tilin ja kirjaudu sitten sisään. Jos viestiä ei kuulu, katso roskapostikansio.`,
+    "login.confirmFirst": ({ email }) =>
+      `Vahvista ${email} ennen kirjautumista. Avaa linkki, jonka lähetimme sinulle tilin luomisen yhteydessä.`,
 
     "reset.eyebrow": "Salasanan vaihto",
     "reset.headline": "Uusi salasana.",
@@ -177,10 +185,7 @@ export default {
     "reset.done": "Salasana vaihdettu. Kaikki muut laitteet on kirjattu ulos.",
 
     "verify.checking": "Tarkistetaan vahvistuslinkkiä…",
-    "verify.nudge": ({ email }) =>
-      `Vahvista ${email} sähköpostiisi lähetetyllä linkillä, niin voit vaihtaa salasanan sähköpostitse, jos unohdat sen.`,
     "verify.sendAgain": "Lähetä linkki uudelleen",
-    "verify.sendNew": "Lähetä uusi",
     "verify.sent": ({ email }) => `Lähetetty. Katso osoitteen ${email} saapuneet viestit; linkki toimii 48 tuntia.`,
     "verify.nothingSent": "Mitään ei lähetetty.",
     "verify.done": ({ email }) => `${email} on vahvistettu.`,

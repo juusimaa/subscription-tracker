@@ -71,6 +71,11 @@ export default {
     "api.checkConnection": ({ said, outcome }) => `${said} ${outcome} — check your connection and try again.`,
     "api.retryLater": ({ said, outcome }) => `${said} ${outcome} — try again in a moment.`,
     "api.plain": ({ said, outcome }) => `${said} ${outcome}.`,
+
+    // The backend's details that are codes rather than English (see
+    // serverMessage in api.js); everything else it says is shown as sent.
+    "server.captcha": "The human check didn't go through. Try again.",
+    "server.email_not_verified": "Confirm your email before you log in.",
   },
 
   fi: {
@@ -132,12 +137,12 @@ export default {
     "api.plain": ({ said, outcome }) => `${said} ${outcome}.`,
 
     // The backend's own error details, keyed by its exact English text (see
-    // serverMessage in api.js). English needs no entries: a detail with no
-    // translation is shown as the server sent it.
+    // serverMessage in api.js). English needs entries only for the details
+    // that are codes: one with no translation is shown as the server sent it.
     "server.Could not validate credentials": "Kirjautumista ei voitu vahvistaa.",
     "server.Database unavailable": "Tietokanta ei ole käytettävissä.",
-    "server.Invalid invite code": "Kutsukoodi ei kelpaa.",
-    "server.Email already registered": "Sähköpostiosoitteella on jo tili.",
+    "server.captcha": "Ihmisyyden tarkistus ei mennyt läpi. Yritä uudelleen.",
+    "server.email_not_verified": "Vahvista sähköpostiosoitteesi ennen kirjautumista.",
     "server.Incorrect email or password": "Sähköposti tai salasana on väärin.",
     "server.Incorrect password": "Salasana on väärin.",
     "server.Category already exists": "Kategoria on jo olemassa.",

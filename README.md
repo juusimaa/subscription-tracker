@@ -79,13 +79,17 @@ that need them ([.env.example](.env.example) documents the same list):
 | `REDIS_URL` | `backend` | The cache. If Redis can't be reached, every read falls through to Postgres — see [cache.py](backend/app/cache.py). |
 | `CORS_ORIGINS` | `backend` | Comma-separated origins allowed to call the API. Locally the Vite dev server. |
 | `SECRET_KEY` | `backend` | Signs the JWTs. Changing it logs everyone out. |
-| `INVITE_CODE` | `backend` | Optional. Set it to gate `/register` behind a shared code — see [Accounts](#accounts). Left blank, signup stays open. |
+| `TURNSTILE_SECRET_KEY` | `backend` | Optional. Turns on the [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/) bot check on `/register` and `/password-reset` — see [Accounts](#accounts). Set it together with the frontend's site key. |
+| `TURNSTILE_HOSTNAMES` | `backend` | Required with `TURNSTILE_SECRET_KEY`. Comma-separated hostnames a token may be solved on (production: `subscriptionstrack.com`; Cloudflare's test secret: `example.com`). Left empty, the check refuses every token. |
+| `EMAIL_DAILY_CAP` | `backend` | Most emails sent in any 24 hours, all addresses together (default 90; Resend's free tier stops at 100). |
+| `TRUST_FORWARDED_FOR` | `backend` | Production only. Key rate limits on the last `X-Forwarded-For` entry, which is the real client behind Azure's ingress. Leave `false` without a proxy. |
 | `EMAIL_BACKEND` | `backend` | `console` (default) logs verification and reset emails instead of sending them; `resend` sends through [Resend](https://resend.com). See [Email](#email). |
 | `RESEND_API_KEY` | `backend` | Required when `EMAIL_BACKEND=resend`. |
 | `EMAIL_FROM` | `backend` | Sender, on a domain verified in Resend. |
 | `APP_URL` | `backend` | The frontend's address, used to build the links in emails. |
 | `FX_API_URL` | `backend` | Optional. Where exchange rates come from; defaults to [Frankfurter](https://frankfurter.dev)'s ECB rates (`https://api.frankfurter.dev/v1`). Free and keyless. |
 | `VITE_API_URL` | `frontend` | Baked into the browser bundle, so it must be an address *your browser* can reach. The production image reads `API_URL` at container start instead, so one image works against any backend. |
+| `VITE_TURNSTILE_SITE_KEY` | `frontend` | Optional. Turnstile's public site key, which shows the widget on the signup and reset forms. The production image reads `TURNSTILE_SITE_KEY` at container start instead. |
 
 ---
 
@@ -624,16 +628,16 @@ http://localhost:8000/docs (Swagger UI) and http://localhost:8000/redoc.
 | Method | Path | What it does |
 | --- | --- | --- |
 | `GET` | `/health` | Readiness check, used by Docker's healthcheck: 200 only if a `SELECT 1` reaches the database, 503 otherwise. Unauthenticated. |
-| `POST` | `/register` | Create an account. Rejects the request with 403 if `INVITE_CODE` is set and `invite_code` doesn't match. |
-| `POST` | `/token` | Exchange email + password for a JWT (form-encoded; email goes in `username`). |
+| `POST` | `/register` | Start an account and email the address. Always 202 with no body, so it can't reveal which addresses are registered; a taken address gets a different email instead. 400 `captcha` when Turnstile is on and its token fails. 5/minute. |
+| `POST` | `/token` | Exchange email + password for a JWT (form-encoded; email goes in `username`). 403 `email_not_verified`, after the password checks out, until the address is confirmed. 5/minute. |
 | `GET` | `/me` | The logged-in user — used to check a stored token is still valid. Includes `email_verified` and `currency`. |
 | `PATCH` | `/me` | Change settings: `{currency}`, the currency every total is shown in and new subscriptions start in. |
 | `GET` | `/rates` | ECB reference rates for the currencies on your subscriptions, for converting per-item figures the way the summaries do. Empty when everything is in your own currency. |
 | `PUT` | `/me/password` | Change password, given the current one. Signs out every other session and returns a fresh JWT. |
 | `DELETE` | `/me` | Delete the account and everything in it, given the password. No undo. |
-| `POST` | `/me/verification` | Email the logged-in user a fresh confirmation link. No-op once confirmed. 3/hour. |
+| `POST` | `/verification` | Email a fresh confirmation link, given `{email, password}`. Sends only when the pair is right and the address unconfirmed, but always answers 204. 5/hour. |
 | `POST` | `/verify-email` | Confirm the address in a `?verify=` link's token. Unauthenticated; 400 `expired`/`invalid` for a bad token. |
-| `POST` | `/password-reset` | Email a reset link if the address has an account. Always 202, so it can't reveal which addresses are registered. 5/hour. |
+| `POST` | `/password-reset` | Email a reset link if the address has an account. Always 202, so it can't reveal which addresses are registered. Behind Turnstile when it's on. 5/hour. |
 | `POST` | `/password-reset/confirm` | Set a new password from a `?reset=` link's token and return a fresh JWT. Each link works once, for 1 hour; using it signs out every other session and confirms the address. |
 | `GET` | `/subscriptions` | List, with optional `category`, `billing_cycle`, `status`, `active` filters. Each row includes `paid_total`, what that run has been billed so far in its own `currency`, and `paid_total_converted`, the same in yours. |
 | `POST` | `/subscriptions` | Create one. `currency` defaults to yours; it can't be changed afterwards. |
@@ -747,34 +751,40 @@ curl -X POST localhost:8000/register -H 'Content-Type: application/json' \
   -d '{"email":"you@example.com","password":"at-least-8-chars"}'
 ```
 
+Then open the confirmation link from the email — locally, from
+`docker compose logs backend` — before signing in: `/token` refuses an
+unconfirmed address.
+
 Logging in returns a JWT, which the frontend keeps in `localStorage` and sends
 as `Authorization: Bearer <token>` on every request. Tokens expire after 12
 hours; a different browser or device starts logged out. On
 http://localhost:8000/docs the **Authorize** button logs the docs page in the
 same way.
 
-### Invite codes
+### Open signup
 
-Registration is otherwise open to anyone who can reach `/register`. Email
-verification (below) proves an address afterwards, but doesn't stop anyone
-signing up, so while the app is in beta `INVITE_CODE` stays: set it in the
-backend's environment and `/register` starts rejecting any request whose
-`invite_code` field doesn't match:
+Anyone can sign up, so what stands in for the invite code the beta used to
+have is:
 
-```
-curl -X POST localhost:8000/register -H 'Content-Type: application/json' \
-  -d '{"email":"you@example.com","password":"at-least-8-chars","invite_code":"whatever-you-set-INVITE_CODE-to"}'
-```
-
-Left unset (the default for local dev and the test suite), `/register`
-behaves exactly as it did before this existed. It is a beta-period gate,
-not a long-term access-control mechanism — it's one shared string, not a
-per-invite code.
+- **A confirmed address before signing in.** `/token` answers 403
+  `email_not_verified` until the emailed link is opened, and a token issued
+  before that rule existed stops working too.
+- **No answer that says an address is taken.** `/register` and
+  `/verification` answer the same for every address. The difference goes to
+  the inbox: a verified owner is told the account exists, and an account
+  that was never confirmed gets a link to choose the password, so whoever
+  reads that inbox ends up holding it, not whoever signed up first.
+- **Caps on outgoing email** (`email_sends`, keyed by a hash of the
+  address): 5 a day per address, `EMAIL_DAILY_CAP` in all.
+- **Rate limits per client**, keyed on the real address behind Azure's proxy
+  (`TRUST_FORWARDED_FOR`).
+- **A bot check** on signup and reset, when `TURNSTILE_SECRET_KEY` and the
+  frontend's site key are set.
 
 ### Email
 
-A new account gets a confirmation link by email and is fully usable before
-clicking it; the dashboard shows a dismissible line until it's confirmed. A
+A new account gets a confirmation link by email and can't sign in until it
+is opened; the sign-in screen can send the link again. A
 forgotten password is reset from a link sent by **Forgot your password?** on
 the sign-in screen. That works for unconfirmed accounts too, and completing
 it confirms the address, since opening the link proves the inbox is yours.
@@ -881,7 +891,7 @@ What they cover, and why those things:
 | `test_status.py` | The four subscription statuses: that a pause stops the spend without erasing the months already billed, that a trial costs nothing and converts once, and that the legacy `active` boolean still means what it always meant. |
 | `test_migrations.py` | That the revisions and `models.py` describe the same schema, that a downgrade leaves nothing behind, and — since revision 0002 — what a data migration does to the rows themselves. |
 | `test_restore.py`, `test_archive.py`, `test_paid_total.py` | Reactivating a cancelled service as a new run, archiving, and what each run has cost to date. |
-| `test_account.py`, `test_email_links.py`, `test_invite_code.py` | Change password, delete account, the verify and reset links, and the invite-code gate. |
+| `test_account.py`, `test_email_links.py`, `test_signup.py` | Change password, delete account, the verify and reset links, and what open signup relies on: confirm before sign-in, no enumeration, email caps and the bot check. |
 | `test_rate_limit.py`, `test_races.py`, `test_cors.py`, `test_health.py`, `test_logging.py`, `test_backup.py`, `test_categories.py` | The rest of the HTTP surface: limits, concurrent writes, allowed origins, the healthcheck, request logging, import and export, and categories. |
 
 The frontend has a Playwright visual suite instead: it screenshots the app

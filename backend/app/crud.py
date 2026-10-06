@@ -6,7 +6,9 @@
 # is the entire multi-user security boundary: the route handlers pass the id
 # from the verified token, never one supplied by the client.
 
-from datetime import date, datetime, timezone
+import hashlib
+import hmac
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import and_, func
@@ -14,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import models, schemas
-from app.auth import hash_password
+from app.auth import SECRET_KEY, hash_password
 
 
 class DuplicateError(Exception):
@@ -102,6 +104,34 @@ def mark_email_verified(db: Session, user: models.User) -> models.User:
         db.commit()
         db.refresh(user)
     return user
+
+
+def _recipient_key(address: str) -> str:
+    """A keyed hash of the address, so email_sends can tell two sends to the
+    same address apart from two to different ones without storing either."""
+    return hmac.new(SECRET_KEY.encode(), address.strip().lower().encode(), hashlib.sha256).hexdigest()
+
+
+def claim_email_slot(db: Session, address: str, per_address: int, daily_cap: int) -> bool:
+    """Records one email to `address` and returns True, unless that would go
+    over `per_address` to this address or `daily_cap` in all over the last 24
+    hours; then it records nothing and returns False.
+
+    Count-then-insert, so two requests at the same instant can both squeeze
+    under a cap by one. That is fine for its purpose, which is keeping a
+    script from using up the provider's daily quota or flooding one inbox.
+    """
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=1)
+    db.query(models.EmailSend).filter(models.EmailSend.sent_at < since).delete()
+    recipient = _recipient_key(address)
+    recent = db.query(models.EmailSend).filter(models.EmailSend.sent_at >= since)
+    if recent.count() >= daily_cap or recent.filter(models.EmailSend.recipient == recipient).count() >= per_address:
+        db.commit()
+        return False
+    db.add(models.EmailSend(recipient=recipient, sent_at=now))
+    db.commit()
+    return True
 
 
 def delete_user(db: Session, user: models.User) -> None:

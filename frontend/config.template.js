@@ -5,3 +5,6 @@
 // index.html loads this before the app bundle, so window.__API_URL__ is set
 // before src/api.js reads it.
 window.__API_URL__ = "${API_URL}";
+// Cloudflare Turnstile's public site key (src/Turnstile.jsx). Left empty,
+// the signup and reset forms show no bot check.
+window.__TURNSTILE_SITE_KEY__ = "${TURNSTILE_SITE_KEY}";
