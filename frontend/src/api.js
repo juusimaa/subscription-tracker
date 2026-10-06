@@ -194,16 +194,17 @@ export async function login(email, password) {
   return body.access_token;
 }
 
-export const register = (email, password, inviteCode) =>
-  request("/register", {
+// 202 with an empty body whether or not the address already has an account,
+// so the backend never says which addresses are signed up. What happens next
+// is in the email: a confirmation link, or a note that the account exists.
+// The account can't sign in until the link is opened. `turnstileToken` is the
+// bot check's answer (Turnstile.jsx), or null where it isn't switched on.
+export async function register(email, password, turnstileToken) {
+  await send("/register", {
     method: "POST",
-    // inviteCode is omitted rather than sent as "" when the field is left
-    // blank, matching what a deployment with no INVITE_CODE set expects --
-    // see the backend's schemas.UserCreate.
-    body: JSON.stringify(
-      inviteCode ? { email, password, invite_code: inviteCode } : { email, password }
-    ),
+    body: JSON.stringify({ email, password, turnstile_token: turnstileToken }),
   });
+}
 
 export const getMe = () => request("/me");
 // The user's settings: today only the currency totals are shown in.
@@ -239,15 +240,24 @@ export async function changePassword(currentPassword, newPassword) {
 // A bad or spent link answers 400 with a detail of "expired" or "invalid",
 // never 401 -- send() would read a 401 as this browser's session expiring.
 
-export const resendVerification = () => request("/me/verification", { method: "POST" });
+// For a sign-in that /token refused with "email_not_verified", and the
+// "check your inbox" screen after signing up. It takes the same email and
+// password, which is what lets only the account's owner make it send
+// anything, and answers 204 either way, so it can't say an address is taken.
+export async function resendVerification(email, password) {
+  await send("/verification", { method: "POST", body: JSON.stringify({ email, password }) });
+}
 
 export const verifyEmail = (token) =>
   request("/verify-email", { method: "POST", body: JSON.stringify({ token }) });
 
 // 202 with an empty body whether or not the address has an account, so
 // there is nothing to parse -- send(), not request().
-export async function requestPasswordReset(email) {
-  await send("/password-reset", { method: "POST", body: JSON.stringify({ email }) });
+export async function requestPasswordReset(email, turnstileToken) {
+  await send("/password-reset", {
+    method: "POST",
+    body: JSON.stringify({ email, turnstile_token: turnstileToken }),
+  });
 }
 
 // Signs the user in: the new password bumped token_version, so every older

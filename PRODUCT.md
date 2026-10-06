@@ -12,10 +12,10 @@ iPhone (Safari/WebKit), not only on desktop browsers.
 ## Users
 
 People who pay for a handful of recurring services (streaming, software,
-memberships) and want to know what those cost and when they charge. Today
-signup is gated by an invite code; the goal is open public signup once email
-verification (PLAN.md milestone 9) lands. Future design work should serve
-strangers arriving with no context, not only the current invited group.
+memberships) and want to know what those cost and when they charge. Signup
+is open to anyone; an account signs in once its email address is confirmed.
+Future design work should serve
+strangers arriving with no context.
 
 ## Product Purpose
 

@@ -1417,7 +1417,8 @@ body { text-wrap: pretty; }
   font-size: 15px;
   line-height: 22px;
 }
-/* Replaces the form once a reset link is requested, on the same 2px rule
+/* Replaces the form once a reset link is requested, or once a confirmation
+   link is what stands between the user and signing in, on the same 2px rule
    the form sat on, so the screen keeps its shape. */
 .login-sent {
   margin: 42px 0 0;
@@ -1426,6 +1427,12 @@ body { text-wrap: pretty; }
   font-size: 15px;
   line-height: 24px;
 }
+.login-sent p { margin: 0; }
+.login-sent p + p { margin-top: 12px; }
+.login-resend-error { color: var(--color-accent-700); }
+/* Cloudflare's widget is a fixed 300x65 iframe; it only needs to be held
+   off the field above it. Empty until the script has rendered into it. */
+.turnstile { min-height: 65px; }
 .email-strip-inner {
   display: flex;
   align-items: baseline;
@@ -1442,7 +1449,6 @@ body { text-wrap: pretty; }
   line-height: 20px;
   color: color-mix(in srgb, var(--color-text) 78%, transparent);
 }
-.email-strip-error { color: var(--color-accent-700); }
 .link-button:disabled { cursor: default; opacity: 0.55; text-decoration: none; }
 .account-email-status {
   grid-column: 2;

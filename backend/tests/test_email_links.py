@@ -26,23 +26,34 @@ def bearer(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+def signup(client, email: str, password: str = "password123"):
+    """Registers without confirming, unlike conftest's register()."""
+    response = client.post("/register", json={"email": email, "password": password})
+    assert response.status_code == 202, response.text
+    return response
+
+
+def sign_in(client, email: str, password: str = "password123"):
+    return client.post("/token", data={"username": email, "password": password})
+
+
 class TestVerification:
-    def test_register_sends_a_verification_link_and_starts_unverified(self, client, outbox):
-        headers = register(client, email="new@example.com")
+    def test_register_sends_a_verification_link(self, client, outbox):
+        signup(client, "new@example.com")
 
         assert [m["to"] for m in outbox] == ["new@example.com"]
         assert "?verify=" in outbox[0]["text"]
         assert "?verify=" in outbox[0]["html"]
-        assert client.get("/me", headers=headers).json()["email_verified"] is False
 
     def test_the_link_verifies_without_being_signed_in(self, client, outbox):
-        headers = register(client, email="new@example.com")
+        signup(client, "new@example.com")
         token = link_token(outbox[0], "verify")
 
         response = client.post("/verify-email", json={"token": token})
 
         assert response.status_code == 200
         assert response.json() == {"email": "new@example.com"}
+        headers = bearer(sign_in(client, "new@example.com").json()["access_token"])
         assert client.get("/me", headers=headers).json()["email_verified"] is True
 
     def test_opening_the_link_twice_is_fine(self, client, outbox):
@@ -74,16 +85,27 @@ class TestVerification:
             assert response.json()["detail"] == "invalid"
 
     def test_resend_sends_a_new_link_until_verified(self, client, outbox):
-        headers = register(client)
-        assert client.post("/me/verification", headers=headers).status_code == 204
+        signup(client, "new@example.com")
+        body = {"email": "new@example.com", "password": "password123"}
+        assert client.post("/verification", json=body).status_code == 204
         assert len(outbox) == 2
 
         client.post("/verify-email", json={"token": link_token(outbox[-1], "verify")})
-        assert client.post("/me/verification", headers=headers).status_code == 204
+        assert client.post("/verification", json=body).status_code == 204
         assert len(outbox) == 2
 
-    def test_resend_needs_a_login(self, client):
-        assert client.post("/me/verification").status_code == 401
+    def test_resend_needs_the_password_but_never_says_so(self, client, outbox):
+        # The signup screen offers this for addresses that may be taken, so
+        # a wrong password answers exactly like a right one.
+        signup(client, "new@example.com")
+        wrong = client.post(
+            "/verification", json={"email": "new@example.com", "password": "wrong-password"}
+        )
+        unknown = client.post(
+            "/verification", json={"email": "nobody@example.com", "password": "password123"}
+        )
+        assert wrong.status_code == unknown.status_code == 204
+        assert len(outbox) == 1
 
 
 class TestPasswordReset:

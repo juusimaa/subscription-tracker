@@ -91,8 +91,8 @@ class User(Base):
     token_version = Column(Integer, nullable=False, default=0, server_default="0")
     # When the user clicked a verification link, or completed a password
     # reset, which proves the same thing (PLAN.md milestone 9). Null means
-    # unverified. Unverified accounts work normally; only mail the user did
-    # not ask for (future renewal reminders) is gated on this.
+    # unverified, and an unverified account cannot sign in: /token refuses it
+    # and auth.get_current_user rejects any token it still holds.
     email_verified_at = Column(DateTime(timezone=True), nullable=True)
     # The currency every total is shown in, and the one a new subscription
     # starts in (PLAN.md milestone 10). A preference, never a fact about any
@@ -382,3 +382,21 @@ class FxRate(Base):
     day = Column(Date, primary_key=True)
     currency = Column(String(3), primary_key=True)
     rate = Column(Numeric(14, 6), nullable=False)
+
+
+class EmailSend(Base):
+    """One email this app sent, kept for a day or two so the caps in
+    crud.claim_email_slot can count them: Resend's free tier stops at 100 a
+    day, and with open signup anyone can make /register or /password-reset
+    mail an address they don't own.
+
+    `recipient` is a keyed hash of the address, not the address: the table
+    only ever needs "same address or not", so it holds nothing worth leaking.
+    Rows older than the counting window are pruned as new ones go in.
+    """
+
+    __tablename__ = "email_sends"
+
+    id = Column(Integer, primary_key=True)
+    recipient = Column(String(64), nullable=False, index=True)
+    sent_at = Column(DateTime(timezone=True), nullable=False, index=True)

@@ -201,10 +201,13 @@ async function route(path, method, body, params) {
     return json({ access_token: "ui-mock-token", token_type: "bearer" });
   }
   if (path === "/register" && method === "POST") {
+    // The real API answers 202 and emails a link; the mock has no inbox, so
+    // the account is simply ready to sign in.
     email = body.email;
     password = body.password;
-    return json({ email }, 201);
+    return new Response(null, { status: 202 });
   }
+  if (path === "/verification" && method === "POST") return new Response(null, { status: 204 });
   if (path === "/me") {
     if (method === "DELETE") { subscriptions = []; categories = []; return new Response(null, { status: 204 }); }
     if (method === "PATCH") {

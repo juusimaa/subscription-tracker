@@ -3,6 +3,7 @@
 # anything.
 
 import os
+import re
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -46,17 +47,12 @@ os.environ.setdefault("SECRET_KEY", "test-only-key-not-used-outside-the-suite")
 # tests/test_rate_limit.py turns it back on for exactly the requests it needs.
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 # Blanked rather than defaulted, because the value this defends against is one
-# that is already set. /register is gated on INVITE_CODE when it holds
-# anything (app/main.py), and register() below deliberately sends no invite
-# code -- so a stray value fails nearly every test in the suite at once, for a
-# reason none of them are about. database.py pins its .env lookup so a
-# neighbouring file can no longer supply one, but an exported shell variable
-# still can, and load_dotenv would not have overridden that either. An empty
-# value reads as "disabled" (`os.getenv(...) or None`), which is what a
-# deployment with open signup runs. tests/test_invite_code.py patches
-# main.INVITE_CODE directly and so is unaffected.
-os.environ["INVITE_CODE"] = ""
-# Forced, not defaulted, for the same reason as INVITE_CODE: an exported
+# that is already set: an exported TURNSTILE_SECRET_KEY would put the bot
+# check (app/turnstile.py) in front of every register() call below, and fail
+# nearly every test at once. tests/test_signup.py patches
+# turnstile.SECRET_KEY directly for the tests that are about it.
+os.environ["TURNSTILE_SECRET_KEY"] = ""
+# Forced, not defaulted, for the same reason as TURNSTILE_SECRET_KEY: an exported
 # EMAIL_BACKEND=resend would have the suite emailing real addresses. The
 # memory backend collects messages in app.mailer.outbox instead, which the
 # `outbox` fixture below hands to the tests that read it.
@@ -110,26 +106,26 @@ def client():
         yield test_client
 
 
-def register(
-    client,
-    email: str | None = None,
-    password: str = "password123",
-    invite_code: str | None = None,
-) -> dict:
-    """Creates an account and returns the Authorization header for it.
+def register(client, email: str | None = None, password: str = "password123") -> dict:
+    """Creates an account, confirms its address and returns the Authorization
+    header for it.
 
     The email defaults to a unique one so two calls in the same test give two
     genuinely different users -- which is the whole point of the isolation
-    tests. invite_code is omitted from the request entirely when not given,
-    matching what a client talking to a deployment with no INVITE_CODE set
-    would send -- see test_invite_code.py for the gate itself.
+    tests. Confirming goes the way a user's click does: the link is taken from
+    the email /register sent (the memory backend, see `outbox` below) and
+    posted to /verify-email, since /token refuses an unconfirmed address.
     """
+    from app import mailer
+
     email = email or f"user-{uuid.uuid4().hex[:12]}@example.com"
-    payload = {"email": email, "password": password}
-    if invite_code is not None:
-        payload["invite_code"] = invite_code
-    response = client.post("/register", json=payload)
-    assert response.status_code == 201, response.text
+    response = client.post("/register", json={"email": email, "password": password})
+    assert response.status_code == 202, response.text
+    link = next(
+        m["text"] for m in reversed(mailer.outbox) if m["to"] == email and "?verify=" in m["text"]
+    )
+    verify_token = re.search(r"\?verify=([\w.-]+)", link).group(1)
+    assert client.post("/verify-email", json={"token": verify_token}).status_code == 200
     token = client.post(
         "/token", data={"username": email, "password": password}
     ).json()["access_token"]

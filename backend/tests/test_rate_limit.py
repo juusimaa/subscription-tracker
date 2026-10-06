@@ -35,7 +35,7 @@ class TestRateLimit:
                     "/register",
                     json={"email": _unique_email(), "password": "password123"},
                 )
-                assert response.status_code == 201, response.text
+                assert response.status_code == 202, response.text
             # The 6th request in the same window is refused before it ever
             # reaches crud.create_user -- a fresh, never-seen-before email
             # would otherwise succeed.
@@ -52,7 +52,7 @@ class TestRateLimit:
         # the budget the assertions below are actually about.
         assert (
             client.post("/register", json={"email": email, "password": password}).status_code
-            == 201
+            == 202
         )
 
         with rate_limiting_enabled():
@@ -77,7 +77,7 @@ class TestRateLimit:
                 "/register",
                 json={"email": _unique_email(), "password": "password123"},
             )
-            assert response.status_code == 201, response.text
+            assert response.status_code == 202, response.text
 
 
 @contextmanager

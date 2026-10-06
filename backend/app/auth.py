@@ -186,4 +186,9 @@ def get_current_user(
     # claim the same way so those pre-existing sessions aren't signed out.
     if payload.get("tv", 0) != user.token_version:
         raise credentials_error
+    # /token no longer issues a token to an unconfirmed address, but tokens
+    # minted before that rule existed are still out there. Rejecting them as
+    # 401 sends the browser back to sign-in, where /token explains why.
+    if not user.email_verified:
+        raise credentials_error
     return user

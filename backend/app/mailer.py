@@ -32,6 +32,15 @@ APP_URL = os.getenv("APP_URL", "http://localhost:5173").rstrip("/")
 
 RESEND_ENDPOINT = "https://api.resend.com/emails"
 
+# Caps on what any one day can send (crud.claim_email_slot, applied by the
+# routes before they queue a message). Resend's free tier allows 100 a day;
+# stopping short of that keeps the provider from refusing mail outright,
+# which would take password reset down with it. Per address, enough for a
+# real person's signup, a couple of resends and a reset, and too few to
+# flood anyone's inbox.
+EMAIL_DAILY_CAP = int(os.getenv("EMAIL_DAILY_CAP", "90"))
+EMAILS_PER_ADDRESS_PER_DAY = 5
+
 # Every message the memory backend has "sent", oldest first.
 outbox: list[dict] = []
 
@@ -124,4 +133,45 @@ def send_password_reset_email(to: str, token: str) -> None:
         "Reset your Subscription Tracker password",
         text,
         _html(lead, rest, link, "Choose a new password"),
+    )
+
+
+def send_already_registered_email(to: str) -> None:
+    """Sent when someone signs up with an address that already has a verified
+    account. /register answers the same either way, so this email is the
+    only place that says the account exists, and only its owner reads it."""
+    link = f"{APP_URL}/"
+    lead = f"Someone tried to create a Subscription Tracker account for {to}, but you already have one."
+    rest = [
+        "If that was you, sign in instead. If you've forgotten your password, "
+        "choose \"Forgot password?\" on the sign-in screen.",
+        "If it wasn't you, ignore this email. Nothing about your account has changed.",
+    ]
+    text = "\n\n".join([lead, link, *rest])
+    send_email(
+        to,
+        "You already have a Subscription Tracker account",
+        text,
+        _html(lead, rest, link, "Sign in"),
+    )
+
+
+def send_finish_signup_email(to: str, token: str) -> None:
+    """Sent when someone signs up with an address whose account was created
+    but never confirmed. The link is a password-reset link: whoever reads this
+    inbox chooses the password, so an account someone else opened with this
+    address can't be confirmed with *their* password still on it."""
+    link = f"{APP_URL}/?reset={token}"
+    lead = f"Finish creating your Subscription Tracker account for {to} by choosing a password."
+    rest = [
+        "This address was used to sign up before, but never confirmed. The "
+        "link works once, for 1 hour, and confirms your address too.",
+        "If you didn't sign up, ignore this email. Nothing will happen.",
+    ]
+    text = "\n\n".join([lead, link, *rest])
+    send_email(
+        to,
+        "Finish creating your Subscription Tracker account",
+        text,
+        _html(lead, rest, link, "Choose a password"),
     )

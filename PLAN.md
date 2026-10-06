@@ -70,6 +70,7 @@ docker-subscription-tracker/
 9. ~~**Password reset and email verification**~~ ✅ — the two account-surface gaps milestone 6 deliberately skipped, built for real this time. Needs an actual email-sending path (e.g. [Resend](https://resend.com)), which nothing in this stack has today — only `email-validator`, which checks an address's *format*, not that anyone reads it. New accounts land unverified and stay usable (registering, logging in, tracking subscriptions all still work), and anything that emails the user unprompted (any future renewal-reminder notification) is gated on verification. Password reset is the exception: it works for unverified accounts too, and completing it verifies the address. Once this exists, step 7's invite code is no longer the thing standing between a public URL and open signup — but it deliberately **stays** while the app is in beta; removing it is a separate, later decision. Provider: Resend (free tier). Details below.
 10. ~~**Multi-currency support**~~ ✅ — closes TODO.md's D7, which was recorded as a decision to revisit rather than a task, on the grounds that every subscription today is silently assumed to be EUR. Currency lives on the **subscription**, not the user — `cost` gains a `currency` column, since two subscriptions on one account can legitimately be billed in different currencies (D4's own reasoning: don't force a schema constraint that isn't true about the user's money). Users additionally get a **default currency** setting, pre-filling new subscriptions rather than acting as a source of truth — the first of what will likely be several user-specific settings, so it gets its own typed column(s) rather than a JSONB blob, following the `token_version` precedent (milestone 6) instead of inventing a schemaless settings store. How totals show a mix of currencies is settled: every total is **converted into the user's currency at ECB reference rates** and marked ≈, with a per-currency statement under the headline when the period holds more than one currency.
     Decided 2026-10-06. Details and a refreshed mock are below.
+11. **Open signup** — retire step 7's invite code. Signing in now needs a confirmed address, and four protections take the code's place: rate limits keyed on the real client behind Azure's proxy, no answer that says an address is taken, caps on outgoing email, and a Cloudflare Turnstile bot check. Decided 2026-10-06. Details below.
 
 ## Milestone 5 — GitHub Actions to GHCR (done)
 
@@ -595,6 +596,55 @@ Each runs on mobile and desktop.
 * Trend strip (per-month chart) uses only selected currency
    
   <img width="2206" height="456" alt="image" src="https://github.com/user-attachments/assets/e13a8ca2-baeb-4c15-b8b7-90eec78bb4a4" />
+
+## Milestone 11 — Open signup
+
+Decided 2026-10-06: the invite code goes, and signup is open. Shipped in two
+PRs. The rate-limit fix went first, because it was a live bug on its own.
+
+**Why the invite code could go only with these.** Step 9 left unconfirmed
+accounts fully usable. Without the code, that meant anyone could open an
+account under someone else's address. And the live logs showed every request
+arriving from Azure's ingress (`100.100.0.x`), so the 5/minute limits on
+`/token` and `/register` were one budget shared by every user.
+
+- **Rate limits per client.** `client_address()` keys on the last
+  `X-Forwarded-For` entry, the one Envoy appends, when
+  `TRUST_FORWARDED_FOR=true` (production only). Request log lines carry the
+  same address.
+- **Confirm before signing in, every account.** `/token` answers 403
+  `email_not_verified`, but only after the password checks out, so the
+  answer is no oracle. `get_current_user` rejects unconfirmed accounts too,
+  so tokens issued before the rule stop working. Existing unconfirmed
+  accounts are asked to confirm on their next sign-in, and a password reset
+  still confirms. The dashboard's "please confirm" nudge is gone, since a
+  signed-in account is always confirmed now.
+- **No enumeration.** `/register` is 202 with no body for every address.
+  The inbox gets the difference: a new address gets a confirmation link; a
+  verified owner gets "you already have an account"; an account that was
+  never confirmed gets a *reset* link ("choose a password"), not a fresh
+  confirmation, which would confirm whatever password the first registrant
+  set. The address's owner ends up holding the account. The taken branch
+  also runs bcrypt, so it isn't faster. `/verification` (resend, taking
+  email + password, replacing the signed-in `/me/verification`) always
+  answers 204, because the signup screen offers it for addresses that may be
+  taken.
+- **Email caps.** Table `email_sends` (migration 0008) holds an HMAC of the
+  address and a timestamp, pruned after a day. At most 5 emails per address
+  and `EMAIL_DAILY_CAP` (default 90) in all per 24 hours, under Resend's
+  free 100/day, so a script can't use up the quota and take password reset
+  down with it. A capped send answers exactly like a sent one.
+- **Turnstile** on `/register` and `/password-reset`, the two routes that
+  mail an address nobody has proven. It is off unless
+  `TURNSTILE_SECRET_KEY` (backend) and `TURNSTILE_SITE_KEY` (frontend
+  runtime config) are set. If Cloudflare can't be reached, it fails closed.
+  Sign-in has no captcha: it needs the password, and is rate limited.
+
+**Go-live order.** Merging the second PR opens signup, because nothing reads
+`INVITE_CODE` any more. Before that: set `TRUST_FORWARDED_FOR=true` and check
+the logs, then create the Turnstile widget (hostname
+`subscriptionstrack.com`) and set both keys. Afterwards, remove `INVITE_CODE`
+from the backend app.
 
 ## Notes / rationale
 

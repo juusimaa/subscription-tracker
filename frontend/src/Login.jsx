@@ -9,16 +9,27 @@
 // `notice` is a plain status line above the form for what an emailed link
 // just did ("x is confirmed", "that link has expired"). It is not an error:
 // nothing the user typed went wrong.
+//
+// An account can't sign in until its address is confirmed. Signing up, and a
+// sign-in the backend refuses for that reason, both end on the same "check
+// your inbox" screen, which can send the link again.
 
 import { useState } from "react";
-import { login, register, requestPasswordReset } from "./api";
+import { ApiError, describeWriteError, login, register, requestPasswordReset, resendVerification } from "./api";
 import { t } from "./i18n";
 import { LanguagePicker } from "./Language";
 import { TriangleAlert } from "./icons";
+import Turnstile from "./Turnstile";
+import { TURNSTILE_SITE_KEY } from "./turnstileKey";
 
 function Login({ onLogin, email: knownEmail, compact = false, notice = null, initialMode = "login" }) {
-  // "login", "register", "forgot", or "forgotSent" once a reset was requested.
+  // "login", "register", "forgot", "forgotSent" once a reset was requested,
+  // or "checkInbox" once a confirmation link is what stands in the way.
   const [mode, setMode] = useState(initialMode);
+  // Why "checkInbox" is showing: "registered" or "unconfirmed" (a sign-in
+  // the backend refused until the address is confirmed).
+  const [inboxReason, setInboxReason] = useState(null);
+  const [resend, setResend] = useState({ state: "idle", error: null });
   const [email, setEmail] = useState(knownEmail || "");
   // A confirmation link names its address only once the check comes back,
   // after this screen is already up. Fill it in then, unless the user has
@@ -29,7 +40,10 @@ function Login({ onLogin, email: knownEmail, compact = false, notice = null, ini
     if (knownEmail && !email) setEmail(knownEmail);
   }
   const [password, setPassword] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
+  // The bot check's token, and a counter that remounts the widget for a
+  // fresh one after each attempt -- a token is good for one check only.
+  const [captcha, setCaptcha] = useState(null);
+  const [captchaRound, setCaptchaRound] = useState(0);
   const [error, setError] = useState(null);
   // Disables the submit button while the request is in flight, so an
   // impatient double-click can't fire two registrations for the same email.
@@ -42,12 +56,32 @@ function Login({ onLogin, email: knownEmail, compact = false, notice = null, ini
 
   const isRegistering = mode === "register";
   const isForgot = mode === "forgot" || mode === "forgotSent";
+  // Only the two forms that make the backend email an unproven address.
+  const needsCaptcha = Boolean(TURNSTILE_SITE_KEY) && (isRegistering || mode === "forgot");
 
   function switchTo(next) {
     setMode(next);
     setError(null);
-    setInviteCode("");
+    setCaptcha(null);
+    setResend({ state: "idle", error: null });
     setHiddenNotice(notice);
+  }
+
+  function showInbox(reason) {
+    setInboxReason(reason);
+    setResend({ state: "idle", error: null });
+    setMode("checkInbox");
+    setHiddenNotice(notice);
+  }
+
+  async function sendLinkAgain() {
+    setResend({ state: "sending", error: null });
+    try {
+      await resendVerification(email, password);
+      setResend({ state: "sent", error: null });
+    } catch (err) {
+      setResend({ state: "error", error: describeWriteError(err, t("verify.nothingSent")) });
+    }
   }
 
   async function handleSubmit(event) {
@@ -58,25 +92,38 @@ function Login({ onLogin, email: knownEmail, compact = false, notice = null, ini
       if (mode === "forgot") {
         // The server answers the same whether or not the address has an
         // account, so this screen can't say which it was either.
-        await requestPasswordReset(email);
+        await requestPasswordReset(email, captcha);
         setMode("forgotSent");
         setHiddenNotice(notice);
         return;
       }
-      // Registering doesn't return a token, so a successful signup falls
-      // straight through to login -- the user never has to type it twice.
-      if (isRegistering) await register(email, password, inviteCode);
+      if (isRegistering) {
+        // Same answer for a taken address as a new one; the email says
+        // which. Either way there is nothing to sign in to until a link in
+        // it has been opened.
+        await register(email, password, captcha);
+        showInbox("registered");
+        return;
+      }
       const token = await login(email, password);
       // Handing the token up to App is what swaps this screen for the app.
       onLogin(token);
     } catch (err) {
-      setError(err.message);
+      if (err instanceof ApiError && err.status === 403 && mode === "login") {
+        showInbox("unconfirmed");
+      } else {
+        setError(err.message);
+      }
     } finally {
       setBusy(false);
+      setCaptcha(null);
+      setCaptchaRound((round) => round + 1);
     }
   }
 
-  const eyebrow = compact
+  const eyebrow = mode === "checkInbox"
+    ? t("login.eyebrowInbox")
+    : compact
     ? t("login.eyebrowExpired")
     : isForgot
       ? t("login.eyebrowForgot")
@@ -106,6 +153,29 @@ function Login({ onLogin, email: knownEmail, compact = false, notice = null, ini
 
       {mode === "forgotSent" ? (
         <p role="status" className="login-sent">{t("login.resetSent", { email })}</p>
+      ) : mode === "checkInbox" ? (
+        <div role="status" className="login-sent">
+          <p>
+            {resend.state === "sent"
+              ? t("verify.sent", { email })
+              : inboxReason === "registered"
+                ? t("login.checkInbox", { email })
+                : t("login.confirmFirst", { email })}
+          </p>
+          {resend.state !== "sent" && (
+            <p>
+              <button
+                type="button"
+                className="link-button"
+                disabled={resend.state === "sending"}
+                onClick={sendLinkAgain}
+              >
+                {t("verify.sendAgain")}
+              </button>
+              {resend.error && <span className="login-resend-error"> {resend.error}</span>}
+            </p>
+          )}
+        </div>
       ) : (
         <form className="login-form" onSubmit={handleSubmit}>
           {isForgot && <p className="login-explainer">{t("login.forgotNote")}</p>}
@@ -147,34 +217,30 @@ function Login({ onLogin, email: knownEmail, compact = false, notice = null, ini
               )}
             </div>
           )}
-          {isRegistering && (
-            <label className="field">
-              <span className="field-label">{t("login.invite")}</span>
-              <input
-                className="input"
-                type="text"
-                value={inviteCode}
-                onChange={(event) => setInviteCode(event.target.value)}
-                // Not every deployment requires one -- see the backend's
-                // INVITE_CODE env var. Left blank, the request just omits it,
-                // same as this app not having the field at all.
-                autoComplete="off"
-              />
-            </label>
-          )}
-          <button type="submit" className="btn btn-primary" disabled={busy}>
+          {needsCaptcha && <Turnstile key={captchaRound} onToken={setCaptcha} />}
+          <button
+            type="submit"
+            className="btn btn-primary"
+            // Held until the bot check has a token, rather than sending a
+            // request the backend is certain to refuse.
+            disabled={busy || (needsCaptcha && !captcha)}
+          >
             {isForgot ? t("login.sendReset") : isRegistering ? t("login.signUp") : t("login.logIn")}
           </button>
         </form>
       )}
 
-      {!compact && (
+      {(!compact || mode === "checkInbox") && (
         <button
           type="button"
           className="link-button login-toggle"
-          onClick={() => switchTo(isForgot ? "login" : isRegistering ? "login" : "register")}
+          onClick={() => switchTo(mode === "login" ? "register" : "login")}
         >
-          {isForgot ? t("login.backToLogin") : isRegistering ? t("login.toLogin") : t("login.toRegister")}
+          {isForgot || mode === "checkInbox"
+            ? t("login.backToLogin")
+            : isRegistering
+              ? t("login.toLogin")
+              : t("login.toRegister")}
         </button>
       )}
 

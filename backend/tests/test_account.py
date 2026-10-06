@@ -151,13 +151,9 @@ class TestPasswordByteLimit:
         password = "€" * 24  # 24 characters, exactly 72 bytes encoded.
         assert len(password.encode("utf-8")) == 72
 
-        response = client.post(
-            "/register", json={"email": email, "password": password}
-        )
-        assert response.status_code == 201, response.text
-
-        login = client.post("/token", data={"username": email, "password": password})
-        assert login.status_code == 200
+        # register() signs in with it after confirming the address.
+        auth = register(client, email=email, password=password)
+        assert client.get("/me", headers=auth).status_code == 200
 
     def test_exactly_72_bytes_of_multi_byte_characters_is_accepted_on_change(
         self, client, auth
@@ -201,12 +197,7 @@ class TestDeleteAccount:
         assert client.get("/me", headers=auth).status_code == 401
 
         # And the email is free again.
-        assert (
-            client.post(
-                "/register", json={"email": email, "password": "password123"}
-            ).status_code
-            == 201
-        )
+        register(client, email=email)
 
     def test_wrong_password_is_rejected_and_nothing_is_deleted(self, client, auth):
         response = client.request(

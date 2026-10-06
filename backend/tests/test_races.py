@@ -14,19 +14,30 @@
 from app import crud
 
 
-def test_registering_the_same_email_twice_at_once_conflicts_not_500(client, monkeypatch):
+def test_registering_the_same_email_twice_at_once_conflicts_not_500(client, monkeypatch, outbox):
     """Simulates two concurrent /register calls for the same email: both see
     "no such user" from the pre-check, so both reach crud.create_user, and the
-    second trips users.email's unique constraint on commit."""
-    monkeypatch.setattr(crud, "get_user_by_email", lambda db, email: None)
+    second trips users.email's unique constraint on commit. It then answers
+    exactly as a sequential second signup would: the same 202, and the
+    address's owner gets the "finish signing up" email."""
+    real_lookup = crud.get_user_by_email
+    lies_left = [2]
+
+    def racing_lookup(db, email):
+        if lies_left[0]:
+            lies_left[0] -= 1
+            return None
+        return real_lookup(db, email)
+
+    monkeypatch.setattr(crud, "get_user_by_email", racing_lookup)
     payload = {"email": "racer@example.com", "password": "password123"}
 
     first = client.post("/register", json=payload)
     second = client.post("/register", json=payload)
 
-    assert first.status_code == 201, first.text
-    assert second.status_code == 400, second.text
-    assert second.json()["detail"] == "Email already registered"
+    assert first.status_code == second.status_code == 202, second.text
+    assert ["?verify=" in m["text"] for m in outbox] == [True, False]
+    assert "?reset=" in outbox[1]["text"]
 
 
 def test_creating_the_same_category_twice_at_once_conflicts_not_500(client, auth, monkeypatch):

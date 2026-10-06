@@ -6,9 +6,9 @@
 # config.template.js and PLAN.md milestone 8.
 set -e
 
-# Restricting envsubst to just this one variable (rather than calling it with
+# Restricting envsubst to just these variables (rather than calling it with
 # no argument) stops it from also touching any literal "$" nginx itself might
 # care about elsewhere -- not a risk here, but cheap to be explicit.
-envsubst '${API_URL}' < /etc/nginx/config.template.js > /usr/share/nginx/html/config.js
+envsubst '${API_URL} ${TURNSTILE_SITE_KEY}' < /etc/nginx/config.template.js > /usr/share/nginx/html/config.js
 
 exec nginx -g "daemon off;"

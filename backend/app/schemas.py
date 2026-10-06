@@ -514,11 +514,9 @@ class UserCreate(BaseModel):
     # (validated by the email-validator package, pulled in via requirements).
     email: EmailStr
     password: Password
-    # Optional here because the gate it feeds (INVITE_CODE in main.py) is
-    # itself optional -- a deployment that hasn't set one accepts requests
-    # that omit this entirely, which is what every local/test registration
-    # does today.
-    invite_code: str | None = None
+    # The Cloudflare Turnstile response from the signup form. Only checked
+    # when the backend has TURNSTILE_SECRET_KEY (app/turnstile.py).
+    turnstile_token: str | None = None
 
 
 class User(BaseModel):
@@ -579,6 +577,18 @@ class VerifiedEmail(BaseModel):
 
 class PasswordResetRequest(BaseModel):
     email: EmailStr
+    # As on UserCreate: this route mails an address nobody has proven.
+    turnstile_token: str | None = None
+
+
+class VerificationResend(BaseModel):
+    """What the client sends on POST /verification: the same email and
+    password the sign-in that was refused for an unconfirmed address used.
+    Asking for the password is what keeps this route from mailing anyone but
+    the account's owner, without a bot check of its own."""
+
+    email: EmailStr
+    password: str
 
 
 class PasswordResetConfirm(BaseModel):
