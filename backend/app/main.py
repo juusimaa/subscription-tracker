@@ -19,7 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app import auth, backup_csv, cache, crud, mailer, models, renewals, schemas
+from app import auth, backup_csv, cache, crud, fx, mailer, models, renewals, schemas
 from app.database import get_db
 from app.logging_config import configure_logging, request_logger
 
@@ -292,6 +292,57 @@ def read_me(current_user: models.User = Depends(auth.get_current_user)):
     """Who am I? The frontend uses this on startup to check whether a token
     left over in localStorage is still valid before showing the app."""
     return current_user
+
+
+@app.patch("/me", response_model=schemas.User, tags=["Auth"])
+def update_me(
+    payload: schemas.UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Changes the caller's settings -- today, the currency every total is
+    shown in and new subscriptions start in (PLAN.md milestone 10). No
+    subscription changes: each keeps the currency it is billed in."""
+    user = crud.update_user_currency(db, current_user, payload.currency)
+    cache.invalidate_user(current_user.id)
+    return user
+
+
+@app.get("/rates", response_model=schemas.RateSeries, tags=["Subscriptions"])
+def rates(
+    since: date | None = Query(
+        default=None,
+        description=(
+            "First day the rates are needed for. Defaults to the earliest "
+            "start date among the caller's subscriptions."
+        ),
+    ),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """European Central Bank reference rates for every currency on the
+    caller's subscriptions, plus their own currency: what the frontend needs
+    to convert the per-subscription figures (a renewal's "≈", a lifetime
+    paid total) with the same rule the summaries use -- see app/fx.py.
+
+    An account whose subscriptions are all in its own currency gets an empty
+    `rates` and never causes a fetch."""
+    subscriptions = crud.get_subscriptions(db, current_user.id)
+    codes = {sub.currency for sub in subscriptions}
+    if since is None:
+        starts = [sub.started_date for sub in subscriptions if sub.started_date is not None]
+        since = min(starts, default=date.today())
+    table = fx.load(db, codes, current_user.currency, since)
+    return {
+        "currency": current_user.currency,
+        "as_of": table.as_of,
+        "stale": table.stale,
+        "missing": sorted(table.missing),
+        "rates": {
+            code: [(day, float(rate)) for day, rate in zip(days, values)]
+            for code, (days, values) in table.series.items()
+        },
+    }
 
 
 @app.put("/me/password", response_model=schemas.Token, tags=["Auth"])
@@ -700,7 +751,11 @@ def import_data(
             ),
         )
     result = crud.import_backup(
-        db, backup, current_user.id, replace=resolved is schemas.ImportMode.replace
+        db,
+        backup,
+        current_user.id,
+        replace=resolved is schemas.ImportMode.replace,
+        default_currency=current_user.currency,
     )
     cache.invalidate_user(current_user.id)
     return result
@@ -770,11 +825,48 @@ def list_subscriptions(
         active=active,
         status=status,
     )
+    converted = _paid_totals_converted(db, subscriptions, current_user.currency)
     result = [
-        schemas.Subscription.model_validate(sub).model_dump(mode="json") for sub in subscriptions
+        schemas.Subscription.model_validate(sub)
+        .model_copy(update={"paid_total_converted": converted.get(sub.id)})
+        .model_dump(mode="json")
+        for sub in subscriptions
     ]
     cache.set_json(key, result)
     return result
+
+
+def _paid_totals_converted(
+    db: Session, subscriptions: list[models.Subscription], target: str
+) -> dict[int, Decimal | None]:
+    """Each subscription's paid_total in `target`, every charge converted at
+    its own day's rate -- what a lifetime line adds up when a service's runs
+    were billed in different currencies. A row already in `target` is its
+    own paid_total, with no rate involved."""
+    out: dict[int, Decimal | None] = {}
+    foreign = [
+        sub
+        for sub in subscriptions
+        if sub.currency != target and sub.started_date is not None and sub.paid_total is not None
+    ]
+    for sub in subscriptions:
+        if sub.currency == target:
+            out[sub.id] = sub.paid_total
+    if not foreign:
+        return out
+    table = fx.load(
+        db, {sub.currency for sub in foreign}, target, min(sub.started_date for sub in foreign)
+    )
+    for sub in foreign:
+        total = Decimal("0")
+        for charge in sub.charge_dates(date.min, date.today()):
+            value = table.convert(sub.cost, sub.currency, charge)
+            if value is None:
+                total = None
+                break
+            total += value
+        out[sub.id] = total
+    return out
 
 
 @app.post(
@@ -790,7 +882,9 @@ def create_subscription(
     began. crud spots that once the default is filled in; it is a 422 here for
     the same reason the schema rejects the spelled-out version."""
     try:
-        db_subscription = crud.create_subscription(db, subscription, current_user.id)
+        db_subscription = crud.create_subscription(
+            db, subscription, current_user.id, default_currency=current_user.currency
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     cache.invalidate_user(current_user.id)
@@ -890,6 +984,14 @@ def upcoming(
             ):
                 add(subscription, renewal_date, subscription.cost)
 
+    # Converted at the latest rate: every charge here is still to come. A
+    # trial's 0 stays 0 in any currency.
+    table = fx.load(db, {entry["subscription"].currency for entry in due}, current_user.currency)
+    for entry in due:
+        entry["converted_cost"] = table.convert(
+            entry["cost"], entry["subscription"].currency, entry["renewal_date"]
+        )
+
     # Soonest first; name and id only to keep two renewals on the same day in
     # a stable, predictable order rather than whatever the query returned.
     due.sort(
@@ -902,8 +1004,16 @@ def upcoming(
     return {
         "days": days,
         "through": through,
-        "total": round(sum((entry["cost"] for entry in due), Decimal("0")), 2),
+        # A renewal in a currency with no rate cannot be added in honestly,
+        # so it is left out of the total; the list still carries it.
+        "total": sum(
+            (entry["converted_cost"] for entry in due if entry["converted_cost"] is not None),
+            Decimal("0"),
+        ),
+        "currency": current_user.currency,
         "renewals": due,
+        "rates_as_of": table.as_of,
+        "rates_stale": table.stale,
     }
 
 
@@ -1145,26 +1255,68 @@ def spend(
     # schedule anyway, so the month each charge belongs to comes for free.
     window_start = date(year, months[0], 1)
     window_end = date(year, months[-1], monthrange(year, months[-1])[1])
-    charged = dict.fromkeys(months, Decimal("0"))
+    #
+    # Each charge is converted into the user's currency at its own day's rate
+    # and rounded to the cent before it is added (app/fx.py), so a month's
+    # total and its per-currency lines always agree.
     charged_ids: dict[int, set[int]] = {m: set() for m in months}
-    for sub in subscriptions:
-        for charge in sub.charge_dates(window_start, window_end):
-            charged[charge.month] += sub.cost
-            charged_ids[charge.month].add(sub.id)
-
-    breakdown = [
-        {
-            "month": m,
-            "total": round(charged[m], 2),
-            "subscription_ids": sorted(charged_ids[m]),
-        }
-        for m in months
+    # month -> currency -> [native, converted or None]
+    per_currency: dict[int, dict[str, list]] = {m: {} for m in months}
+    charges = [
+        (sub, charge)
+        for sub in subscriptions
+        for charge in sub.charge_dates(window_start, window_end)
     ]
+    table = fx.load(
+        db, {sub.currency for sub, _ in charges}, current_user.currency, window_start
+    )
+    for sub, charge in charges:
+        charged_ids[charge.month].add(sub.id)
+        converted = table.convert(sub.cost, sub.currency, charge)
+        line = per_currency[charge.month].setdefault(sub.currency, [Decimal("0"), Decimal("0")])
+        line[0] += Decimal(str(sub.cost))
+        line[1] = None if converted is None or line[1] is None else line[1] + converted
+
+    def lines(by: dict[str, list]) -> list[dict]:
+        # The user's own currency first, then the largest converted share.
+        return [
+            {"currency": code, "native": round(native, 2), "converted": converted}
+            for code, (native, converted) in sorted(
+                by.items(),
+                key=lambda item: (
+                    item[0] != current_user.currency,
+                    -(item[1][1] if item[1][1] is not None else Decimal("0")),
+                    item[0],
+                ),
+            )
+        ]
+
+    breakdown = []
+    year_by: dict[str, list] = {}
+    for m in months:
+        for code, (native, converted) in per_currency[m].items():
+            line = year_by.setdefault(code, [Decimal("0"), Decimal("0")])
+            line[0] += native
+            line[1] = None if converted is None or line[1] is None else line[1] + converted
+        breakdown.append(
+            {
+                "month": m,
+                "total": sum(
+                    (c for _, c in per_currency[m].values() if c is not None), Decimal("0")
+                ),
+                "subscription_ids": sorted(charged_ids[m]),
+                "by_currency": lines(per_currency[m]),
+            }
+        )
 
     return {
         "year": year,
+        "currency": current_user.currency,
         "total": sum((entry["total"] for entry in breakdown), Decimal("0")),
         "months": breakdown,
+        "by_currency": lines(year_by),
+        "rates_as_of": table.as_of,
+        "rates_stale": table.stale,
     }
 
 
@@ -1208,8 +1360,22 @@ def monthly_total(
         active=True,
     )
     today = date.today()
-    total = sum(
-        (_monthly_cost(sub) for sub in subscriptions if sub.started_date is None or sub.started_date <= today),
-        Decimal("0"),
-    )
-    return {"monthly_total": round(total, 2), "yearly_total": round(total * 12, 2)}
+    running = [sub for sub in subscriptions if sub.started_date is None or sub.started_date <= today]
+    # A rate, not a charge: converted at today's rate, per subscription. One
+    # with no rate at all is left out rather than counted at face value.
+    table = fx.load(db, {sub.currency for sub in running}, current_user.currency)
+    total = Decimal("0")
+    for sub in running:
+        monthly = _monthly_cost(sub)
+        if sub.currency != current_user.currency:
+            rate_from = table.rate_on(sub.currency, today)
+            rate_to = table.rate_on(current_user.currency, today)
+            if rate_from is None or rate_to is None:
+                continue
+            monthly = monthly / rate_from * rate_to
+        total += monthly
+    return {
+        "monthly_total": round(total, 2),
+        "yearly_total": round(total * 12, 2),
+        "currency": current_user.currency,
+    }

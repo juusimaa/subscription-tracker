@@ -7,8 +7,13 @@
 // faked history that way so the strip looked plausible; a real implementation
 // has the arithmetic on the server and should use it.
 
-import { money } from "../format";
+import { ApproxMark } from "../Approx";
+import { approxText, money } from "../format";
 import { t } from "../i18n";
+
+// A converted figure reads "≈ €60.28"; aloud, "about €60.28".
+const figure = (bar) => (bar.approx ? approxText(bar.value) : money(bar.value));
+const spoken = (bar) => (bar.approx ? `${t("fx.about")} ${money(bar.value)}` : money(bar.value));
 
 function TrendStrip({ label, bars, onSelect }) {
   // Guard the empty and all-zero cases: dividing by a zero peak would make
@@ -26,23 +31,27 @@ function TrendStrip({ label, bars, onSelect }) {
             selected one up here instead -- see the media query at the bottom
             of dashboard.css for which of the two is actually shown. */}
         <span className="hint">{t("trend.hint")}</span>
-        <span className="trend-active">{active ? money(active.value) : ""}</span>
+        <span className="trend-active">
+          {active ? <>{active.approx && <ApproxMark />}{money(active.value)}</> : ""}
+        </span>
       </div>
       <div className="trend-bars">
         {bars.map((bar) => (
           <button
             key={bar.tick}
             type="button"
-            title={`${bar.tick} · ${money(bar.value)}`}
+            title={`${bar.tick} · ${figure(bar)}`}
             // The bar's own content is only a figure, and only on the selected
             // bar, so its name has to say which period it is and what it cost.
-            aria-label={`${bar.label ?? bar.tick}: ${money(bar.value)}`}
+            aria-label={`${bar.label ?? bar.tick}: ${spoken(bar)}`}
             aria-pressed={bar.on}
             onClick={() => onSelect(bar)}
           >
             {/* Only the selected bar carries its figure; twelve numbers over
                 twelve bars would be a table, not a shape. */}
-            <span className="trend-value">{bar.on ? money(bar.value) : ""}</span>
+            <span className="trend-value">
+              {bar.on ? <>{bar.approx && <ApproxMark />}{money(bar.value)}</> : ""}
+            </span>
             <span
               className={bar.on ? "trend-bar on" : "trend-bar"}
               style={{ height: `${height(bar)}px` }}

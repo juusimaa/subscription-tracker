@@ -1,9 +1,7 @@
 // Formatting and calendar helpers shared across the dashboard.
 //
-// Currency is hardcoded to EUR because the API has no currency column -- cost
-// is a bare Numeric(10,2) and every figure in the design is in euros. That is
-// an assumption, not a decision anyone made (see TODO.md D7), and it lives
-// here so there is exactly one place to change when a currency column exists.
+// Money is formatted in the currency it is in: a subscription's own for its
+// cost, the user's (fx.js) for every total. See PLAN.md milestone 10.
 
 //
 // Everything a reader sees -- month names, the money format, dates, the cost
@@ -11,6 +9,7 @@
 // Finnish that means "1 234,56 €" and "4.9.2026"; in English "€1,234.56" and
 // "04 Sep 2026", as before.
 
+import { userCurrency } from "./fx";
 import { getLanguage, getLocaleTag, t } from "./i18n";
 
 // Month names by zero-based index, in the current language. Finnish names
@@ -29,22 +28,46 @@ export const MAX_YEAR = 2027;
 // the figure never wraps away from its sign). Note the absolute value --
 // signed figures are built by `signed` below, which uses a real minus sign
 // (U+2212) rather than a hyphen, as the design specifies.
-export function money(amount) {
-  const n = Number(amount) || 0;
-  const digits = Math.abs(n).toLocaleString(getLocaleTag(), {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-  return getLanguage() === "fi" ? `${digits}\u00a0€` : `€${digits}`;
+//
+// `currency` defaults to the user's own, which is what every total is in.
+// Euros keep the hand-built format they always had; any other currency goes
+// through Intl, so English reads "$20.00" and "CA$20.00" and Finnish
+// "20,00 $" -- the symbol each language's readers expect.
+export function money(amount, currency = userCurrency()) {
+  const n = Math.abs(Number(amount) || 0);
+  if (currency === "EUR") {
+    const digits = n.toLocaleString(getLocaleTag(), {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    return getLanguage() === "fi" ? `${digits}\u00a0€` : `€${digits}`;
+  }
+  try {
+    return new Intl.NumberFormat(getLocaleTag(), {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+      .format(n)
+      .replace(/\s/g, "\u00a0");
+  } catch {
+    return `${n.toFixed(2)}\u00a0${currency}`;
+  }
 }
+
+// A converted figure as plain text, for a title or a message variable:
+// "≈ €17.05". Components use <Converted> (Approx.jsx), which also gives
+// screen readers "about" instead of the glyph.
+export const approxText = (amount) => `≈ ${money(amount)}`;
 
 // Rounded to the cent before the sign is chosen, so a difference that prints
 // as €0.00 never carries a sign it does not have ("−€0.00" from a float
 // remainder, or "+€0.00" for no change at all).
-export function signed(amount) {
+export function signed(amount, currency = userCurrency()) {
   const cents = Math.round((Number(amount) || 0) * 100);
-  if (cents === 0) return money(0);
-  return (cents < 0 ? "−" : "+") + money(cents / 100);
+  if (cents === 0) return money(0, currency);
+  return (cents < 0 ? "−" : "+") + money(cents / 100, currency);
 }
 
 // A typed cost, as a number, or NaN when it is not one. Every figure on this

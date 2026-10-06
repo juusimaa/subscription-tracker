@@ -19,6 +19,8 @@
 
 import { useState } from "react";
 import { describeWriteError, resendVerification } from "./api";
+import { longDate } from "./format";
+import { CURRENCIES, currencyName, inCurrency } from "./fx";
 import { t } from "./i18n";
 import { LanguagePicker } from "./Language";
 import { TriangleAlert } from "./icons";
@@ -26,6 +28,58 @@ import { useModal } from "./useModal";
 
 function stop(event) {
   event.stopPropagation();
+}
+
+// The currency every total is shown in, and that new subscriptions start in
+// (PLAN.md milestone 10). Saved on change, like the language, with one plain
+// status line under it. Changing it reloads the page's figures; no
+// subscription changes.
+function CurrencySection({ currency, onChange, rates, usesForeign }) {
+  const [save, setSave] = useState({ state: "idle", message: null });
+
+  async function choose(event) {
+    const code = event.target.value;
+    setSave({ state: "saving", message: null });
+    try {
+      await onChange(code);
+      setSave({ state: "saved", message: t("account.currencySaved", { shownIn: inCurrency(code) }) });
+    } catch (err) {
+      setSave({ state: "error", message: describeWriteError(err) });
+    }
+  }
+
+  const asOf = rates?.as_of;
+  const ratesNote = !usesForeign || !asOf
+    ? t("account.ratesNoteNone")
+    : rates.stale
+      ? t("account.ratesNoteStale", { date: longDate(asOf) })
+      : t("account.ratesNote", { date: longDate(asOf) });
+
+  return (
+    <div className="account-section account-currency">
+      <h3 className="account-heading" id="account-currency-heading">{t("account.currency")}</h3>
+      <p className="account-explainer">{t("account.currencyNote")}</p>
+      <select
+        className="input currency-select"
+        aria-labelledby="account-currency-heading"
+        value={currency}
+        disabled={save.state === "saving"}
+        onChange={choose}
+      >
+        {CURRENCIES.map((code) => (
+          <option key={code} value={code}>{`${code} — ${currencyName(code)}`}</option>
+        ))}
+      </select>
+      <p role="status" className="account-saved">
+        {save.state === "error" ? (
+          <span className="field-error">{save.message}</span>
+        ) : (
+          save.message
+        )}
+      </p>
+      <p className="fx-note">{ratesNote}</p>
+    </div>
+  );
 }
 
 // The delete confirm opens over the account dialog, so it needs its own place
@@ -81,6 +135,10 @@ function AccountDialog({
   emailVerified,
   subscriptionCount,
   categoryCount,
+  currency,
+  onChangeCurrency,
+  rates,
+  usesForeign,
   onChangePassword,
   onDeleteAccount,
   onExportFirst,
@@ -193,6 +251,13 @@ function AccountDialog({
           <p className="account-explainer">{t("account.languageNote")}</p>
           <LanguagePicker />
         </div>
+
+        <CurrencySection
+          currency={currency}
+          onChange={onChangeCurrency}
+          rates={rates}
+          usesForeign={usesForeign}
+        />
 
         <div className="account-section">
           <h3 className="account-heading">{t("account.changePassword")}</h3>

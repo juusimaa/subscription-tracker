@@ -5,10 +5,11 @@
 import app from "./app.js";
 import common from "./common.js";
 import dialogs from "./dialogs.js";
+import fx from "./fx.js";
 import overview from "./overview.js";
 import table from "./table.js";
 
-const bundles = [common, app, overview, table, dialogs];
+const bundles = [common, app, overview, table, dialogs, fx];
 
 const messages = { en: {}, fi: {} };
 for (const bundle of bundles) {

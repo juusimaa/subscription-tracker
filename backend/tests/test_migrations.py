@@ -205,3 +205,26 @@ def test_upgrade_adopts_a_database_that_predates_alembic():
         assert MigrationContext.configure(connection).get_current_revision() == "0001"
 
     drop_version_table()
+
+
+def test_existing_rows_become_euros(empty_database):
+    """Revision 0007 adds currencies with EUR as the server default, which is
+    the backfill: every row written before it was in euros, because the
+    frontend could only ever say euros."""
+    config = alembic_config()
+    command.upgrade(config, "0006")
+    with engine.begin() as connection:
+        connection.execute(
+            text("INSERT INTO users (id, email, hashed_password) VALUES (1, 'a@b.c', 'x')")
+        )
+        connection.execute(
+            text(
+                "INSERT INTO subscriptions "
+                "(id, name, cost, billing_cycle, next_renewal_date, status, user_id) "
+                "VALUES (1, 'Netflix', 15.99, 'monthly', '2026-01-01', 'active', 1)"
+            )
+        )
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT currency FROM subscriptions")).scalar() == "EUR"
+        assert connection.execute(text("SELECT currency FROM users")).scalar() == "EUR"

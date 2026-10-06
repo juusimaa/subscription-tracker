@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { ApiError, describeWriteError } from "../api";
 import {
+  approxText,
   MAX_YEAR,
   MIN_YEAR,
   longDate,
@@ -20,6 +21,7 @@ import {
   toISO,
   todayISO,
 } from "../format";
+import { comparable, convert, inCurrency, isForeign } from "../fx";
 import { t } from "../i18n";
 import { chargeCountInYear, chargesInMonth } from "../renewals";
 import { useIsMobile } from "../useMediaQuery";
@@ -51,6 +53,8 @@ function Dashboard({
   spendByYear,
   spendByCategory,
   upcomingTotal,
+  // Whether the 30-day figure converted anything (PLAN.md milestone 10).
+  upcomingApprox = false,
   period,
   setPeriod,
   actions,
@@ -140,6 +144,34 @@ function Dashboard({
     : yearTotal(year - 1);
   const change = previous == null ? null : total - previous;
 
+  // --- currencies ---
+  //
+  // Every figure from /summary/spend is already in the user's currency. A
+  // period whose charges include another currency is converted, so its
+  // figures are marked "≈" and the hero lists what charged in each currency.
+  const monthSummary = (y, m) => spendByYear[y]?.months.find((row) => row.month === m + 1);
+  const periodSummary = monthly ? monthSummary(year, month) : spendByYear[year];
+  const previousSummary = monthly
+    ? month === 0 ? monthSummary(year - 1, 11) : monthSummary(year, month - 1)
+    : spendByYear[year - 1];
+  const converts = (summary) => (summary?.by_currency ?? []).some((line) => isForeign(line.currency));
+  const totalApprox = converts(periodSummary);
+  const changeApprox = totalApprox || converts(previousSummary);
+  // The same subscriptions charging the same native amounts in both periods:
+  // any change in the converted figure is then the exchange rate alone, and
+  // the KPI says so rather than leaving it to look like a price change.
+  const chargeKey = (summary) =>
+    summary &&
+    JSON.stringify([
+      monthly ? summary.subscription_ids : summary.months.map((row) => row.subscription_ids),
+      (summary.by_currency ?? []).map((line) => [line.currency, line.native]),
+    ]);
+  const rateOnly =
+    changeApprox &&
+    change != null &&
+    Math.round(change * 100) !== 0 &&
+    chargeKey(periodSummary) === chargeKey(previousSummary);
+
   const activeSubs = subscriptions.filter(
     (s) => s.status === "active" && (!s.started_date || s.started_date <= todayISO()),
   );
@@ -186,9 +218,14 @@ function Dashboard({
         name,
         amount,
         loaded: Boolean(summary),
+        approx: summary
+          ? converts(monthly ? summary.months.find((row) => row.month === month + 1) : summary)
+          : false,
+        // A member billed in another currency is named with what it charges
+        // in that currency, since the bar's amount is converted.
         members: subscriptions
           .filter((s) => s.category === name && chargedIds.has(s.id))
-          .map((s) => s.name),
+          .map((s) => (monthly && isForeign(s.currency) ? `${s.name} (${money(s.cost, s.currency)})` : s.name)),
       };
     })
     // Largest share first: a bar chart read top to bottom should be ordered
@@ -219,6 +256,7 @@ function Dashboard({
     billedRows.push({
       name: t("categoryBars.uncategorised"),
       amount: uncategorised,
+      approx: totalApprox,
       members: subscriptions.filter((s) => !s.category && chargedIds.has(s.id)).map((s) => s.name),
     });
   }
@@ -242,7 +280,7 @@ function Dashboard({
   const comingUpNote = nextYearly
     ? t("comingUp.nextAnnual", {
         name: nextYearly.name,
-        amount: money(nextYearly.cost),
+        amount: money(nextYearly.cost, nextYearly.currency),
         date: longDate(nextYearly.next_renewal_date),
       })
     : t("comingUp.noAnnual");
@@ -258,6 +296,7 @@ function Dashboard({
         // full label there too, so this is monthly-only.
         shortTick: tick[0],
         value: monthTotal(year, index) ?? 0,
+        approx: converts(monthSummary(year, index)),
         on: index === month,
         go: () => changePeriod({ month: index }),
       }))
@@ -265,6 +304,7 @@ function Dashboard({
         tick: String(y),
         shortTick: String(y),
         value: yearTotal(y) ?? 0,
+        approx: converts(spendByYear[y]),
         on: y === year,
         go: () => changePeriod({ year: y }),
       }));
@@ -272,7 +312,11 @@ function Dashboard({
   // --- KPIs ---
 
   const largestPool = monthly ? activeSubs.filter((s) => s.billing_cycle === "monthly") : activeSubs;
-  const largest = largestPool.slice().sort((a, b) => Number(b.cost) - Number(a.cost))[0];
+  // Compared in the user's currency, so $20.00 ranks beside €17.05 rather
+  // than beside €20.00; shown in its own.
+  const largest = largestPool
+    .slice()
+    .sort((a, b) => comparable(b.cost, b.currency) - comparable(a.cost, a.currency))[0];
 
   // Trials converting inside the same 30 days. The route counts them at 0 --
   // nothing has charged yet -- so the figure says so, and gives the price
@@ -281,13 +325,24 @@ function Dashboard({
   const horizon = new Date(`${today}T00:00:00`);
   horizon.setDate(horizon.getDate() + 30);
   const trialsSoon = trials.filter((s) => s.next_renewal_date >= today && s.next_renewal_date <= toISO(horizon));
-  const trialsSoonCost = trialsSoon.reduce((sum, s) => sum + Number(s.cost), 0);
+  // In the user's currency, each at the latest rate: none has charged yet.
+  const trialsSoonCost = trialsSoon.reduce(
+    (sum, s) => sum + (convert(s.cost, s.currency, s.next_renewal_date) ?? 0),
+    0,
+  );
+  const trialsForeign = trialsSoon.some((s) => isForeign(s.currency));
+  const trialsSoonAmount =
+    trialsSoon.length === 1 && trialsForeign
+      ? `${money(trialsSoon[0].cost, trialsSoon[0].currency)} (${approxText(trialsSoonCost)})`
+      : trialsForeign
+        ? approxText(trialsSoonCost)
+        : money(trialsSoonCost);
   const trialsSoonNote =
     trialsSoon.length === 0
       ? null
       : trialsSoon.length === 1
-        ? t("kpi.trialNoteOne", { name: trialsSoon[0].name, amount: money(trialsSoonCost) })
-        : t("kpi.trialNoteMany", { n: trialsSoon.length, amount: money(trialsSoonCost) });
+        ? t("kpi.trialNoteOne", { name: trialsSoon[0].name, amount: trialsSoonAmount })
+        : t("kpi.trialNoteMany", { n: trialsSoon.length, amount: trialsSoonAmount });
 
   const kpis = [
     {
@@ -295,6 +350,7 @@ function Dashboard({
       // selected period: "the next 30 days" is a question about today, and it
       // does not change when the period picker moves.
       figure: monthly ? money(upcomingTotal ?? 0) : money(total / 12),
+      approx: monthly ? upcomingApprox : totalApprox,
       label: monthly ? t("kpi.next30") : t("kpi.averagePerMonth"),
       note: monthly ? trialsSoonNote : null,
     },
@@ -303,11 +359,19 @@ function Dashboard({
       label: monthly ? t("kpi.renewalsMonth") : t("kpi.renewalsYear"),
     },
     {
-      figure: largest ? money(largest.cost) : "—",
+      figure: largest ? money(largest.cost, largest.currency) : "—",
       label: t("kpi.largest", { name: largest ? largest.name : t("kpi.largestNone") }),
+      note:
+        largest && isForeign(largest.currency)
+          ? approxText(convert(largest.cost, largest.currency) ?? 0)
+          : null,
     },
     {
       figure: change == null ? "—" : signed(change),
+      approx: change != null && changeApprox,
+      note: rateOnly
+        ? t("fx.rateOnly", monthly ? { month: monthName((month + 11) % 12) } : { year: year - 1 })
+        : null,
       label:
         change == null
           ? t("kpi.noEarlier")
@@ -559,6 +623,10 @@ function Dashboard({
           total={total}
           activeCount={activeSubs.length}
           categoryCount={usedCategories.length}
+          currencyCount={new Set(activeSubs.map((s) => s.currency)).size}
+          byCurrency={periodSummary?.by_currency ?? []}
+          ratesAsOf={spendByYear[year]?.rates_as_of}
+          ratesStale={spendByYear[year]?.rates_stale}
           onChange={changePeriod}
           pickerOpen={pickerOpen}
           setPickerOpen={setPickerOpen}
@@ -569,7 +637,9 @@ function Dashboard({
         <hr className="rule" />
 
         <TrendStrip
-          label={monthly ? t("trend.perMonth", { year }) : t("trend.perYear")}
+          label={`${monthly ? t("trend.perMonth", { year }) : t("trend.perYear")}${
+            bars.some((bar) => bar.approx) ? ` · ${inCurrency()}` : ""
+          }`}
           bars={bars}
           onSelect={(bar) => bar.go()}
         />
@@ -588,6 +658,7 @@ function Dashboard({
                 : t("categoryBars.idleYear", { year })
             }
             total={total}
+            inCurrency={billedRows.some((row) => row.approx) ? inCurrency() : null}
             onManage={() => setCatPanelOpen(true)}
           />
           <ComingUp

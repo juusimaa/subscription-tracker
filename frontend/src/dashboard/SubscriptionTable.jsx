@@ -18,6 +18,7 @@ import MonoTile from "../MonoTile";
 import Sheet from "./Sheet";
 import { ChevronRight, Search, TriangleAlert } from "../icons";
 import {
+  approxText,
   costProblem,
   cycleLabel,
   cycleSuffix,
@@ -29,10 +30,23 @@ import {
   statusLabel,
   todayISO,
 } from "../format";
+import { ApproxMark, Converted } from "../Approx";
+import { comparable, convert, currencyName, isForeign } from "../fx";
 import { t } from "../i18n";
 import { NAME_MAX } from "./AddForm";
 import { useIsMobile } from "../useMediaQuery";
-import { accessEnded, buildGroups, endedGroupCount, groupSince, lifetimePaid, runNumber, stoppedDate } from "./groups";
+import {
+  accessEnded,
+  buildGroups,
+  endedGroupCount,
+  groupSince,
+  lifetimeConverted,
+  lifetimeCurrency,
+  lifetimePaid,
+  lifetimePaidConverted,
+  runNumber,
+  stoppedDate,
+} from "./groups";
 
 // The sort chip row (mobile only) offers six of the desktop table's seven
 // columns -- "Per month" is left out, the same way the mobile row shows a
@@ -77,12 +91,50 @@ const cycleNote = (billing_cycle) => cycleLabel(billing_cycle).toLowerCase();
 
 // "then €9.99/mo", under a trial's €0.00.
 const thenNote = (subscription) =>
-  t("table.then", { price: `${money(subscription.cost)}${cycleSuffix(subscription.billing_cycle)}` });
+  t("table.then", {
+    price: `${money(subscription.cost, subscription.currency)}${cycleSuffix(subscription.billing_cycle)}`,
+  });
 
+// Under the mobile row's native cost: what it comes to per month in the
+// user's currency, "≈"-marked when converted (PLAN.md milestone 10).
 function mobilePerMonthNote(subscription) {
   if (subscription.status === "trial") return thenNote(subscription);
-  if (subscription.status === "active") return `${money(perMonth(subscription))}${cycleSuffix("monthly")}`;
+  if (subscription.status === "active") {
+    const monthly = perMonth(subscription);
+    const converted = isForeign(subscription.currency) ? convert(monthly, subscription.currency) : null;
+    const amount = converted != null ? approxText(converted) : money(monthly, subscription.currency);
+    return `${amount}${cycleSuffix("monthly")}`;
+  }
   return cycleNote(subscription.billing_cycle);
+}
+
+// A cost cell's sub-note: the cycle, then "≈ €17.05" when the cost is in
+// another currency than the user's, at the latest rate.
+function CostNote({ subscription }) {
+  return (
+    <>
+      {cycleNote(subscription.billing_cycle)}
+      {isForeign(subscription.currency) && (
+        <>
+          {" · "}
+          <Converted amount={convert(subscription.cost, subscription.currency)} className="" />
+        </>
+      )}
+    </>
+  );
+}
+
+// The lifetime figure in its currency, "≈"-marked when its runs were billed
+// in different currencies and it had to be added up in the user's.
+function PaidAmount({ group }) {
+  const paid = lifetimePaid(group);
+  if (paid == null) return "—";
+  return (
+    <>
+      {lifetimeConverted(group) && <ApproxMark />}
+      {money(paid, lifetimeCurrency(group))}
+    </>
+  );
 }
 
 // Each status's tag style; its words come from statusLabel (format.js).
@@ -154,14 +206,17 @@ function monthYear(iso) {
 function LifetimeLine({ group, prefix }) {
   const paid = lifetimePaid(group);
   const since = groupSince(group);
-  const own = Number(group.head.paid_total);
+  // Runs in different currencies split in the user's, each "≈".
+  const mixed = lifetimeConverted(group);
+  const own = Number(mixed ? group.head.paid_total_converted : group.head.paid_total);
+  const amount = (value) => (mixed ? approxText(value) : money(value, lifetimeCurrency(group)));
   return (
     <>
       {prefix}
-      {paid != null && <>: <strong>{money(paid)}</strong></>}
+      {paid != null && <>: <strong><PaidAmount group={group} /></strong></>}
       {t("table.lifetimeRuns", { n: group.runs.length })}
       {since && t("table.lifetimeSince", { since: monthYear(since) })}
-      {paid != null && t("table.lifetimeSplit", { own: money(own), earlier: money(paid - own) })}
+      {paid != null && t("table.lifetimeSplit", { own: amount(own), earlier: amount(paid - own) })}
     </>
   );
 }
@@ -197,7 +252,7 @@ function MobilePaid({ group }) {
   const range = stopped ? t("table.range", { since, stopped: monthYear(stopped) }) : t("table.since", { since });
   return (
     <>
-      <strong>{money(paid)}</strong>{t("table.mobilePaid", { range })}
+      <strong><PaidAmount group={group} /></strong>{t("table.mobilePaid", { range })}
     </>
   );
 }
@@ -216,16 +271,17 @@ function sortValue(group, key) {
     // would rank a $100/yr plan above a $10/mo one; normalising to a monthly
     // figure is the only way the order matches what subscriptions actually
     // cost against each other.
-    case "cost": return perMonth(subscription);
+    // In the user's currency, so $20.00 sorts beside €17.05.
+    case "cost": return comparable(perMonth(subscription), subscription.currency);
     // Non-charging rows sort together at one end rather than being scattered
     // through the numbers by a cost they are not paying.
     case "perMonth": return subscription.status === "active" && !isScheduled(subscription)
-      ? perMonth(subscription)
+      ? comparable(perMonth(subscription), subscription.currency)
       : -1;
     // null when a run's start is unknown; the comparator puts those last
     // whichever way the list is sorted, since an unknown has no place in an
     // order of amounts.
-    case "paid": return lifetimePaid(group);
+    case "paid": return lifetimePaid(group) == null ? null : lifetimePaidConverted(group) ?? lifetimePaid(group);
     case "renewal": return subscription.next_renewal_date;
     default: return subscription.name.toLowerCase();
   }
@@ -244,9 +300,11 @@ function matchesSearch(subscription, query, group = null) {
     subscription.category,
     shownStatus(subscription),
     cycleNote(subscription.billing_cycle),
-    money(subscription.cost),
-    subscription.status === "trial" ? money(0) : null,
-    subscription.status === "active" ? money(perMonth(subscription)) : null,
+    money(subscription.cost, subscription.currency),
+    // The code finds every plan in a currency: "usd".
+    subscription.currency,
+    subscription.status === "trial" ? money(0, subscription.currency) : null,
+    subscription.status === "active" ? money(perMonth(subscription), subscription.currency) : null,
     subscription.started_date,
     longDate(subscription.started_date),
     subscription.next_renewal_date,
@@ -255,8 +313,8 @@ function matchesSearch(subscription, query, group = null) {
     subscription.cancelled_date,
     longDate(subscription.cancelled_date),
     subscription.archived_date ? statusLabel("archived") : null,
-    subscription.paid_total == null ? null : money(subscription.paid_total),
-    groupPaid == null ? null : money(groupPaid),
+    subscription.paid_total == null ? null : money(subscription.paid_total, subscription.currency),
+    groupPaid == null ? null : money(groupPaid, lifetimeCurrency(group)),
   ];
   return values.some((value) => value?.toLowerCase().includes(query));
 }
@@ -401,6 +459,8 @@ function SubscriptionTable({
       category: editing.category || "",
       status: editing.status,
       cost: String(editing.cost),
+      // Shown, never edited: a run's currency is fixed once it is added.
+      currency: editing.currency ?? "EUR",
       billing_cycle: editing.billing_cycle,
       // "" rather than null so the date input stays controlled; a row that
       // genuinely has no start date opens with an empty picker.
@@ -608,7 +668,7 @@ function SubscriptionTable({
 
     const draftPerMonth =
       draft && draft.status === "active" && parseAmount(draft.cost) > 0
-        ? money(perMonth({ cost: parseAmount(draft.cost), billing_cycle: draft.billing_cycle }))
+        ? money(perMonth({ cost: parseAmount(draft.cost), billing_cycle: draft.billing_cycle }), draft.currency)
         : "—";
 
     const mobileActionError = (id) =>
@@ -716,7 +776,7 @@ function SubscriptionTable({
                 </span>
                 <span className="mobile-row-cost">
                   <span className="mobile-row-amount">
-                    {subscription.status === "trial" ? money(0) : money(subscription.cost)}
+                    {money(subscription.status === "trial" ? 0 : subscription.cost, subscription.currency)}
                   </span>
                   <span className="mobile-row-permonth">{mobilePerMonthNote(subscription)}</span>
                 </span>
@@ -757,11 +817,11 @@ function SubscriptionTable({
                         </span>
                       </span>
                       <span className="mobile-row-cost">
-                        <span className="mobile-row-amount">{money(run.cost)}</span>
+                        <span className="mobile-row-amount">{money(run.cost, run.currency)}</span>
                         <span className="mobile-row-permonth">
                           {run.paid_total == null
                             ? cycleNote(run.billing_cycle)
-                            : t("table.paidAmount", { amount: money(run.paid_total) })}
+                            : t("table.paidAmount", { amount: money(run.paid_total, run.currency) })}
                         </span>
                       </span>
                       <ChevronRight size={16} />
@@ -800,9 +860,13 @@ function SubscriptionTable({
                 [columnLabel("category"), detailSub.category || "—"],
                 [
                   columnLabel("cost"),
-                  `${detailSub.status === "trial" ? money(0) : money(detailSub.cost)} ${cycleNote(detailSub.billing_cycle)}`,
+                  `${money(detailSub.status === "trial" ? 0 : detailSub.cost, detailSub.currency)} ${cycleNote(detailSub.billing_cycle)}`,
                 ],
-                [columnLabel("perMonth"), detailSub.status === "active" ? money(perMonth(detailSub)) : "—"],
+                [t("fx.billedIn"), `${currencyName(detailSub.currency)} (${detailSub.currency})`],
+                [
+                  columnLabel("perMonth"),
+                  detailSub.status === "active" ? money(perMonth(detailSub), detailSub.currency) : "—",
+                ],
                 [
                   detailSub.status !== "cancelled"
                     ? columnLabel("renewal")
@@ -821,16 +885,16 @@ function SubscriptionTable({
                 // group's total, and splits out this run's share when there
                 // are others. An earlier run's sheet is about that run alone.
                 ...(detailIsEarlier
-                  ? detailSub.paid_total == null ? [] : [[t("table.fact.paid"), money(detailSub.paid_total)]]
+                  ? detailSub.paid_total == null ? [] : [[t("table.fact.paid"), money(detailSub.paid_total, detailSub.currency)]]
                   : [
                       [
                         columnLabel("paid"),
                         lifetimePaid(detailGroup) == null
                           ? t("table.fact.paidUnknown")
-                          : `${money(lifetimePaid(detailGroup))} · ${paidNote(detailGroup)}`,
+                          : `${lifetimeConverted(detailGroup) ? "≈ " : ""}${money(lifetimePaid(detailGroup), lifetimeCurrency(detailGroup))} · ${paidNote(detailGroup)}`,
                       ],
                       ...(detailGroup.runs.length > 1 && detailSub.paid_total != null
-                        ? [[t("table.fact.thisRun"), money(detailSub.paid_total)]]
+                        ? [[t("table.fact.thisRun"), money(detailSub.paid_total, detailSub.currency)]]
                         : []),
                     ]),
                 ...(detailIsEarlier
@@ -884,14 +948,18 @@ function SubscriptionTable({
               <div className="sheet-row">
                 <label className="field">
                   <span className="field-label">{columnLabel("cost")}</span>
-                  <input
-                    className="input tnum"
-                    type="text"
-                    inputMode="decimal"
-                    autoComplete="off"
-                    value={draft.cost}
-                    onChange={(e) => setDraft({ ...draft, cost: e.target.value })}
-                  />
+                  <span className="money-locked">
+                    <input
+                      className="input tnum"
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      value={draft.cost}
+                      onChange={(e) => setDraft({ ...draft, cost: e.target.value })}
+                    />
+                    <span className="code" aria-hidden="true">{draft.currency}</span>
+                  </span>
+                  <span className="field-hint">{t("fx.lockedShort")}</span>
                 </label>
                 <label className="field">
                   <span className="field-label">{t("table.field.cycle")}</span>
@@ -1021,7 +1089,7 @@ function SubscriptionTable({
     if (subscription.id === editingId && draft && draft.id === editingId) {
       const draftPerMonth =
         draft.status === "active" && parseAmount(draft.cost) > 0
-          ? money(perMonth({ cost: parseAmount(draft.cost), billing_cycle: draft.billing_cycle }))
+          ? money(perMonth({ cost: parseAmount(draft.cost), billing_cycle: draft.billing_cycle }), draft.currency)
           : "—";
       return (
         <Fragment key={subscription.id}>
@@ -1070,15 +1138,21 @@ function SubscriptionTable({
           </td>
           <td>
             <span className="edit-cost">
-              <input
-                className="input tnum"
-                type="text"
-                inputMode="decimal"
-                autoComplete="off"
-                aria-label={columnLabel("cost")}
-                value={draft.cost}
-                onChange={(e) => setDraft({ ...draft, cost: e.target.value })}
-              />
+              {/* The currency rides inside the field's edge as text: fixed
+                  once added, and the list guide says why. */}
+              <span className="money-locked">
+                <input
+                  className="input tnum"
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  aria-label={t("fx.costIn", { name: currencyName(draft.currency) })}
+                  title={t("fx.locked")}
+                  value={draft.cost}
+                  onChange={(e) => setDraft({ ...draft, cost: e.target.value })}
+                />
+                <span className="code" aria-hidden="true">{draft.currency}</span>
+              </span>
               <select
                 className="input cycle-select"
                 aria-label={t("table.field.cycle")}
@@ -1177,13 +1251,13 @@ function SubscriptionTable({
           {archived && <span className="tag tag-outline">{statusLabel("archived")}</span>}
         </td>
         <td className="tnum">
-          <span>{trial ? money(0) : money(subscription.cost)}</span>
+          <span>{money(trial ? 0 : subscription.cost, subscription.currency)}</span>
           <span className="sub-note">
-            {trial ? thenNote(subscription) : cycleNote(subscription.billing_cycle)}
+            {trial ? thenNote(subscription) : <CostNote subscription={subscription} />}
           </span>
         </td>
         <td className="tnum">
-          {subscription.status === "active" ? money(perMonth(subscription)) : "—"}
+          {subscription.status === "active" ? money(perMonth(subscription), subscription.currency) : "—"}
         </td>
         <td className="tnum">
           {/* The whole group's total, set like the Cost and Per month
@@ -1191,8 +1265,18 @@ function SubscriptionTable({
               row restored from a backup written before started_date
               existed has no honest total, so it says so rather than
               showing a partial sum. */}
-          <span>{lifetimePaid(group) == null ? "—" : money(lifetimePaid(group))}</span>
-          <span className="sub-note">{paidNote(group)}</span>
+          <span><PaidAmount group={group} /></span>
+          <span className="sub-note">
+            {paidNote(group)}
+            {/* A service billed in another currency: what it came to in the
+                user's, each charge at its own day's rate. */}
+            {!lifetimeConverted(group) && isForeign(lifetimeCurrency(group)) && lifetimePaid(group) > 0 && (
+              <>
+                {" · "}
+                <Converted amount={lifetimePaidConverted(group)} className="" />
+              </>
+            )}
+          </span>
         </td>
         <td className="tnum">
           {/* A cancelled plan is never charged again -- billing is
@@ -1338,12 +1422,12 @@ function SubscriptionTable({
               {run.archived_date && <span className="tag tag-outline">{statusLabel("archived")}</span>}
             </td>
             <td className="tnum">
-              <span>{money(run.cost)}</span>
+              <span>{money(run.cost, run.currency)}</span>
               <span className="sub-note">{cycleNote(run.billing_cycle)}</span>
             </td>
             <td className="tnum">—</td>
             <td className="tnum">
-              <span>{run.paid_total == null ? "—" : money(run.paid_total)}</span>
+              <span>{run.paid_total == null ? "—" : money(run.paid_total, run.currency)}</span>
               <span className="sub-note">
                 {run.started_date ? monthYear(run.started_date) : "—"}
                 {" – "}

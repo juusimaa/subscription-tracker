@@ -13,6 +13,7 @@
 // the account's first one rather than one of them winning arbitrarily.
 
 import { todayISO } from "./format";
+import { CURRENCIES, userCurrency } from "./fx";
 import { t } from "./i18n";
 
 const STATUSES = ["active", "trial", "paused", "cancelled"];
@@ -41,6 +42,7 @@ const CSV_FIELDS = {
   cancelled_date: "cancelled_date",
   paused_date: "paused_date",
   archived_date: "archived_date",
+  currency: "currency",
 };
 
 // A file that cannot be read at all, or a row that would not survive the
@@ -152,10 +154,18 @@ function readRow(raw, where) {
   const next = readDate(raw.next_renewal_date, where, "next_renewal");
   if (!next) throw new BackupFileError(t("backup.noRenewal", { where }));
 
+  // Absent in files written before currencies existed (PLAN.md milestone
+  // 10): the server then uses the user's own, and so does the diff below.
+  const currency = (raw.currency ?? "").toString().trim().toUpperCase() || null;
+  if (currency && !CURRENCIES.includes(currency)) {
+    throw new BackupFileError(t("backup.badCurrency", { where, value: currency }));
+  }
+
   const category = (raw.category ?? "").toString().trim();
   return {
     name,
     cost,
+    currency,
     billing_cycle: cycle,
     next_renewal_date: next,
     started_date: readDate(raw.started_date, where, "started_date"),
@@ -281,6 +291,7 @@ function differs(row, stored) {
   return (
     row.name !== (stored.name ?? "").trim() ||
     money(row.cost) !== money(stored.cost) ||
+    (row.currency ?? userCurrency()) !== (stored.currency ?? "EUR") ||
     row.billing_cycle !== stored.billing_cycle ||
     row.next_renewal_date !== stored.next_renewal_date ||
     (row.started_date ?? null) !== (stored.started_date ?? null) ||

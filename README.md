@@ -84,6 +84,7 @@ that need them ([.env.example](.env.example) documents the same list):
 | `RESEND_API_KEY` | `backend` | Required when `EMAIL_BACKEND=resend`. |
 | `EMAIL_FROM` | `backend` | Sender, on a domain verified in Resend. |
 | `APP_URL` | `backend` | The frontend's address, used to build the links in emails. |
+| `FX_API_URL` | `backend` | Optional. Where exchange rates come from; defaults to [Frankfurter](https://frankfurter.dev)'s ECB rates (`https://api.frankfurter.dev/v1`). Free and keyless. |
 | `VITE_API_URL` | `frontend` | Baked into the browser bundle, so it must be an address *your browser* can reach. The production image reads `API_URL` at container start instead, so one image works against any backend. |
 
 ---
@@ -625,29 +626,39 @@ http://localhost:8000/docs (Swagger UI) and http://localhost:8000/redoc.
 | `GET` | `/health` | Readiness check, used by Docker's healthcheck: 200 only if a `SELECT 1` reaches the database, 503 otherwise. Unauthenticated. |
 | `POST` | `/register` | Create an account. Rejects the request with 403 if `INVITE_CODE` is set and `invite_code` doesn't match. |
 | `POST` | `/token` | Exchange email + password for a JWT (form-encoded; email goes in `username`). |
-| `GET` | `/me` | The logged-in user — used to check a stored token is still valid. Includes `email_verified`. |
+| `GET` | `/me` | The logged-in user — used to check a stored token is still valid. Includes `email_verified` and `currency`. |
+| `PATCH` | `/me` | Change settings: `{currency}`, the currency every total is shown in and new subscriptions start in. |
+| `GET` | `/rates` | ECB reference rates for the currencies on your subscriptions, for converting per-item figures the way the summaries do. Empty when everything is in your own currency. |
 | `PUT` | `/me/password` | Change password, given the current one. Signs out every other session and returns a fresh JWT. |
 | `DELETE` | `/me` | Delete the account and everything in it, given the password. No undo. |
 | `POST` | `/me/verification` | Email the logged-in user a fresh confirmation link. No-op once confirmed. 3/hour. |
 | `POST` | `/verify-email` | Confirm the address in a `?verify=` link's token. Unauthenticated; 400 `expired`/`invalid` for a bad token. |
 | `POST` | `/password-reset` | Email a reset link if the address has an account. Always 202, so it can't reveal which addresses are registered. 5/hour. |
 | `POST` | `/password-reset/confirm` | Set a new password from a `?reset=` link's token and return a fresh JWT. Each link works once, for 1 hour; using it signs out every other session and confirms the address. |
-| `GET` | `/subscriptions` | List, with optional `category`, `billing_cycle`, `status`, `active` filters. Each row includes `paid_total`, what that run has been billed so far. |
-| `POST` | `/subscriptions` | Create one. |
+| `GET` | `/subscriptions` | List, with optional `category`, `billing_cycle`, `status`, `active` filters. Each row includes `paid_total`, what that run has been billed so far in its own `currency`, and `paid_total_converted`, the same in yours. |
+| `POST` | `/subscriptions` | Create one. `currency` defaults to yours; it can't be changed afterwards. |
 | `GET` | `/subscriptions/upcoming` | What is about to be charged: every renewal in the next `days` (default 30), with the full amount due on each day, plus any trial converting in the window. |
 | `GET` | `/subscriptions/{id}` | Fetch one. |
 | `PUT` | `/subscriptions/{id}` | Partial update — send only the fields that change. A cancelled run cannot move to another status in place; use `/restore`. |
 | `POST` | `/subscriptions/{id}/archive` | Hide a cancelled subscription from the main list. Only for cancelled rows; `/unarchive` undoes it. |
-| `POST` | `/subscriptions/{id}/restore` | Reactivate a cancelled service as a linked new run. Optional `cost`, `billing_cycle`, `started_date` and `next_renewal_date` set its new terms. The old run and its spend stay intact. |
+| `POST` | `/subscriptions/{id}/restore` | Reactivate a cancelled service as a linked new run. Optional `cost`, `currency`, `billing_cycle`, `started_date` and `next_renewal_date` set its new terms. The old run and its spend stay intact. |
 | `DELETE` | `/subscriptions/{id}` | Delete one. |
 | `GET` | `/subscriptions/summary/monthly-total` | What is being paid *now*: active subscriptions normalised to a monthly figure, plus the yearly equivalent. |
-| `GET` | `/subscriptions/summary/spend` | What a period *cost*: month-by-month breakdown for a year, each charge counted in the month it was taken, stopped plans included up to the day they stopped. |
+| `GET` | `/subscriptions/summary/spend` | What a period *cost*: month-by-month breakdown for a year, each charge counted in the month it was taken, stopped plans included up to the day they stopped. Converted into your currency, with a per-currency `by_currency` breakdown. |
 | `GET` | `/categories` | Categories with a count of the subscriptions using each. |
 | `POST` | `/categories` | Add an empty category. |
 | `PUT` | `/categories/{id}` | Rename, relabelling every subscription using the old name. |
 | `DELETE` | `/categories/{id}` | Delete; needs `reassign_to=<id>` or `detach=true` if still in use. |
 | `GET` | `/export` | The whole account as one file — `?format=json` (the backup) or `?format=csv` (the spreadsheet version). |
 | `POST` | `/import` | Read such a document back — `?mode=merge` (the default) or `?mode=replace` for a true restore. |
+
+Every total is in the user's currency. A charge in another currency is converted
+at the European Central Bank reference rate of its own day (the latest rate
+before it, for a weekend), and a charge still to come at the latest rate; each
+is rounded to the cent before it is added, so `by_currency` always sums to the
+total. Rates are fetched from Frankfurter on demand and cached in Postgres
+(`app/fx.py`). If the source can't be reached, stored rates are used and the
+response says how old they are (`rates_as_of`, `rates_stale`).
 
 The two summary routes answer genuinely different questions, which is why they
 are separate endpoints rather than one with a flag: `monthly-total` counts only

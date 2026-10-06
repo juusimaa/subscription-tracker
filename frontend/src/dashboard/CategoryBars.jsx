@@ -8,14 +8,19 @@
 // is the whole reason that logic lives there. The responses are cached per
 // (year, category), so stepping between months of a year costs nothing.
 
+import { ApproxMark } from "../Approx";
 import { money } from "../format";
 import { t } from "../i18n";
 
-function CategoryBars({ rows, idle = [], idleLabel, total, onManage }) {
+// `inCurrency` ("in euros") follows the title when any bar is converted.
+function CategoryBars({ rows, idle = [], idleLabel, total, inCurrency, onManage }) {
   return (
     <div className="split-left">
       <div className="section-head">
-        <h2 className="eyebrow">{t("categoryBars.title")}</h2>
+        <h2 className="eyebrow">
+          {t("categoryBars.title")}
+          {inCurrency ? ` · ${inCurrency}` : ""}
+        </h2>
         <button type="button" className="btn btn-ghost btn-small" onClick={onManage}>
           {t("categoryBars.manage")}
         </button>
@@ -32,6 +37,7 @@ function CategoryBars({ rows, idle = [], idleLabel, total, onManage }) {
             <div className={index === 0 ? "cat-head first" : "cat-head"}>
               <span className="cat-name">{row.name}</span>
               <span className="cat-amount">
+                {row.approx && <ApproxMark />}
                 {money(row.amount)}
                 <span className="cat-share"> · {Math.round(share)}%</span>
               </span>

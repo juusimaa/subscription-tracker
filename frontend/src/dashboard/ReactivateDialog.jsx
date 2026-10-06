@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { describeWriteError } from "../api";
 import { costProblem, cycleLabel, longDate, parseAmount, todayISO } from "../format";
+import { CURRENCIES } from "../fx";
 import { t } from "../i18n";
 import { TriangleAlert } from "../icons";
 import { useModal } from "../useModal";
@@ -18,6 +19,9 @@ function ReactivateDialog({ subscription, onConfirm, onClose }) {
   );
   const [cost, setCost] = useState(String(subscription.cost));
   const [cycle, setCycle] = useState(subscription.billing_cycle);
+  // The one place a service's currency can change: a new run starts in it,
+  // and the cancelled run keeps the one its charges were taken in.
+  const [currency, setCurrency] = useState(subscription.currency ?? "EUR");
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const ref = useModal(busy ? undefined : onClose);
@@ -37,6 +41,7 @@ function ReactivateDialog({ subscription, onConfirm, onClose }) {
     try {
       await onConfirm({
         cost: parseAmount(cost),
+        currency,
         billing_cycle: cycle,
         started_date: firstChargeDate,
         next_renewal_date: firstChargeDate,
@@ -61,17 +66,30 @@ function ReactivateDialog({ subscription, onConfirm, onClose }) {
         <p className="dialog-title">{t("reactivate.title", { name: subscription.name })}</p>
         <p className="dialog-body">{t("reactivate.body")}</p>
         <div className="reactivation-fields">
-          <label className="field">
-            <span className="field-label">{t("reactivate.cost")}</span>
-            <input
-              className="input tnum"
-              type="text"
-              inputMode="decimal"
-              autoComplete="off"
-              value={cost}
-              onChange={(event) => setCost(event.target.value)}
-            />
-          </label>
+          <div className="field">
+            <label className="field-label" htmlFor="reactivate-cost">{t("reactivate.cost")}</label>
+            <span className="money-field">
+              <input
+                id="reactivate-cost"
+                className="input tnum"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                value={cost}
+                onChange={(event) => setCost(event.target.value)}
+              />
+              <select
+                className="input"
+                aria-label={t("fx.currency")}
+                value={currency}
+                onChange={(event) => setCurrency(event.target.value)}
+              >
+                {CURRENCIES.map((code) => (
+                  <option key={code} value={code}>{code}</option>
+                ))}
+              </select>
+            </span>
+          </div>
           <label className="field">
             <span className="field-label">{t("reactivate.cycle")}</span>
             <select className="input" value={cycle} onChange={(event) => setCycle(event.target.value)}>

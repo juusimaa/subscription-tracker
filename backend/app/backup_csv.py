@@ -35,6 +35,9 @@ from app import schemas
 # month in the spend summary with it -- a round trip that changes the numbers
 # is not a round trip. Adding columns keeps the pinned ones where they are.
 #
+# `currency` (PLAN.md milestone 10) is appended last for the same reason: a
+# file read back without it imports in the importing user's currency.
+#
 # The short names are the handoff's; the appended ones are named after the API
 # fields they carry, which is also what the JSON export calls them.
 COLUMNS = [
@@ -48,6 +51,7 @@ COLUMNS = [
     "cancelled_date",
     "paused_date",
     "archived_date",
+    "currency",
 ]
 
 
@@ -88,6 +92,7 @@ def to_csv(backup: schemas.Backup) -> str:
                 _cell(subscription.cancelled_date),
                 _cell(subscription.paused_date),
                 _cell(subscription.archived_date),
+                subscription.currency or "",
             ]
         )
     return buffer.getvalue()
