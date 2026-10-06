@@ -599,6 +599,7 @@ standalone pages that need no build, and are published next to the UI mock:
 
 - [Issue #49 — group subscriptions](https://juusimaa.github.io/subscription-tracker/mocks/issue-49-group-subscriptions.html)
 - [Issue #88 — lifetime spend](https://juusimaa.github.io/subscription-tracker/mocks/issue-88-lifetime-spend.html)
+- [Milestone 10 — multi-currency](https://juusimaa.github.io/subscription-tracker/mocks/milestone-10-multi-currency.html)
 
 ## API reference
 

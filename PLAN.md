@@ -68,50 +68,8 @@ docker-subscription-tracker/
 7. ~~**Invite code for registration**~~ ✅ — gate `POST /register` behind a shared invite code (env var, checked alongside the existing rate limit) before the app is reachable on a public URL. Registration is architecturally open to anyone (milestone 6), and step 9 is what actually verifies an email belongs to whoever is registering with it — until that exists, an invite code is the stopgap that keeps step 8's public deploy from being genuinely open signup. Originally meant to go once step 9 landed; it stays while the app is in beta (see step 9).
 8. ~~**Deploy to Azure Container Apps**~~ ✅ — backend + frontend as two container apps, both pulling the images already published to GHCR. Database is [Neon](https://neon.tech)'s free Postgres tier rather than Azure Database for PostgreSQL: Neon costs nothing at this scale and scales to zero on its own, while the cheapest Azure-managed Postgres (Burstable B1ms) runs ~$15–20/month with no free tier. Redis is dropped for this deployment — `app/cache.py` already fails open, so there's nothing worth paying to keep. Details below.
 9. ~~**Password reset and email verification**~~ ✅ — the two account-surface gaps milestone 6 deliberately skipped, built for real this time. Needs an actual email-sending path (e.g. [Resend](https://resend.com)), which nothing in this stack has today — only `email-validator`, which checks an address's *format*, not that anyone reads it. New accounts land unverified and stay usable (registering, logging in, tracking subscriptions all still work), and anything that emails the user unprompted (any future renewal-reminder notification) is gated on verification. Password reset is the exception: it works for unverified accounts too, and completing it verifies the address. Once this exists, step 7's invite code is no longer the thing standing between a public URL and open signup — but it deliberately **stays** while the app is in beta; removing it is a separate, later decision. Provider: Resend (free tier). Details below.
-10. **Multi-currency support** — closes TODO.md's D7, which was recorded as a decision to revisit rather than a task, on the grounds that every subscription today is silently assumed to be EUR. Currency lives on the **subscription**, not the user — `cost` gains a `currency` column, since two subscriptions on one account can legitimately be billed in different currencies (D4's own reasoning: don't force a schema constraint that isn't true about the user's money). Users additionally get a **default currency** setting, pre-filling new subscriptions rather than acting as a source of truth — the first of what will likely be several user-specific settings, so it gets its own typed column(s) rather than a JSONB blob, following the `token_version` precedent (milestone 6) instead of inventing a schemaless settings store. Still to decide, and worth settling before backend work starts since it drives the schema and has real UX impact: how the category panel and the per-month/year cost panel show a mix of currencies once summing raw `cost` across rows stops being meaningful — separate per-currency subtotals, a converted grand total (needing a conversion-rate source, live or cached), or something else.
-    > **These mocks date from 2026-09-06** and predate a month of dashboard
-    > changes. Treat them as the intent, not the layout, and refresh them before
-    > implementation starts. What has moved on since:
-    > - The **Account dialog** now exists and holds the language picker, so it
-    >   is the natural home for a display-currency setting, rather than a
-    >   section at the bottom of the page.
-    > - The hero has a **Next charge / Trial converts strip** directly under it
-    >   (#70). The mock puts the per-currency breakdown in that spot; the two
-    >   need ordering.
-    > - **Coming up** now splits at today into "Already charged this month"
-    >   (#69) and shows trials as "Trial converts … if kept" (#80).
-    > - The list gained **Per month** and **Paid to date** columns (#88), and a
-    >   group's lifetime total. None of the mocks shows how those convert:
-    >   today's rate or the rate at each charge.
-    > - The **KPI band** (Charging in the next 30 days, Largest single charge,
-    >   Change since …) and **By category** are not mocked either.
-    > - The add form is folded behind "Add a subscription" on desktop and is a
-    >   sheet on mobile (#84); the cost field mock still applies inside it.
-    > - The UI is now bilingual (#92), so currency names and the "≈" copy need
-    >   Finnish strings, and number formatting follows the language.
-    * Currency settings at the bottom. TBD how to poll currency rates.
-      
-       <img width="1874" height="596" alt="Currency settings at the bottom of the page" src="https://github.com/user-attachments/assets/080681c0-1b1c-42e3-a798-914f770ec632" />
-    * Cost input control when adding a new subscription
-      
-       <img width="390" height="250" alt="Cost input control for new subsctiption" src="https://github.com/user-attachments/assets/4aee43ca-00c4-4491-9af6-484959dd5682" />
-    * Cost column when editing subsctiption (currency cannot be changed)
-   
-      <img width="508" height="194" alt="image" src="https://github.com/user-attachments/assets/71b18c65-4e1c-4628-836a-f253aee136cf" />
-    * Currency breakdown at the top of the page. When all subscriptions uses same currency this is not shown.
-   
-      <img width="2220" height="974" alt="image" src="https://github.com/user-attachments/assets/be6185f1-3667-47b9-b3b1-84785453d95c" />
-    * Coming up panel
-   
-      <img width="904" height="1110" alt="image" src="https://github.com/user-attachments/assets/6f772707-5aac-407b-96d6-4bb0bcb5abd3" />
-    * Trend strip (per-month chart) uses only selected currency
-   
-      <img width="2206" height="456" alt="image" src="https://github.com/user-attachments/assets/e13a8ca2-baeb-4c15-b8b7-90eec78bb4a4" />
-
-
-
-
-
+10. **Multi-currency support** — closes TODO.md's D7, which was recorded as a decision to revisit rather than a task, on the grounds that every subscription today is silently assumed to be EUR. Currency lives on the **subscription**, not the user — `cost` gains a `currency` column, since two subscriptions on one account can legitimately be billed in different currencies (D4's own reasoning: don't force a schema constraint that isn't true about the user's money). Users additionally get a **default currency** setting, pre-filling new subscriptions rather than acting as a source of truth — the first of what will likely be several user-specific settings, so it gets its own typed column(s) rather than a JSONB blob, following the `token_version` precedent (milestone 6) instead of inventing a schemaless settings store. How totals show a mix of currencies is settled: every total is **converted into the user's currency at ECB reference rates** and marked ≈, with a per-currency statement under the headline when the period holds more than one currency.
+    Decided 2026-10-06. Details and a refreshed mock are below.
 
 ## Milestone 5 — GitHub Actions to GHCR (done)
 
@@ -444,6 +402,185 @@ Each runs on mobile and desktop.
   yet.
 - Changing the account email address.
 - Mailpit in compose, a nice-to-have if the console backend proves too thin.
+
+## Milestone 10 — Multi-currency support (planned)
+
+**Mock:** [`docs/mocks/milestone-10-multi-currency.html`](docs/mocks/milestone-10-multi-currency.html).
+It is a static page that uses the shipped `modernist.css` and `dashboard.css`
+verbatim, plus one marked block of new rules. Toolbar toggles switch between
+mixed currencies and all in euros, fresh and stale rates, and desktop and
+mobile. Planned with impeccable shape: Operate mode, inside the existing
+DESIGN.md world.
+
+**Decisions (2026-10-06):**
+- **Totals are converted, with a breakdown.** Every total (hero, KPI band,
+  categories, trend strip) is in the user's currency and marked ≈ when it
+  contains a converted charge. When the selected period holds more than one
+  currency, a short "In each currency" statement under the hero prose lists
+  the native sum per currency and its converted figure. An account in a
+  single currency sees nothing new.
+- **Rates come from the ECB, through [Frankfurter](https://frankfurter.dev).**
+  It's free and needs no key. The backend fetches on demand and caches in
+  Postgres, so nothing has to stay on and hosting stays at €0. ECB publishes
+  about 30 currencies, and that list is the set a subscription can use.
+- **Each charge is converted at its own day's rate.** A charge already taken
+  uses the latest ECB rate on or before its date (a weekend uses Friday's).
+  A charge still to come uses the latest rate. Paid to date and a group's
+  lifetime line add up charges converted this way.
+- **What charges stays native.** Rows, the next-charge strip, Coming up and
+  the trial section lead with the amount the service actually takes
+  ("$20.00"), followed by "≈ €17.05" in hint ink when the currency differs
+  from the user's.
+- **One setting.** `users.currency` is both the display currency and the
+  default for new subscriptions. It lives in the Account dialog, after
+  Language.
+- **The currency is fixed once a subscription is added**, as the 2026-09-06
+  mock had it. A service that changes currency is cancelled and re-added, so
+  the two runs group together. *Open:* this means a currency picked by
+  mistake can only be fixed by deleting the row. The alternative is to allow
+  the edit as a correction to every past charge of that run.
+
+### Backend
+
+- **Migration `0007_currency`:**
+  - `subscriptions.currency` and `users.currency`, both `String(3)`, not
+    null, with server default `'EUR'`. Every existing row backfills to EUR,
+    which is what it already was.
+  - `fx_rates (day DATE, currency String(3), rate Numeric(12, 6))`, with
+    primary key `(day, currency)`. A rate is units of the currency per 1 EUR,
+    which is the ECB's own base, so a cross rate (USD → GBP) is
+    `rate[GBP] / rate[USD]`.
+- **`app/fx.py`:**
+  - `ensure_rates(currencies, since)` fills gaps with one Frankfurter
+    time-series call (`/v1/{since}..?symbols=…`). It refreshes "latest" at
+    most every 6 hours, with a 3 s timeout.
+  - It **fails open**: on error it uses what is stored, and reports
+    `rates_as_of` plus `stale: true`.
+  - `rate_on(currency, day)` is the latest stored row on or before `day`.
+  - `convert(amount, from, to, day)` rounds to the cent **per charge**, so a
+    sum of converted charges always equals the sum shown line by line.
+  - The ECB currency list is a constant in the app, not fetched, so
+    validating a subscription never touches the network.
+- **API:**
+  - `Subscription` gains `currency`, validated against the list.
+  - `PATCH /me {currency}` sets the user's currency, and `User` responses
+    include it.
+  - `GET /rates?currencies=USD,GBP&since=YYYY-MM-DD` returns
+    `{base: "EUR", as_of, stale, rates: {USD: [[day, rate], …]}}`. It covers
+    only the currencies on the user's own rows, so the payload stays small.
+    The frontend converts with the same rule as the backend.
+  - `/subscriptions/summary/spend` converts per charge into the user's
+    currency and adds `by_currency` (native sum and converted sum per code).
+  - `paid_total` stays native, and a new `paid_total_converted` is added.
+- **Backups:**
+  - CSV export gains a `currency` column.
+  - On import, a missing column means the user's currency.
+  - An unknown code is a row error, like a bad date.
+- **Tests:**
+  - The conversion rule: weekend fallback, a future charge uses the latest
+    rate, and per-charge rounding sums exactly.
+  - Fail open when Frankfurter is down, with a mocked `httpx` transport.
+  - A currency with no rate at all is left out of the total and listed as
+    not converted.
+  - Cross rates when the user's currency isn't EUR.
+  - Validation, `PATCH /me`, and the migration on the SQLite + Postgres
+    matrix.
+
+### Frontend
+
+- **`format.js`:** `money(amount, currency)` uses `Intl.NumberFormat` with
+  the currency style in the language's locale, so English reads "$20.00" and
+  "CA$20.00", and Finnish reads "20,00 $". The EUR-only comment and
+  hardcoding go.
+- **New `fx.js`:** holds the rates from `GET /rates` and the shared
+  `toUserCurrency(amount, currency, isoDate)`. `renewals.js`, `groups.js`,
+  the KPI maths and category bars all go through it.
+- **The ≈ mark:**
+  - The glyph is `aria-hidden`, with "about" / "noin" as screen-reader text.
+  - It's set at 400 weight and Ink 70%, never red, including in front of the
+    hero total.
+  - With the mark leading, the hero figure drops its optical
+    `margin-left: -0.045em`.
+- **Hero:**
+  - The prose gains "…and 3 currencies, shown in euros".
+  - When mixed, the "In each currency" statement sits under the prose and
+    above the next-charge strip. It is a ruled three-column grid (code,
+    native, ≈ converted) with a note naming the rate date. When the rates are
+    stale, the note says they couldn't be refreshed. There is no banner and
+    no red: the user's data is fine.
+- **KPI band:**
+  - Converted figures carry the ≈.
+  - "Largest single charge" shows the native amount, with the converted
+    figure as a note.
+  - "Change since…" adds "The same charges as August. The difference is the
+    exchange rate." when the set of charges is unchanged and only the rates
+    moved.
+- **Trend strip and By category:** the eyebrow gains "· in euros" when
+  mixed. A category's members line shows a foreign member's native amount:
+  "ChatGPT Plus ($20.00)".
+- **List:**
+  - Cost, Per month and Paid to date stay native. When the currency differs,
+    the sub-note adds "≈ €…".
+  - Sorting uses converted values.
+  - Search matches the code and the symbol.
+  - Mobile rows keep the native cost on top, and the per-month line shows the
+    user's currency.
+  - The detail sheet adds "Billed in: US dollar (USD)".
+  - The list guide gets one entry explaining ≈.
+- **Add form:**
+  - Cost becomes an amount plus currency control (`.money-field`), defaulting
+    to the user's currency.
+  - Choosing another currency shows the hint "Totals show it in euros, at
+    the ECB rate."
+- **Edit:** the currency shows as fixed text inside the cost field
+  (`.money-locked`). The reason goes in the list guide and in the mobile
+  sheet's field hint.
+- **Account dialog:**
+  - A "Currency" section after Language, with a select of the ECB list as
+    "USD — US dollar".
+  - It saves on change, with a one-line status.
+  - It shows the rate attribution and date.
+- **Locales:** the new strings are in the mock's table, in English and
+  Finnish. Currency names come from `Intl.DisplayNames`.
+- **`ui-mock-api.js`:** add USD and GBP rows and a `/rates` stub.
+
+**States to cover in Playwright visual specs:**
+- the dashboard with mixed currencies
+- the dashboard all in EUR (the existing goldens must not change)
+- stale rates
+- a currency with no rate yet
+- the add form with a foreign currency
+- an edit row with a locked currency
+- the Account Currency section
+- a user whose currency isn't EUR
+
+Each runs on mobile and desktop.
+
+**Out of scope:**
+- Crypto and currencies the ECB doesn't publish.
+- A per-user rate override.
+- Converting the CSV export's figures, which stay native.
+
+### Earlier mocks (2026-09-06), superseded by the mock above
+
+* Currency settings at the bottom. TBD how to poll currency rates.
+  
+   <img width="1874" height="596" alt="Currency settings at the bottom of the page" src="https://github.com/user-attachments/assets/080681c0-1b1c-42e3-a798-914f770ec632" />
+* Cost input control when adding a new subscription
+  
+   <img width="390" height="250" alt="Cost input control for new subsctiption" src="https://github.com/user-attachments/assets/4aee43ca-00c4-4491-9af6-484959dd5682" />
+* Cost column when editing subsctiption (currency cannot be changed)
+   
+  <img width="508" height="194" alt="image" src="https://github.com/user-attachments/assets/71b18c65-4e1c-4628-836a-f253aee136cf" />
+* Currency breakdown at the top of the page. When all subscriptions uses same currency this is not shown.
+   
+  <img width="2220" height="974" alt="image" src="https://github.com/user-attachments/assets/be6185f1-3667-47b9-b3b1-84785453d95c" />
+* Coming up panel
+   
+  <img width="904" height="1110" alt="image" src="https://github.com/user-attachments/assets/6f772707-5aac-407b-96d6-4bb0bcb5abd3" />
+* Trend strip (per-month chart) uses only selected currency
+   
+  <img width="2206" height="456" alt="image" src="https://github.com/user-attachments/assets/e13a8ca2-baeb-4c15-b8b7-90eec78bb4a4" />
 
 ## Notes / rationale
 

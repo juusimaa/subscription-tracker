@@ -1,0 +1,3358 @@
+<!doctype html>
+<!--
+  Design mock for PLAN.md milestone 10, "Multi-currency support".
+
+  A proposal, not the app. It is one static page so it can be reviewed before
+  any schema or component changes. The app styles below are modernist.css and
+  dashboard.css copied verbatim from main at 6ad39e1, so everything that does
+  not change looks exactly as it ships. The rules this milestone adds are in
+  the block marked "new for milestone 10", and that block is the part to
+  review. The markup uses the real components' class names; it was taken from
+  the running ui.html harness (sample clock 15 Sep 2026, the same as
+  ui-mock-api.js).
+
+  The figures are recomputed from the sample rows and the sample rates by
+  the script at the bottom. The rules it follows are in PLAN.md:
+  - each charge is converted at the ECB reference rate of its own day (the
+    latest rate on or before it)
+  - a charge still to come uses the latest rate
+  - every converted charge is rounded to the cent before it is summed, so
+    the per-currency lines always add up to the total exactly.
+
+  The Mobile toolbar button loads this same file in a 390px iframe
+  (?frame=mobile), so the real 760px media queries apply.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Multi-currency mock</title>
+    <meta name="description" content="Design mock for milestone 10: subscriptions billed in several currencies, totals converted at ECB rates." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet" />
+    <style>
+/* ===== modernist.css (verbatim, minus its font @import) ===== */
+/* Modernist — design-system tokens and component classes. This file is the source of truth for the system's look; retune it here and see readme.md. */
+
+
+:root {
+  --color-bg: #f3f2f2;
+  --color-surface: #eae9e9;
+  --color-text: #201e1d;
+  --color-accent: #ec3013;
+  --color-accent-2: #e15b47;
+  --color-divider: color-mix(in srgb, #201e1d 40%, transparent);
+  /* Control strokes (inputs, segmented controls, secondary buttons) are UI
+     components, so WCAG 1.4.11 asks 3:1 of them; the 40% divider only
+     reaches 2.4:1, which is fine for a rule between rows but not for the
+     edge of something you click. */
+  --color-stroke: color-mix(in srgb, #201e1d 52%, transparent);
+  /* Fills that carry paper text (primary buttons, selected segments) need
+     4.5:1, which Signal Red itself (3.76:1 against paper) misses. Signal Red
+     Deep passes at 6.4:1; the pressed steps go darker still. */
+  --color-accent-fill: #ae1800;
+  --color-accent-fill-hover: #7c1405;
+  --color-accent-fill-active: #4d170e;
+
+  /* Tonal ramps — generated in OKLCH on one shared lightness scale, so the
+     same step of any role matches the others in visual value. */
+  --color-neutral-100: #f8f4f4;
+  --color-neutral-200: #eae7e7;
+  --color-neutral-300: #d7d3d3;
+  --color-neutral-400: #bab6b6;
+  --color-neutral-500: #9b9797;
+  --color-neutral-600: #7d7979;
+  --color-neutral-700: #605d5d;
+  --color-neutral-800: #444141;
+  --color-neutral-900: #2d2b2b;
+
+  --color-accent-100: #fff2ef;
+  --color-accent-200: #ffe0d9;
+  --color-accent-300: #ffc4b8;
+  --color-accent-400: #ff9783;
+  --color-accent-500: #ff563c;
+  --color-accent-600: #dd2b0f;
+  --color-accent-700: #ae1800;
+  --color-accent-800: #7c1405;
+  --color-accent-900: #4d170e;
+
+  --color-accent-2-100: #fff2ef;
+  --color-accent-2-200: #ffe0da;
+  --color-accent-2-300: #ffc4b9;
+  --color-accent-2-400: #ff9784;
+  --color-accent-2-500: #ef6853;
+  --color-accent-2-600: #c94b39;
+  --color-accent-2-700: #9e3526;
+  --color-accent-2-800: #71261b;
+  --color-accent-2-900: #471d16;
+
+  --font-heading: "Archivo", system-ui, sans-serif;
+  --font-heading-weight: 800;
+  --font-body: "Archivo", system-ui, sans-serif;
+
+  --space-1: 4.0px;
+  --space-2: 8.0px;
+  --space-3: 12.0px;
+  --space-4: 16.0px;
+  --space-6: 24.0px;
+  --space-8: 32.0px;
+
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+
+  /* Elevation — derived from the ground: soft ink-tinted shadows on a
+     light theme, a hairline edge + ambient darkness on a dark one. */
+  --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
+  --shadow-md: 0 3px 10px color-mix(in srgb, #2d2b2b 16%, transparent);
+  --shadow-lg: 0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent);
+
+  color-scheme: light dark;
+}
+
+/* Dark mode — reversed tonal ramps (same OKLCH lightness steps, opposite
+   ends) plus the elevation treatment for a dark ground: a hairline edge +
+   ambient darkness instead of the soft ink-tinted shadow. Every component
+   pairs a ramp step consistently (e.g. accent-100 fill + accent-900 text),
+   so reversing the whole ramp keeps every existing fill/text pairing legible
+   without touching component code. The accent brand red (--color-accent,
+   -2 and all ramp bases) is unchanged; only neutrals, the accent ramp's tint
+   steps, dividers and shadows flip. Follows the OS/browser setting only —
+   no in-app override. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-bg: #16151a;
+    --color-surface: #201f24;
+    --color-text: #f1efee;
+    --color-divider: color-mix(in srgb, #f1efee 30%, transparent);
+    --color-stroke: color-mix(in srgb, #f1efee 40%, transparent);
+    /* Dark ground text on a red fill: Signal Red gives 4.3:1, this lighter
+       step 5.8:1, and the pressed steps lighten further. */
+    --color-accent-fill: #ff563c;
+    --color-accent-fill-hover: #ff7a63;
+    --color-accent-fill-active: #ff9783;
+
+    --color-neutral-100: #2d2b2b;
+    --color-neutral-200: #444141;
+    --color-neutral-300: #605d5d;
+    --color-neutral-400: #7d7979;
+    --color-neutral-500: #9b9797;
+    --color-neutral-600: #bab6b6;
+    --color-neutral-700: #d7d3d3;
+    --color-neutral-800: #eae7e7;
+    --color-neutral-900: #f8f4f4;
+
+    --color-accent-100: #4d170e;
+    --color-accent-200: #7c1405;
+    --color-accent-300: #ae1800;
+    --color-accent-400: #dd2b0f;
+    --color-accent-500: #ff563c;
+    --color-accent-600: #ff9783;
+    --color-accent-700: #ffc4b8;
+    --color-accent-800: #ffe0d9;
+    --color-accent-900: #fff2ef;
+
+    --color-accent-2-100: #471d16;
+    --color-accent-2-200: #71261b;
+    --color-accent-2-300: #9e3526;
+    --color-accent-2-400: #c94b39;
+    --color-accent-2-500: #ef6853;
+    --color-accent-2-600: #ff9784;
+    --color-accent-2-700: #ffc4b9;
+    --color-accent-2-800: #ffe0da;
+    --color-accent-2-900: #fff2ef;
+
+    --shadow-sm: 0 0 0 1px color-mix(in srgb, #f1efee 14%, transparent), 0 2px 6px rgba(0, 0, 0, .55);
+    --shadow-md: 0 0 0 1px color-mix(in srgb, #f1efee 14%, transparent), 0 10px 26px rgba(0, 0, 0, .6);
+    --shadow-lg: 0 0 0 1px color-mix(in srgb, #f1efee 16%, transparent), 0 22px 50px rgba(0, 0, 0, .7);
+  }
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+}
+h1, h2, h3, h4 { font-family: var(--font-heading); font-weight: var(--font-heading-weight); }
+
+.grayscale{filter:grayscale(1) contrast(1.08)}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Components — built with the tokens above. Plain CSS
+   on plain HTML: no JavaScript, no build step. Each class is documented in
+   readme.md and demonstrated in foundations/ and components/.
+   ══════════════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; font-size: 15px; line-height: 1.55; font-weight: 400; }
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  line-height: 1.12; letter-spacing: -0.015em; margin: 0 0 var(--space-2);
+}
+h1 { font-size: 42px; }
+h2 { font-size: 32px; }
+h3 { font-size: 25px; }
+h4 { font-size: 20px; }
+h5 { font-size: 16px; }
+h6 { font-size: 13px; }
+h6 { letter-spacing: 0.08em; text-transform: uppercase; }
+p { margin: 0 0 var(--space-3); }
+a { color: var(--color-accent-700); text-underline-offset: 3px; }
+img { display: block; max-width: 100%; }
+figure { margin: 0; }
+figcaption {
+  font-size: 11px; margin-top: var(--space-1);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+}
+.text-muted { color: color-mix(in srgb, var(--color-text) 68%, transparent); }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+
+/* — rules — */
+.hr {
+  height: 2px; border: 0; margin: var(--space-4) 0;
+  background: var(--color-divider);
+}
+
+/* — buttons — */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  cursor: pointer; text-decoration: none;
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 14px; line-height: 1.2; color: var(--color-text); /* matches the .input's 14px —
+     the pair sits side by side in sign-up rows */
+  background: transparent; border: 1px solid transparent;
+  padding: var(--space-2) calc(var(--space-3) * 1.2);
+  border-radius: var(--radius-md);
+}
+.btn svg { display: block; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { background: var(--color-accent-fill); color: var(--color-bg); }
+.btn-primary:hover { background: var(--color-accent-fill-hover); }
+.btn-primary:active { background: var(--color-accent-fill-active); }
+.btn-secondary { border-color: var(--color-stroke); }
+.btn-secondary:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.btn-secondary:active { background: color-mix(in srgb, var(--color-text) 14%, transparent); }
+.btn-ghost { color: var(--color-text); padding-inline: var(--space-1); }
+.btn-ghost:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.btn-ghost:active { background: color-mix(in srgb, var(--color-text) 14%, transparent); }
+/* The one ghost that stays red: an action that deletes or ends something. */
+.btn-ghost.destructive { color: var(--color-accent-700); }
+.btn-icon { width: 36px; height: 36px; padding: 0; }
+.btn-block { width: 100%; margin-top: var(--space-2); justify-content: flex-start; text-align: left; }
+
+/* — forms — */
+.field > label {
+  display: block; font-size: 12px; margin-bottom: 5px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.input {
+  width: 100%; min-height: 36px; padding: 6px 10px; font: inherit;
+  font-size: 14px; color: var(--color-text); caret-color: var(--color-accent);
+  background: var(--color-surface);
+  border: 1px solid var(--color-stroke); border-radius: var(--radius-md);
+}
+.input:hover { border-color: color-mix(in srgb, var(--color-text) 70%, transparent); }
+/* Browsers default placeholders to a light grey of their own that tracks
+   neither theme nor contrast; this is the hint step of the ink ramp. */
+::placeholder { color: color-mix(in srgb, var(--color-text) 68%, transparent); opacity: 1; }
+.input:focus-visible { border-color: var(--color-accent); outline-offset: 0; }
+textarea.input { min-height: 90px; resize: vertical; }
+/* WebKit's native menulist rendering ignores an author's padding and
+   min-height on <select> outright, so a select styled with .input alone
+   renders well under the height of the text/date inputs beside it (Safari
+   confirmed at ~20px against these inputs' 36-44px). appearance:none hands
+   sizing back to this stylesheet; the two-gradient chevron below replaces
+   the native arrow that comes off with it, in currentColor so it never
+   needs its own color to track the theme with. */
+/* input[type="date"] keeps the same native-appearance exception as select
+   above, just without a visible symptom until #9: iOS Safari's date input
+   computes box-sizing: content-box and ignores min-height while its default
+   appearance is active (the CSS spec explicitly allows a UA to disregard
+   the box model for a control that keeps its native rendering), so padding
+   and border render on top of the width the grid assigned it instead of
+   inside it -- exactly the overflow-into-the-next-column #9 reported, and
+   only on real hardware, since neither Chromium nor the Simulator carries
+   that exception. appearance:none hands sizing back to this stylesheet the
+   same way it already does for select; the native calendar-icon affordance
+   comes from ::-webkit-calendar-picker-indicator, which stays functional
+   independent of the input's own appearance. */
+input[type="date"].input {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+select.input {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 30px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 16px) 55%, calc(100% - 11px) 55%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+.radio { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
+.radio input, .seg-opt input {
+  position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
+}
+.radio .dot {
+  width: 16px; height: 16px; flex: none; border-radius: 50%;
+  border: 1.5px solid var(--color-stroke);
+}
+.radio:hover .dot { border-color: var(--color-accent); }
+.radio input:checked + .dot {
+  border-color: var(--color-accent); background: var(--color-accent);
+  box-shadow: inset 0 0 0 4px var(--color-bg);
+}
+.radio input:focus-visible + .dot { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.seg {
+  display: inline-flex; overflow: hidden;
+  border: 1px solid var(--color-stroke); border-radius: var(--radius-md);
+}
+.seg-opt {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px; font-size: 13px; cursor: pointer;
+}
+.seg-opt + .seg-opt { border-left: 1px solid var(--color-stroke); }
+.seg-opt:has(input:checked) { background: var(--color-text); color: var(--color-bg); }
+.seg-opt:not(:has(input:checked)):hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.seg-opt:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+
+/* — cards — */
+.card {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-surface);
+}
+.card-kicker { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: color-mix(in srgb, var(--color-text) 70%, transparent); }
+.card-title {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 17px; line-height: 1.2;
+}
+.card-body { margin: 0; font-size: 13px; opacity: 0.8; flex: 1; }
+.card-meta {
+  display: flex; align-items: center; gap: 6px; font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+}
+.elev-sm { box-shadow: var(--shadow-sm); }
+.elev-md { box-shadow: var(--shadow-md); }
+.elev-lg { box-shadow: var(--shadow-lg); }
+
+/* — tags — */
+.tag {
+  display: inline-flex; align-items: center; font-size: 12px;
+  letter-spacing: 0.02em; padding: 2px 8px;
+  border-radius: calc(var(--radius-md) * 0.75);
+}
+.tag + .tag { margin-left: var(--space-1); }
+.tag-accent { background: var(--color-accent-100); color: var(--color-accent-800); }
+.tag-accent-2 { background: var(--color-accent-2-100); color: var(--color-accent-2-800); }
+.tag-neutral { background: var(--color-neutral-100); color: var(--color-neutral-800); }
+.tag-outline { border: 1px solid var(--color-stroke); color: var(--color-text); }
+
+/* — navigation — */
+.nav {
+  display: flex; align-items: center; gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 2px solid var(--color-divider);
+}
+.nav-brand {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 18px; margin-right: auto;
+}
+.nav a { color: inherit; text-decoration: none; font-size: 14px; }
+.nav a:hover { text-decoration: underline; text-underline-offset: 6px; }
+.nav a[aria-current] { text-decoration: underline 2px; text-underline-offset: 6px; }
+
+/* — tables — */
+.table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table th {
+  text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+  padding: var(--space-2); border-bottom: 2px solid var(--color-divider);
+}
+.table td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-divider);
+}
+.table tbody tr:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+
+/* — dialog — */
+.dialog-backdrop {
+  position: fixed; inset: 0; display: grid; place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-neutral-900) 50%, transparent);
+}
+.dialog {
+  width: min(440px, 100%); display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4); border-radius: var(--radius-lg);
+  background: var(--color-surface); box-shadow: var(--shadow-lg);
+}
+.dialog-title {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 20px;
+}
+.dialog-body { font-size: 14px; opacity: 0.85; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+
+
+/* ===== dashboard.css (verbatim) ===== */
+/* Spending dashboard — layout on top of the Modernist design system.
+ *
+ * modernist.css owns every colour, size and spacing value as a custom
+ * property; this file only arranges things. Nothing here invents a hex: where
+ * the design calls for translucency it is color-mix on --color-text at the
+ * exact percentages the handoff lists (78 body, 70 labels, 65, 60, 55
+ * sub-notes, 45 cancelled rows, 35 idle sort arrows, 10 bar tracks, 7 button
+ * hover).
+ *
+ * Two rules run through all of it: zero border radius anywhere, and rules do
+ * the organising -- 2px between major sections, 1px between peer rows and
+ * inside control groups. Do not soften either.
+ *
+ * Desktop-first, as designed. Below the 1240px content width the container
+ * simply keeps its 32px gutters; no tablet or mobile collapse was specified
+ * for the KPI band, the 7/5 split or the table, and guessing one is worse than
+ * asking (README, "Responsive").
+ */
+
+body { text-wrap: pretty; }
+
+/* — beta tag & footer — */
+.nav-beta-tag { vertical-align: middle; }
+
+.app-footer {
+  padding: 24px 32px calc(24px + env(safe-area-inset-bottom));
+  border-top: 2px solid var(--color-divider);
+  text-align: center;
+}
+.app-footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+  font-size: 13px;
+  text-decoration: none;
+}
+.app-footer-link:hover { color: var(--color-text); }
+
+/* Every figure on the page is tabular: columns of money that shift width as
+   the digits change read as noise. */
+.tnum { font-feature-settings: 'tnum' 1; }
+
+.page {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+
+/* — header — */
+
+.app-nav {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--color-bg);
+  /* Keeps the brand flush with page content at any width: the gutter grows
+     with the window until the 1240px container takes over. */
+  padding-inline: max(32px, calc((100% - 1240px) / 2 + 32px));
+}
+.app-nav a { text-decoration: none; }
+.nav-link { font-size: 14px; color: var(--color-text); }
+.nav-email {
+  font-size: 13px;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+  font-feature-settings: 'tnum' 1;
+}
+.nav-account { display: inline-flex; align-items: center; gap: 10px; padding-inline: 0; }
+/* Hidden on desktop -- section 13's header is the email alone. Shown at the
+   mobile breakpoint below, where section 14 pairs it with the address. */
+.nav-avatar {
+  display: none;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-neutral-700);
+  color: var(--color-bg);
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 13px;
+}
+
+/* — eyebrows and labels — */
+
+.eyebrow {
+  display: block;
+  /* Section eyebrows are the page's h1/h2s (so a screen reader can move by
+     heading); these undo the heading defaults so they still read as labels. */
+  margin: 0;
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 13px;
+  line-height: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text);
+}
+.field-label {
+  display: block;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+  margin-bottom: 8px;
+  white-space: nowrap;
+}
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 0 0 28px;
+}
+.hint {
+  font-size: 13px;
+  line-height: 18px;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+}
+
+/* — folding sections —
+   The button is the heading's whole text, so it keeps the eyebrow's type
+   and only adds the chevron and a target tall enough to tap. The negative
+   margins give back the height it adds, so a folded section's rhythm is
+   the eyebrow's own. */
+.section-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin: -15px 0 -15px -4px;
+  padding: 0 8px 0 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.section-toggle svg { flex: 0 0 auto; transition: transform 0.15s ease; }
+.section-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+.section-toggle:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+/* Both bodies set their own display, which would otherwise beat [hidden]. */
+.section-body[hidden],
+.io-cols[hidden] { display: none; }
+.folded .section-head { margin-bottom: 0; }
+#add-body { margin-top: 28px; }
+
+/* — page-level error surfaces —
+   Transport and auth problems live at the top of the page; field problems
+   live at the field. Nothing is ever a toast. */
+
+.server-banner {
+  border-top: 2px solid var(--color-accent);
+  border-bottom: 2px solid var(--color-divider);
+  background: var(--color-accent-100);
+}
+.server-banner-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 20px 32px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto auto;
+  gap: 0 16px;
+  align-items: center;
+}
+.server-banner-title {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 15px;
+  line-height: 20px;
+  margin: 0;
+  color: var(--color-accent-900);
+}
+.server-banner-detail {
+  font-size: 13px;
+  line-height: 20px;
+  margin: 4px 0 0;
+  color: var(--color-accent-900);
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Deliberately low-drama, and deliberately not a modal: the figures are still
+   worth reading, and only writes will fail from here. */
+.session-strip { border-bottom: 2px solid var(--color-divider); }
+.session-strip p {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 14px 32px;
+  font-size: 13px;
+  line-height: 20px;
+  color: color-mix(in srgb, var(--color-text) 78%, transparent);
+}
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--color-text);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.link-button:hover { text-decoration-thickness: 2px; }
+
+/* — hero — */
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 28px;
+  align-items: end;
+  padding: 56px 0 42px;
+}
+.hero .eyebrow { margin: 0 0 20px; font-feature-settings: 'tnum' 1; }
+.hero-total {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: clamp(52px, 7vw, 92px);
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  color: var(--color-accent);
+  /* Optical inset: the left sidebearing of a display-size glyph reads as an
+     indent against a flush-left column unless it is pulled back. */
+  margin: 0 0 0 -0.045em;
+  font-feature-settings: 'tnum' 1;
+}
+.hero-body {
+  font-size: 17px;
+  line-height: 28px;
+  margin: 20px 0 0;
+  max-width: 52ch;
+  color: color-mix(in srgb, var(--color-text) 78%, transparent);
+}
+
+/* — next charge — */
+
+/* A ruled list under the hero text: label, what and when, then the action.
+   Neutral like everything else at rest; the red label and the date are what
+   pull the eye. */
+.next-charge {
+  grid-column: 1 / -1;
+  margin: 0;
+  border-top: 1px solid var(--color-divider);
+}
+.next-charge-row {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 20px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+.next-charge-label {
+  margin: 0;
+  font-size: 13px;
+  line-height: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent-700);
+}
+.next-charge-what { margin: 0; font-size: 15px; line-height: 24px; }
+.next-charge-name,
+.next-charge-amount { font-family: var(--font-heading); font-weight: 800; }
+.next-charge-amount,
+.next-charge-when { font-feature-settings: 'tnum' 1; }
+.next-charge-amount,
+.next-charge-when {
+  margin-left: 8px;
+}
+.next-charge-when {
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.next-charge-actions { display: flex; gap: 12px; justify-content: flex-end; }
+/* The strip is the hero's last band, and the 2px section rule after the hero
+   closes it. Its last row drops its own hairline, and the hero gives up its
+   bottom padding, so the two rules do not stack 42px apart. */
+.hero:has(> .next-charge) { padding-bottom: 0; }
+.next-charge-row:last-child { border-bottom: 0; padding-bottom: 14px; }
+.next-charge-error {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 0 12px;
+  align-items: center;
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-accent-900);
+}
+
+/* — period controls — */
+
+.period {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  position: relative;
+}
+.period > .field-label { margin-bottom: 0; }
+.period-controls {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+.seg-opt {
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-family: inherit;
+  cursor: pointer;
+}
+.seg-opt + .seg-opt { border-left: 1px solid var(--color-stroke); }
+/* Re-asserted at a specificity that beats modernist's
+   `.seg-opt:not(:has(input:checked)):hover`, which is written for the radio
+   version of this control and would otherwise paint a hover tint over the
+   selected option's fill.
+   A selected option is Ink: plan type, export format and conflict mode are
+   form answers, not something to look at, and painting them red spent the
+   signal on choices that cost nothing. The period selector is the one
+   segment that says which view you are reading, so .seg-view alone keeps
+   Signal Red (the One Signal Rule's "current selection"). */
+.seg .seg-opt[aria-pressed='true'],
+.seg .seg-opt[aria-pressed='true']:hover {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+.seg-view .seg-opt[aria-pressed='true'],
+.seg-view .seg-opt[aria-pressed='true']:hover {
+  background: var(--color-accent-fill);
+}
+.seg .seg-opt[aria-pressed='false']:hover {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+
+.stepper {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--color-stroke);
+}
+.stepper button {
+  background: transparent;
+  border: 0;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.stepper button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+.stepper button:disabled { opacity: 0.45; cursor: default; }
+.stepper-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  padding: 0;
+}
+.stepper-arrow:first-child { border-right: 1px solid var(--color-stroke); }
+.stepper-arrow:last-child { border-left: 1px solid var(--color-stroke); }
+.stepper-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  min-width: 168px;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 14px;
+  font-feature-settings: 'tnum' 1;
+  text-align: left;
+}
+.stepper-label span { margin-right: auto; }
+
+/* The only two things on this page that elevate are this popover and the
+   dialogs. Everything else is flat. */
+.picker {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 10;
+  margin-top: 8px;
+  width: 300px;
+  padding: 20px;
+  background: var(--color-surface);
+  border: 2px solid var(--color-divider);
+  box-shadow: var(--shadow-lg);
+}
+.picker-year {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.picker-year button {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--color-stroke);
+  color: var(--color-text);
+  cursor: pointer;
+}
+.picker-year button:disabled { opacity: 0.45; cursor: default; }
+.picker-year span {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 15px;
+  font-feature-settings: 'tnum' 1;
+  margin-right: auto;
+}
+.picker-grid { display: grid; gap: 6px; }
+.picker-grid.months { grid-template-columns: repeat(4, 1fr); }
+.picker-grid.years { grid-template-columns: repeat(3, 1fr); }
+.picker-grid button {
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--font-body);
+  cursor: pointer;
+  border: 1px solid var(--color-stroke);
+  text-align: left;
+  background: transparent;
+  color: var(--color-text);
+}
+.picker-grid button:hover {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+/* Today's month or year, marked the way the nav marks the current page, so
+   the way back to now is findable from any period. */
+.picker-grid button[aria-current] {
+  text-decoration: underline 2px;
+  text-underline-offset: 4px;
+}
+.picker-grid button[aria-pressed='true'],
+.picker-grid button[aria-pressed='true']:hover {
+  background: var(--color-accent-fill);
+  color: var(--color-bg);
+  border-color: var(--color-accent-fill);
+}
+
+/* — trend strip — */
+
+.rule {
+  height: 2px;
+  border: 0;
+  background: var(--color-divider);
+}
+
+.trend { padding: 42px 0 0; }
+.trend-bars {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 6px;
+  align-items: end;
+  height: 132px;
+  border-bottom: 2px solid var(--color-divider);
+}
+.trend-bars button {
+  display: grid;
+  align-content: end;
+  gap: 6px;
+  height: 100%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.trend-value {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 12px;
+  line-height: 14px;
+  color: var(--color-accent-700);
+  font-feature-settings: 'tnum' 1;
+  white-space: nowrap;
+}
+.trend-bar {
+  display: block;
+  width: 100%;
+  background: var(--color-neutral-300);
+}
+.trend-bar.on { background: var(--color-accent); }
+/* Desktop shows the value on the selected bar itself (.trend-value, in the
+   markup below); mobile drops that and shows it here instead -- both spans
+   always render, the media query decides which one is on screen. */
+.trend-active { display: none; }
+.trend-ticks {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 6px;
+  margin-top: 10px;
+}
+.trend-tick {
+  display: block;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-feature-settings: 'tnum' 1;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+}
+.trend-tick.on {
+  color: var(--color-accent-700);
+  font-weight: 700;
+}
+.tick-short { display: none; }
+
+/* — KPI band — */
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 2px solid var(--color-divider);
+}
+.kpi { padding: 42px 28px; border-left: 1px solid var(--color-divider); }
+.kpi:first-child { padding-left: 0; border-left: 0; }
+.kpi:last-child { padding-right: 0; }
+.kpi-figure {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 34px;
+  line-height: 42px;
+  margin: 0;
+  font-feature-settings: 'tnum' 1;
+}
+.kpi-label {
+  font-size: 13px;
+  line-height: 18px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+  margin: 14px 0 0;
+}
+/* What a figure leaves out, under its label: sentence case and body size so
+   it reads as an explanation, not a second label. */
+.kpi-note {
+  font-size: 13px;
+  line-height: 18px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+  margin: 6px 0 0;
+  text-wrap: pretty;
+}
+
+/* — categories + coming up — */
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+}
+.split-left {
+  padding: 56px 56px 56px 0;
+  border-right: 2px solid var(--color-divider);
+}
+.split-right { padding: 56px 0 56px 56px; }
+
+.cat-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px 24px;
+  padding: 28px 0 14px;
+  border-top: 1px solid var(--color-divider);
+}
+.cat-head.first { padding: 0 0 14px; border-top: 0; }
+.cat-name {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 17px;
+  line-height: 24px;
+}
+.cat-amount {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 17px;
+  line-height: 24px;
+  font-feature-settings: 'tnum' 1;
+}
+.cat-share {
+  font-weight: 400;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+}
+.cat-track {
+  height: 14px;
+  background: color-mix(in srgb, var(--color-text) 10%, transparent);
+}
+.cat-fill { height: 100%; background: var(--color-accent); }
+.cat-members {
+  font-size: 13px;
+  line-height: 18px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+  margin: 14px 0 28px;
+}
+
+.cat-idle {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 28px 0 0;
+  border-top: 1px solid var(--color-divider);
+  font-size: 13px;
+  line-height: 18px;
+}
+.cat-idle.first { padding-top: 0; border-top: 0; }
+.cat-idle-label {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.cat-idle-names {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 15px;
+  line-height: 24px;
+}
+
+.coming-up {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+}
+/* The column space is padding, not grid gap, so each row's hairline runs
+   unbroken under all three cells. */
+.coming-up > .date,
+.coming-up > .name { padding-right: 20px; }
+.coming-up > span {
+  font-size: 15px;
+  line-height: 24px;
+  padding-block: 14px;
+  border-top: 1px solid var(--color-divider);
+}
+.coming-up > .first { border-top: 0; }
+.coming-up .date {
+  font-feature-settings: 'tnum' 1;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.coming-up .amount {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-feature-settings: 'tnum' 1;
+}
+/* "if kept" after a trial's price, in the coming-up list and the next-charge
+   strip: the price in figure weight, the condition in body weight beside it,
+   so the two read as one phrase without the condition shouting. */
+.if-kept {
+  font-family: var(--font-body);
+  font-weight: 400;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+/* Charges already taken this month sit below the ones still to come, set
+   in the label style and the hint ink step so they read as record, not as
+   something to act on. */
+.coming-up-label {
+  margin: 28px 0 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-divider);
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 13px;
+  line-height: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.coming-up.charged > span {
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+}
+.coming-up.charged .amount { font-weight: 600; }
+.trial-note {
+  font-size: 12px;
+  color: var(--color-accent-700);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  /* With the space before it in the markup, so the name and the note read as
+     two words to a screen reader and in copied text, not "Notiontrial". */
+  margin-left: 4px;
+}
+.panel-note {
+  font-size: 13px;
+  line-height: 18px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+  margin: 28px 0 0;
+}
+
+/* — trial banner — */
+
+/* The next-charge strip under the hero already puts the soonest conversion,
+   with both its actions, in front of the user. This section is the full list
+   of running trials, read after that, so it is set as a ruled section on the
+   page ground rather than a second alarm: only the 2px Signal Red top rule
+   says a deadline lives here. It stands in for the 2px divider between the
+   split and the table (Dashboard.jsx), so it closes with one too. */
+.trial-banner {
+  border-top: 2px solid var(--color-accent);
+  border-bottom: 2px solid var(--color-divider);
+  padding: 28px 0 0;
+}
+/* The headline and the way to the full list share one line, like every
+   other section head, so the section ends on its last trial rather than on
+   a link left on its own. */
+.trial-head { align-items: baseline; margin-bottom: 20px; }
+.trial-headline {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 17px;
+  line-height: 24px;
+  margin: 0;
+}
+.trial-list { list-style: none; margin: 0; padding: 0; }
+.trial-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 24px;
+  align-items: center;
+  padding: 16px 0;
+  border-top: 1px solid var(--color-divider);
+}
+.trial-row-name {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 15px;
+  margin: 0;
+}
+.trial-row-detail {
+  font-size: 13px;
+  line-height: 18px;
+  margin: 4px 0 0;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+/* Keep and cancel get the same style and the same width, so neither one looks
+   like the default at the moment a trial is about to cost money. */
+.trial-row-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+/* A section-head action, like "Manage": a real target instead of the ghost
+   button's minimal padding, with the negative margin keeping its text on the
+   column's right edge. */
+.trial-review {
+  flex: 0 0 auto;
+  margin-inline-end: calc(-1 * var(--space-3));
+  padding-inline: var(--space-3);
+}
+/* A failed conversion, said on the trial it was for, under both columns. */
+.trial-row-error {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 0 12px;
+  align-items: center;
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-accent-700);
+}
+
+/* — the mono tile — */
+
+.mono-tile {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* — subscription table — */
+
+.table-section { padding: 56px 0 28px; }
+.table-section .section-head { gap: 24px; align-items: center; }
+.table-actions { display: flex; gap: 12px; align-items: center; }
+
+/* "Netflix cancelled." -- the line that says a write went through
+   (SaveNotice.jsx). Plain secondary prose in the page flow, not a toast and
+   not Signal Red: it is neither money, a deadline nor a selection. Empty, it
+   takes no room, but stays mounted as the live region. */
+.save-notice {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: color-mix(in srgb, var(--color-text) 78%, transparent);
+}
+.table-section .save-notice:not(:empty) { margin: -12px 0 24px; }
+.add-section .save-notice:not(:empty) { margin: 24px 0 0; }
+.subscription-search {
+  position: relative;
+  flex: 0 0 clamp(180px, 20vw, 260px);
+  width: clamp(180px, 20vw, 260px);
+}
+.subscription-search > svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+  pointer-events: none;
+}
+.subscription-search .subscription-search-input {
+  min-height: 40px;
+  padding: 8px 34px 8px 36px;
+}
+.subscription-search-input::-webkit-search-cancel-button { display: none; }
+.subscription-search-clear {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+}
+.subscription-search-clear:hover { color: var(--color-text); }
+.subscription-search-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 0;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+  font-size: 14px;
+}
+
+.table th { padding: 0; }
+.sort-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 12px 14px 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+}
+.sort-button.on { color: var(--color-text); }
+.sort-arrow {
+  font-size: 12px;
+  line-height: 12px;
+  color: color-mix(in srgb, var(--color-text) 35%, transparent);
+}
+.sort-button.on .sort-arrow { color: var(--color-text); }
+
+.row-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.row-cancelled { color: color-mix(in srgb, var(--color-text) 66%, transparent); }
+.sub-note {
+  display: block;
+  font-size: 12px;
+  line-height: 16px;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+}
+.row-actions { position: relative; text-align: right; white-space: nowrap; }
+.row-actions .btn + .btn { margin-left: 8px; }
+.tag { white-space: nowrap; }
+
+/* — grouped runs (issue #49) —
+   A group's earlier runs fold away under its head row. An open group reads
+   as one item: no rules inside it, closed by the lifetime row's 2px rule. */
+.disclosure {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+}
+.disclosure svg { transition: transform 0.15s ease; }
+.disclosure[aria-expanded="true"] svg { transform: rotate(90deg); }
+.disclosure:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.disclosure-spacer { display: inline-block; width: 24px; flex: 0 0 24px; }
+.name-stack { display: flex; flex-direction: column; }
+.runs-link {
+  display: inline;
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.row-group-open > td { border-bottom: 0; }
+.row-earlier td {
+  background: color-mix(in srgb, var(--color-text) 3.5%, transparent);
+  color: color-mix(in srgb, var(--color-text) 66%, transparent);
+  border-bottom: 0;
+}
+.row-earlier td:first-child { padding-left: 40px; }
+.earlier-name {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 16px;
+}
+/* The elbow that ties a run to the head row above it. */
+.earlier-name::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: -14px;
+  bottom: 50%;
+  width: 10px;
+  border-left: 1px solid var(--color-divider);
+  border-bottom: 1px solid var(--color-divider);
+}
+.row-earlier.match td { background: color-mix(in srgb, var(--color-accent) 9%, transparent); }
+.row-lifetime td {
+  background: color-mix(in srgb, var(--color-text) 3.5%, transparent);
+  font-size: 12px;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+  padding-top: 6px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--color-divider);
+}
+.row-lifetime td:first-child { padding-left: 56px; }
+.row-lifetime strong { color: var(--color-text); font-weight: 600; }
+
+/* — row actions menu —
+   Anchored to the cell it opens from, not the row or the table, so it never
+   drifts as neighbouring rows come and go. The scrim is transparent and only
+   there to catch an outside click; Escape and firing an item close it too. */
+.menu-scrim { position: fixed; inset: 0; z-index: 20; background: transparent; }
+.row-menu {
+  position: absolute;
+  right: 8px;
+  top: 100%;
+  z-index: 21;
+  width: 290px;
+  text-align: left;
+  white-space: normal;
+  background: var(--color-surface);
+  border: 2px solid var(--color-divider);
+  border-radius: 0;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+}
+.row-menu-item {
+  display: block;
+  width: 100%;
+  padding: 12px 16px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.row-menu-item + .row-menu-item { border-top: 1px solid var(--color-divider); }
+.row-menu-item:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.row-menu-label {
+  display: block;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--color-text);
+}
+.row-menu-item.destructive .row-menu-label { color: var(--color-accent-700); }
+.row-menu-hint {
+  display: block;
+  font-size: 12px;
+  line-height: 16px;
+  margin-top: 2px;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+}
+
+/* Editing happens in place -- no modal. The accent rule on the left edge is
+   what marks the row as live; the surface fill separates it from its neighbours. */
+.row-editing {
+  background: var(--color-surface);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+.row-editing td { padding-block: 12px; }
+.row-editing .input {
+  padding: 6px 8px;
+  font-size: 14px;
+  width: 100%;
+}
+.row-editing .cycle-select {
+  /* Right side stays wide enough for select.input's chevron (modernist.css)
+     even at this row's more compact padding. */
+  padding: 4px 22px 4px 8px;
+  font-size: 12px;
+}
+.edit-cost { display: grid; gap: 6px; }
+.edit-per-month {
+  font-feature-settings: 'tnum' 1;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+}
+.row-editing .btn-primary { padding: 6px 14px; font-size: 13px; }
+
+.row-message td { background: var(--color-accent-100); }
+.row-message-inner {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 0 12px;
+  align-items: center;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-accent-900);
+}
+.row-error td { padding-top: 0; }
+/* The stale row is replaced, not annotated: leaving the inputs there would
+   let the user keep editing a record that no longer exists. */
+.row-stale-inner {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 0 12px;
+  align-items: center;
+  padding: 2px 0;
+  font-size: 14px;
+  color: var(--color-accent-900);
+}
+
+/* — add form — */
+
+.add-section {
+  padding: 42px 0 98px;
+  border-top: 2px solid var(--color-divider);
+  margin-top: 28px;
+}
+/* Folded, the next section's rule follows close behind instead of a full
+   section's worth of space. */
+.add-section.folded { padding-bottom: 42px; }
+.plan-type-field { margin: 0 0 24px; }
+.plan-type-hint {
+  font-size: 13px;
+  line-height: 18px;
+  max-width: 60ch;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+  margin: 10px 0 0;
+}
+.add-grid {
+  display: grid;
+  /* Service, cost, cycle, started, next renewal, category, button. The gap is
+     tighter than the design's 20px because the two date fields cannot shrink
+     below their picker without clipping it. */
+  grid-template-columns:
+    minmax(0, 1.9fr) minmax(0, 1fr) minmax(0, 1fr)
+    minmax(0, 1.25fr) minmax(0, 1.25fr) minmax(0, 1.3fr) auto;
+  gap: 16px;
+  align-items: start;
+}
+.add-grid.baseline { align-items: end; }
+/* Sits the button on the inputs' baseline rather than on the labels'. */
+.add-grid .btn-primary { margin-top: 30px; }
+.add-grid.baseline .btn-primary { margin-top: 0; }
+.field.invalid .field-label { color: var(--color-accent-700); }
+.field.invalid .input {
+  border: 2px solid var(--color-accent);
+  background: var(--color-surface);
+}
+.field-error {
+  display: block;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-accent-700);
+  margin: 8px 0 0;
+}
+/* A warning, not a refusal: two Netflix accounts in one household are an
+   ordinary thing to track, so a duplicate name is worth saying and never
+   worth blocking (TODO.md D4). */
+.field-warning,
+.field-hint {
+  display: block;
+  font-size: 13px;
+  line-height: 18px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+  margin: 8px 0 0;
+}
+.form-error {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 0 12px;
+  align-items: center;
+  margin: 24px 0 0;
+  padding: 14px 16px;
+  background: var(--color-accent-100);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--color-accent-900);
+}
+
+/* — empty state — */
+
+.empty-hero { padding: 112px 0 0; }
+.empty-hero .eyebrow { margin: 0 0 20px; }
+.empty-total {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: clamp(42px, 5.4vw, 72px);
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  margin: 0 0 0 -0.045em;
+  font-feature-settings: 'tnum' 1;
+}
+.empty-body {
+  font-size: 17px;
+  line-height: 28px;
+  margin: 24px 0 0;
+  max-width: 54ch;
+  color: color-mix(in srgb, var(--color-text) 78%, transparent);
+}
+.quick-add-section { padding: 56px 0 0; }
+.quick-add-section .eyebrow,
+.manual-add-section .eyebrow { margin: 0 0 28px; }
+.quick-add-section .eyebrow { margin-bottom: 12px; }
+.quick-add-note {
+  margin: 0 0 28px;
+  font-size: 14px;
+  line-height: 20px;
+  color: color-mix(in srgb, var(--color-text) 78%, transparent);
+}
+.quick-add {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 2px solid var(--color-divider);
+  border-left: 2px solid var(--color-divider);
+}
+.quick-add button {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 0 14px;
+  align-items: center;
+  padding: 20px 24px;
+  background: transparent;
+  border: 0;
+  border-right: 2px solid var(--color-divider);
+  border-bottom: 2px solid var(--color-divider);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-body);
+}
+.quick-add button:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.quick-add .name {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--color-text);
+}
+.quick-add .plus {
+  font-size: 20px;
+  line-height: 20px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.manual-add-section { padding: 56px 0 112px; }
+
+/* — dialogs — */
+
+.dialog-backdrop { z-index: 40; }
+.dialog-backdrop.confirm { z-index: 50; }
+.dialog { padding: 32px; }
+.dialog-wide {
+  width: 720px;
+  max-width: calc(100vw - 64px);
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+}
+.dialog-confirm { width: 440px; max-width: calc(100vw - 64px); }
+.dialog-title {
+  font-size: 24px;
+  line-height: 28px;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.dialog-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0 0 28px;
+}
+.dialog-body {
+  font-size: 15px;
+  line-height: 24px;
+  color: color-mix(in srgb, var(--color-text) 78%, transparent);
+  margin: 16px 0 0;
+  opacity: 1;
+}
+.dialog-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-start;
+  margin: 28px 0 0;
+}
+/* Destruction is opt-in: the default is archive, and permanent deletion is
+   pushed to the far side of the row so it is never the button under the cursor. */
+.dialog-actions .destructive { margin-left: auto; font-size: 13px; }
+
+.reactivation-fields {
+  display: flex;
+  gap: 16px;
+  margin: 20px 0 0;
+}
+.reactivation-fields .field { flex: 1; }
+.reactivation-note { margin: 12px 0 0; font-size: 13px; }
+.cancel-date { margin: 20px 0 0; }
+
+.cat-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 130px 96px auto;
+  gap: 0 20px;
+  align-items: center;
+  padding: 14px 0 14px 14px;
+  border-top: 1px solid var(--color-divider);
+}
+.cat-row .name { font-family: var(--font-heading); font-weight: 800; font-size: 15px; }
+.cat-row .usage {
+  font-size: 13px;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+  font-feature-settings: 'tnum' 1;
+}
+.cat-row .monthly { font-size: 14px; font-feature-settings: 'tnum' 1; }
+.cat-row .actions { display: flex; gap: 4px; justify-content: flex-end; }
+.cat-row-renaming {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0 20px;
+  align-items: center;
+  padding: 14px 0 14px 12px;
+  border-top: 1px solid var(--color-divider);
+  background: var(--color-surface);
+  border-left: 2px solid var(--color-accent);
+}
+.cat-row-renaming .input { padding: 6px 8px; font-size: 14px; width: 100%; }
+.cat-row-renaming .btn-primary { padding: 6px 14px; font-size: 13px; }
+.cat-new {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 20px;
+  align-items: end;
+  padding: 28px 0 0;
+  border-top: 2px solid var(--color-divider);
+}
+.cat-rule {
+  font-size: 13px;
+  line-height: 18px;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+  margin: 20px 0 0;
+}
+.dialog-error {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 0 12px;
+  align-items: center;
+  margin: 20px 0 0;
+  padding: 14px 16px;
+  background: var(--color-accent-100);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--color-accent-900);
+}
+
+.btn-small { font-size: 13px; }
+
+/* — account dialog (handoff section 13, mobile deltas in section 14) —
+   One component, not two: the mobile version changes only the chrome (a
+   bottom sheet instead of a centered box, larger tap targets) and never the
+   copy or the fields, so AccountDialog.jsx renders the same markup at every
+   width and the media query at the bottom of this file re-chromes it. That
+   is a narrower claim than "the dashboard is responsive" -- the KPI band,
+   the 7/5 split and the table still have no mobile layout (see the note at
+   the top of this file) -- but this dialog's mobile design is fully
+   specified, unlike those, so there is nothing left to guess. */
+.account-backdrop { z-index: 46; }
+.dialog-account { width: 620px; max-width: calc(100vw - 64px); max-height: calc(100vh - 96px); overflow: auto; }
+.account-identity {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 0 20px;
+  align-items: baseline;
+  margin: 24px 0 0;
+  padding: 14px 0;
+  border-top: 2px solid var(--color-divider);
+  border-bottom: 1px solid var(--color-divider);
+}
+.account-email { font-size: 15px; line-height: 22px; font-feature-settings: 'tnum' 1; }
+.account-heading { font-family: var(--font-heading); font-weight: 800; font-size: 17px; line-height: 24px; margin: 32px 0 0; }
+.account-danger .account-heading { margin-top: 36px; padding-top: 28px; border-top: 2px solid var(--color-divider); }
+.account-explainer {
+  font-size: 14px;
+  line-height: 22px;
+  color: color-mix(in srgb, var(--color-text) 78%, transparent);
+  margin: 8px 0 0;
+  max-width: 54ch;
+}
+.account-pw-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  margin: 20px 0 0;
+}
+.account-pw-current { grid-column: 1 / -1; }
+.account-pw-actions { display: flex; align-items: center; gap: 16px; margin: 20px 0 0; }
+.account-pw-done { font-size: 13px; color: var(--color-text); }
+.account-danger-actions { display: flex; gap: 12px; margin: 20px 0 0; }
+.account-delete-trigger { color: var(--color-accent-700); }
+.dialog-account-delete { width: 480px; max-width: calc(100vw - 64px); }
+.account-delete-field { display: block; margin: 20px 0 0; }
+
+/* Rendered unconditionally in Dashboard.jsx (populated view only); hidden
+   here by default and switched on inside the mobile media query below,
+   same dual-render pattern as .nav-avatar and .trend-active. */
+.mobile-action-bar { display: none; }
+
+/* — login —
+   The one screen the handoff does not draw. Built from the same tokens so it
+   does not read as a different product: flush left, 2px rules, zero radius. */
+
+/* Flush left in the page gutters, like everything else in this system --
+   a centred card would be the one thing on the product that isn't. */
+.login { max-width: 1240px; margin: 0 auto; padding: 112px 32px; }
+.login > * { max-width: 420px; }
+.login h1 {
+  font-size: clamp(42px, 5.4vw, 56px);
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  margin: 0 0 0 -0.045em;
+}
+.login .eyebrow { margin: 0 0 20px; }
+.login-form {
+  display: grid;
+  gap: 20px;
+  margin-top: 42px;
+  padding-top: 28px;
+  border-top: 2px solid var(--color-divider);
+}
+.login-form .btn-primary { justify-self: start; }
+.login-error {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 0 12px;
+  align-items: center;
+  margin: 28px 0 0;
+  padding: 14px 16px;
+  background: var(--color-accent-100);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--color-accent-900);
+}
+.login-toggle { margin-top: 28px; font-size: 13px; }
+/* The language choice (issue #89). Under the sign-up toggle on its own
+   line, so it is findable before signing in by someone who cannot read the
+   current language; in the Account dialog it sits under its explainer. */
+.login-language { display: flex; width: max-content; margin-top: 20px; }
+.account-language .language-picker { margin-top: 16px; }
+/* The dialog supplies its own padding and title, so the form does not need
+   the full-page rhythm above it. */
+.dialog .login-form { margin-top: 20px; padding-top: 20px; }
+
+/* — email links (PLAN.md milestone 9) —
+   Forgot password, the reset screen and what a confirmation link did. All
+   of it is secondary prose in the existing shells: an emailed link is
+   neither money nor a deadline, so none of it is Signal Red. */
+.login-forgot { display: block; margin-top: 10px; font-size: 13px; line-height: 18px; }
+.login-explainer {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: color-mix(in srgb, var(--color-text) 78%, transparent);
+}
+/* What a link just did, above the form. Plain status, not .login-error:
+   nothing the user typed went wrong. */
+.login-notice {
+  margin: 28px 0 0;
+  font-size: 15px;
+  line-height: 22px;
+}
+/* Replaces the form once a reset link is requested, on the same 2px rule
+   the form sat on, so the screen keeps its shape. */
+.login-sent {
+  margin: 42px 0 0;
+  padding-top: 28px;
+  border-top: 2px solid var(--color-divider);
+  font-size: 15px;
+  line-height: 24px;
+}
+.email-strip-inner {
+  display: flex;
+  align-items: baseline;
+  gap: 8px 24px;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+.email-strip .email-strip-inner p { flex: 1; max-width: 75ch; margin: 0; padding: 14px 0; }
+.email-strip-dismiss {
+  flex: none;
+  margin-left: auto;
+  font-size: 13px;
+  line-height: 20px;
+  color: color-mix(in srgb, var(--color-text) 78%, transparent);
+}
+.email-strip-error { color: var(--color-accent-700); }
+.link-button:disabled { cursor: default; opacity: 0.55; text-decoration: none; }
+.account-email-status {
+  grid-column: 2;
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 20px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+@media (max-width: 760px) {
+  .email-strip-inner { padding: 0 20px; flex-wrap: wrap; }
+  .email-strip .email-strip-inner p { flex-basis: 100%; padding-bottom: 0; }
+  .email-strip-dismiss { margin: -6px 0 2px; min-height: 44px; }
+  .account-email-status { grid-column: auto; }
+}
+
+/* — how this list works —
+   Reference, not maintenance, so it sits straight under the list it
+   explains and before the add form. Folded it is one ruled line, like the
+   two sections after it. Open, each term is set the way the list sets it,
+   in a narrow column, with the explanation in body prose beside it. */
+
+.guide-section {
+  padding: 42px 0;
+  border-top: 2px solid var(--color-divider);
+  margin-top: 28px;
+}
+.guide-section + .add-section { margin-top: 0; }
+.guide-body { margin-top: 28px; }
+.guide-body:not([hidden]) {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+}
+.guide-terms { margin: 0; padding: 0 56px 0 0; }
+.guide-row {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 4px 20px;
+  align-items: baseline;
+  padding: 14px 0;
+  border-top: 1px solid var(--color-divider);
+}
+.guide-row:first-child { border-top: 0; padding-top: 0; }
+.guide-row dt { margin: 0; }
+.guide-row dd {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  max-width: 62ch;
+  color: color-mix(in srgb, var(--color-text) 78%, transparent);
+  text-wrap: pretty;
+}
+.guide-term {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 14px;
+}
+.guide-keys {
+  margin: 0;
+  padding: 0 0 0 56px;
+  border-left: 2px solid var(--color-divider);
+  align-self: start;
+}
+.guide-key {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 20px;
+  align-items: baseline;
+  padding: 14px 0;
+  border-top: 1px solid var(--color-divider);
+}
+.guide-key:first-child { border-top: 0; padding-top: 0; }
+.guide-key dt,
+.guide-key dd { margin: 0; font-size: 14px; line-height: 22px; }
+kbd {
+  display: inline-block;
+  min-width: 24px;
+  padding: 1px 6px;
+  border: 1px solid var(--color-stroke);
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* — import & export (section 12) —
+   The page foot. Deliberately the quietest thing on the page: no accent
+   fills and no primary button outside the confirm dialog, because it is
+   maintenance rather than anything to do with what the subscriptions cost. */
+
+.io-section {
+  padding: 42px 0 98px;
+  border-top: 2px solid var(--color-divider);
+}
+.io-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.io-col > h3 {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 17px;
+  line-height: 24px;
+  margin: 0;
+}
+.io-export { padding: 0 56px 0 0; border-right: 2px solid var(--color-divider); }
+.io-import { padding: 0 0 0 56px; }
+.io-body {
+  font-size: 15px;
+  line-height: 24px;
+  color: color-mix(in srgb, var(--color-text) 78%, transparent);
+  max-width: 46ch;
+  margin: 14px 0 0;
+}
+
+/* Bottom-aligned so the format control and the button sit on one baseline
+   however tall the label above the segmented control makes it. */
+.io-export-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+  margin-top: 28px;
+}
+.io-export-controls .field-label { margin-bottom: 6px; }
+.io-meta {
+  font-size: 13px;
+  line-height: 20px;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+  margin: 14px 0 0;
+}
+
+.io-import .field-label { margin-top: 28px; }
+.io-import .seg { width: fit-content; }
+.io-hint {
+  font-size: 13px;
+  line-height: 20px;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+  margin: 12px 0 0;
+  max-width: 46ch;
+}
+
+.io-drop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+  margin-top: 24px;
+  padding: 24px;
+  background: var(--color-surface);
+  border: 2px solid var(--color-divider);
+}
+/* Tinted on drag-over, and the border stays square -- nothing in this system
+   has a rounded corner, least of all a state that lasts half a second. */
+.io-drop.dragging { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.io-drop-title { font-size: 15px; line-height: 22px; margin: 0; }
+.io-drop-note {
+  font-size: 13px;
+  line-height: 20px;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+  margin: 4px 0 0;
+}
+
+.io-paste-toggle { margin-top: 14px; }
+.io-paste { display: grid; gap: 12px; justify-items: start; margin-top: 12px; }
+.io-paste textarea {
+  width: 100%;
+  font-size: 13px;
+  line-height: 20px;
+  /* Vertical only: a textarea widened past its column breaks the two-column
+     grid it sits in. */
+  resize: vertical;
+}
+
+/* The bad-import message (STATES.md). It lives here, under the controls that
+   produced it, rather than at the top of the page: the user's repair path is
+   the file, and the file is chosen from this box. */
+.io-error {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 0 12px;
+  align-items: center;
+  margin-top: 20px;
+  padding: 14px 16px;
+  background: var(--color-accent-100);
+}
+.io-error p {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--color-accent-900);
+  margin: 0;
+}
+
+/* The empty state's entry point: one line, one button, under the add form. */
+.io-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  margin-top: 42px;
+  padding-top: 24px;
+  border-top: 2px solid var(--color-divider);
+}
+.io-entry > p {
+  font-size: 15px;
+  line-height: 24px;
+  color: color-mix(in srgb, var(--color-text) 78%, transparent);
+  margin: 0;
+}
+.io-entry .io-error { grid-column: 1 / -1; }
+
+/* — the import summary dialog — */
+
+.dialog-import {
+  width: 560px;
+  max-width: calc(100vw - 64px);
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+}
+.ledger { margin-top: 28px; border-top: 2px solid var(--color-divider); }
+.ledger-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  gap: 0 20px;
+  align-items: baseline;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+.ledger-row .kind {
+  font-size: 13px;
+  line-height: 18px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.ledger-row .detail { font-size: 15px; line-height: 22px; }
+.ledger-row .count {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 15px;
+  font-feature-settings: 'tnum' 1;
+}
+.import-warning {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 0 12px;
+  align-items: center;
+  margin-top: 20px;
+  padding: 14px 16px;
+  background: var(--color-accent-100);
+}
+.import-warning p {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--color-accent-900);
+  margin: 0;
+}
+/* Pushed to the far side, like the confirm dialog's destructive action: it is
+   a way back out, not the thing to press. */
+.dialog-actions .another { margin-left: auto; }
+
+/* — mobile (handoff section 14) —
+   One route, two layouts: everything below re-chromes and restacks the same
+   components and the same state this file's desktop rules already style --
+   nothing here is a second copy of the page. 760px is the breakpoint the
+   handoff itself suggests ("the point the table stops fitting").
+
+   The table genuinely needs more than CSS (a <table> can't become a card
+   list by restyling it), so SubscriptionTable.jsx branches its own markup at
+   this same breakpoint via useIsMobile() -- see that file for the mobile
+   list, sort chips, and the row-detail/edit sheets. Dashboard.jsx does the
+   same for the add sheet. Everything else here is pure restyle. */
+@media (max-width: 760px) {
+  .page { padding: 0 20px 96px; }
+  /* Brand, account button and Log out all have to share one row down to the
+     narrowest phones. Flex items default to min-width: auto, which floors
+     their shrink at the content's own width -- an email address next to
+     "Subscriptions" and "Log out" pushed that floor past a phone's
+     viewport, and since nothing up the tree clips overflow, the whole
+     document scrolled sideways instead of just this row (issue #6). The
+     account button drops the email here and shows only the avatar square,
+     which is enough room for the brand to sit at full size, untrimmed. */
+  .app-nav { padding-inline: 20px; flex-wrap: nowrap; }
+  .nav-link { display: none; }
+  .nav-account { min-height: 44px; flex: 0 0 auto; }
+  .nav-email { display: none; }
+  .nav-avatar { display: inline-flex; }
+  .app-nav > .btn-secondary { flex: 0 0 auto; }
+
+  /* — every dialog becomes a bottom sheet —
+     One rule for all of them: Categories, the confirm dialogs, Restore,
+     Import summary, Account, and the three sheets that have no desktop
+     dialog of their own (Sheet.jsx, used for Add/row-detail/edit). Each
+     dialog's own width class (.dialog-wide, .dialog-confirm, .dialog-account,
+     ...) still sets a fixed desktop width; this appears later in the file, so
+     it wins the cascade at this breakpoint without anything dialog-specific
+     needing repeating here. */
+  .dialog-backdrop { align-items: end; padding: 0; }
+  .dialog {
+    width: 100%;
+    max-width: 100%;
+    max-height: 92vh;
+    overflow: auto;
+    border-top: 2px solid var(--color-accent);
+    border-radius: 0;
+    padding: 24px 20px calc(24px + env(safe-area-inset-bottom));
+  }
+  .dialog-title { font-size: 22px; line-height: 26px; }
+  .dialog .field-label { font-size: 11px; }
+  .dialog .input { min-height: 44px; }
+  .dialog-actions { flex-direction: column; align-items: stretch; gap: 10px; }
+  .dialog-actions .btn { width: 100%; min-height: 48px; }
+  .dialog-actions .destructive,
+  .dialog-actions .another { margin-left: 0; }
+
+  /* Two internal dialog grids are narrow enough on desktop to genuinely
+     break, rather than just look cramped, below ~500px -- everything else
+     (the category list's name+button row, the import ledger) holds up. */
+  .cat-row { grid-template-columns: 1fr; gap: 6px; padding: 14px 0; }
+  .cat-row .actions { justify-content: flex-start; margin-top: 4px; }
+  .reactivation-fields { flex-direction: column; gap: 16px; }
+
+  /* Account dialog's own layout, on top of the general dialog rules above. */
+  .account-heading { font-size: 16px; line-height: 22px; }
+  .account-danger .account-heading { margin-top: 28px; padding-top: 22px; }
+  .account-explainer { font-size: 13px; line-height: 20px; }
+  .account-identity { margin-top: 16px; padding: 14px 0; gap: 2px 0; grid-template-columns: 1fr; }
+  .account-pw-grid { grid-template-columns: 1fr; gap: 14px; margin-top: 18px; }
+  .account-pw-current { grid-column: auto; }
+  .account-pw-actions,
+  .account-danger-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .account-pw-actions .btn,
+  .account-danger-actions .btn {
+    width: 100%;
+    min-height: 48px;
+  }
+  .account-delete-field { margin-top: 16px; }
+
+  /* — hero — */
+  .hero { display: block; padding: 40px 0 0; }
+  .hero .eyebrow { margin: 0 0 16px; }
+  .hero-total { font-size: clamp(44px, 14vw, 64px); }
+  .hero-body { font-size: 14px; line-height: 22px; margin: 18px 0 0; }
+  .next-charge { margin: 28px 0 0; }
+  .next-charge-row { grid-template-columns: minmax(0, 1fr) auto; padding: 12px 0; }
+  .next-charge-label { grid-column: 1 / -1; }
+  .next-charge-when { display: block; margin-left: 0; font-size: 13px; line-height: 18px; }
+  .next-charge-actions { flex-direction: column; align-items: flex-end; gap: 0; }
+  .next-charge-actions .btn { min-height: 44px; }
+  /* Desktop's align-items: flex-start (base rule) lets .period sit in the
+     hero grid's auto-sized column without stretching to fill it. On mobile
+     .hero is block, so .period is already full width -- but flex-start would
+     still shrink .period-controls to its content's fit-content width instead
+     of that full width, which is what .seg/.stepper's own align-items:
+     stretch below needs to have something to stretch into. */
+  .period { margin-top: 24px; align-items: stretch; }
+  .period-controls { flex-direction: column; align-items: stretch; gap: 10px; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; }
+  .seg-opt { min-height: 44px; justify-content: center; }
+  .stepper { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; }
+  .stepper-arrow { width: auto; min-height: 44px; }
+  .stepper-label { min-height: 44px; min-width: 0; justify-content: center; }
+  .stepper-label span { margin-right: 0; }
+  /* The popover becomes an inline block under the stepper rather than an
+     absolutely-positioned overlay -- there's no room to float it. Full width
+     rather than shrink-to-fit, matching the seg and stepper above it: .period
+     is align-items: flex-start, so without this the popover sits narrower
+     than -- and left-aligned under -- the controls that open it. */
+  .picker {
+    position: static;
+    margin-top: 10px;
+    width: 100%;
+    box-shadow: none;
+  }
+  .picker-grid.months { grid-template-columns: repeat(4, 1fr); }
+
+  /* — trend strip — */
+  .trend { padding: 24px 0 0; }
+  .trend-bars { gap: 4px; height: 104px; }
+  .trend-value { display: none; }
+  .trend-active {
+    display: inline-block;
+    font-family: var(--font-heading);
+    font-weight: 800;
+    font-size: 13px;
+    color: var(--color-accent-700);
+    font-feature-settings: 'tnum' 1;
+  }
+  .hint { display: none; }
+  .trend-tick { font-size: 10px; text-align: center; }
+  .tick-full { display: none; }
+  .tick-short { display: block; }
+
+  /* — KPI band: 4 cells become a 2x2 grid, 1px rules both ways — */
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi {
+    padding: 22px;
+    border-left: 1px solid var(--color-divider);
+    border-bottom: 1px solid var(--color-divider);
+  }
+  /* The left column sits on the page edge and the right column on the
+     right edge, the same as the band's outer cells on desktop. */
+  .kpi:nth-child(2n+1) { border-left: 0; padding-left: 0; }
+  .kpi:nth-child(2n) { padding-right: 0; }
+  .kpi:nth-child(n+3) { border-bottom: 0; }
+  .kpi-figure { font-size: 26px; line-height: 32px; }
+  .kpi-label { font-size: 11px; letter-spacing: 0.07em; }
+
+  /* — categories + coming up: the 7/5 split stacks — */
+  .split { grid-template-columns: 1fr; }
+  .split-left {
+    padding: 28px 0 8px;
+    border-right: 0;
+    border-top: 2px solid var(--color-divider);
+  }
+  .split-right { padding: 28px 0 24px; border-top: 2px solid var(--color-divider); }
+  .cat-track { height: 12px; }
+  .coming-up { grid-template-columns: 70px minmax(0, 1fr) auto; }
+  .coming-up > .date,
+  .coming-up > .name { padding-right: 12px; }
+  .cat-idle { margin-bottom: 20px; }
+
+  /* — trial banner — */
+  /* The table section brings its own top rule at this width. */
+  .trial-banner { padding: 20px 0 14px; border-bottom: 0; }
+  .trial-head { flex-wrap: wrap; gap: 4px; }
+  .trial-row { grid-template-columns: 1fr; gap: 10px; }
+  .trial-row-actions { align-items: stretch; }
+  .trial-row-actions .btn { width: 100%; min-height: 44px; }
+  .trial-review { min-height: 44px; margin-inline: calc(-1 * var(--space-3)) 0; }
+
+  /* — subscription list (SubscriptionTable.jsx's mobile branch) —
+     The desktop table markup never mounts at this width, so there's no
+     .table to hide; these style the list that replaces it. */
+  .table-section { padding: 28px 0 0; border-top: 2px solid var(--color-divider); }
+  .table-section .section-head { margin-bottom: 16px; }
+  .table-section .save-notice:not(:empty) { margin: 0 0 16px; }
+  .table-section > .subscription-search { width: 100%; margin-bottom: 16px; }
+  .subscription-search .subscription-search-input { min-height: 44px; }
+  .mobile-list-toggle { display: inline-flex; min-height: 44px; margin: 0 12px 0 0; }
+  .sort-chips {
+    display: flex;
+    gap: 8px;
+    margin: 16px 0 0;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .sort-chip {
+    flex: 0 0 auto;
+    min-height: 40px;
+    padding: 0 14px;
+    background: transparent;
+    border: 1px solid var(--color-stroke);
+    color: var(--color-text);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .sort-chip.on { background: var(--color-text); color: var(--color-bg); border-color: var(--color-text); }
+  .mobile-list { margin: 18px 0 0; border-top: 2px solid var(--color-divider); }
+  .mobile-row {
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr) auto 16px;
+    gap: 0 12px;
+    align-items: center;
+    width: 100%;
+    min-height: 64px;
+    padding: 12px 0;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--color-divider);
+    text-align: left;
+    font-family: var(--font-body);
+    color: var(--color-text);
+    cursor: pointer;
+  }
+  .mobile-row:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+  .mobile-row.cancelled { color: color-mix(in srgb, var(--color-text) 66%, transparent); }
+  .mobile-row-main { min-width: 0; }
+  .mobile-row-title { display: flex; align-items: center; gap: 8px; }
+  .mobile-row-name {
+    font-family: var(--font-heading);
+    font-weight: 800;
+    font-size: 15px;
+    line-height: 22px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-row-meta {
+    display: block;
+    font-size: 12px;
+    line-height: 18px;
+    color: color-mix(in srgb, var(--color-text) 68%, transparent);
+    font-feature-settings: 'tnum' 1;
+    margin-top: 2px;
+  }
+  /* Paid to date (issue #88): a third line in the meta line's size and
+     step, so the row grows by a line rather than gaining a new voice. Only
+     the amount steps up to full ink, to be found while scanning. */
+  .mobile-row-paid {
+    display: block;
+    font-size: 12px;
+    line-height: 18px;
+    color: color-mix(in srgb, var(--color-text) 68%, transparent);
+    font-feature-settings: 'tnum' 1;
+  }
+  .mobile-row-paid strong { color: var(--color-text); font-weight: 600; }
+  .mobile-row.cancelled .mobile-row-paid strong { color: inherit; }
+  /* Three lines on the left, two on the right: the cost pins to the top so
+     it stays level with the name it prices. */
+  .mobile-row-cost { text-align: right; align-self: start; }
+  .mobile-row-amount {
+    display: block;
+    font-family: var(--font-heading);
+    font-weight: 800;
+    font-size: 15px;
+    line-height: 22px;
+    font-feature-settings: 'tnum' 1;
+  }
+  .mobile-row-permonth {
+    display: block;
+    font-size: 12px;
+    line-height: 18px;
+    color: color-mix(in srgb, var(--color-text) 68%, transparent);
+    font-feature-settings: 'tnum' 1;
+    margin-top: 2px;
+  }
+  .mobile-row svg { color: var(--color-stroke); }
+  /* Grouped runs: the toggle under a head row, then its earlier runs on a
+     tinted panel, indented under a rule. */
+  .mobile-row.has-runs { border-bottom: 0; }
+  .mobile-runs-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 0 0 34px;
+    margin: 0;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--color-divider);
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 1.2;
+    color: var(--color-text);
+    text-align: left;
+  }
+  .mobile-runs-toggle svg { color: inherit; transition: transform 0.15s ease; }
+  .mobile-runs-toggle[aria-expanded="true"] { border-bottom-color: transparent; }
+  .mobile-runs-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+  .mobile-earlier {
+    background: color-mix(in srgb, var(--color-text) 3.5%, transparent);
+    border-bottom: 1px solid var(--color-divider);
+    padding: 0 0 4px 34px;
+  }
+  .mobile-earlier .mobile-row {
+    grid-template-columns: minmax(0, 1fr) auto 16px;
+    min-height: 56px;
+    padding: 10px 12px;
+    border-left: 1px solid var(--color-divider);
+    color: color-mix(in srgb, var(--color-text) 66%, transparent);
+  }
+  .mobile-earlier .mobile-row-name,
+  .mobile-earlier .mobile-row-amount { font-size: 14px; }
+  .mobile-earlier .mobile-row:last-of-type { border-bottom: 0; }
+  .mobile-earlier .mobile-row.match { background: color-mix(in srgb, var(--color-accent) 9%, transparent); }
+  .mobile-lifetime {
+    padding: 6px 12px 8px;
+    font-size: 12px;
+    color: color-mix(in srgb, var(--color-text) 68%, transparent);
+  }
+  .mobile-lifetime strong { color: var(--color-text); font-weight: 600; }
+  .mobile-row-stale {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr);
+    gap: 0 12px;
+    padding: 16px 0;
+    background: var(--color-accent-100);
+    border-bottom: 1px solid var(--color-divider);
+    color: var(--color-accent-900);
+    font-size: 13px;
+    line-height: 19px;
+  }
+
+  /* — row detail / edit sheets (Sheet.jsx instances) — */
+  /* Sits inside .dialog-head next to the Close button (see Sheet.jsx's
+     `header` prop), so it needs to shrink rather than push Close off screen,
+     and .dialog-head's own baseline alignment (right for a plain title) is
+     wrong for a tile-sized square next to it. */
+  .dialog-detail .dialog-head { align-items: center; }
+  .row-detail-head { display: flex; align-items: center; gap: 14px; min-width: 0; flex: 1; }
+  .row-detail-name {
+    font-family: var(--font-heading);
+    font-weight: 800;
+    font-size: 22px;
+    line-height: 26px;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .row-detail-facts { margin: 20px 0 0; border-top: 2px solid var(--color-divider); }
+  .row-detail-fact {
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr);
+    gap: 0 16px;
+    align-items: baseline;
+    padding: 13px 0;
+    border-bottom: 1px solid var(--color-divider);
+    font-size: 15px;
+    line-height: 22px;
+    font-feature-settings: 'tnum' 1;
+  }
+  .row-detail-actions,
+  .sheet-actions { display: grid; gap: 10px; margin: 22px 0 0; }
+  .row-detail-actions .btn,
+  .sheet-actions .btn { min-height: 48px; width: 100%; }
+  .manage-plan { margin: 22px 0 0; padding-top: 20px; border-top: 2px solid var(--color-divider); }
+  .manage-plan .field-label { margin-bottom: 4px; }
+  .manage-plan-list { display: flex; flex-direction: column; }
+  .manage-plan-item {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    width: 100%;
+    min-height: 56px;
+    padding: 10px 0;
+    background: transparent;
+    border: 0;
+    border-top: 1px solid var(--color-divider);
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+  }
+  .manage-plan-item:first-child { border-top: 0; }
+  .manage-plan-label {
+    font-family: var(--font-heading);
+    font-weight: 800;
+    font-size: 14px;
+    color: var(--color-text);
+  }
+  .manage-plan-item.destructive .manage-plan-label { color: var(--color-accent-700); }
+  .manage-plan-hint {
+    font-size: 12px;
+    line-height: 16px;
+    margin-top: 2px;
+    color: color-mix(in srgb, var(--color-text) 68%, transparent);
+  }
+  .sheet-fields { display: grid; gap: 16px; margin: 20px 0 0; }
+  /* minmax(0, 1fr), not bare 1fr: a plain fr track still floors at the
+     item's content width (same trap as issue #6's flex row above), and a
+     native date/select control's content width runs wider on real mobile
+     Safari than on desktop Safari or Chromium's mobile emulation -- which is
+     why this one only ever showed up on an actual phone (issue #9). */
+  .sheet-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  .sheet-hint {
+    font-size: 12px;
+    line-height: 18px;
+    color: color-mix(in srgb, var(--color-text) 68%, transparent);
+    margin: 4px 0 0;
+  }
+  .dialog-sheet { width: 440px; max-width: calc(100vw - 64px); }
+
+  /* — add form, restacked inside the add sheet —
+     Service, Started and the submit button run full width; Cost pairs with
+     Cycle and Next renewal pairs with Category, matching the design's
+     two-up mobile layout instead of stacking every field on its own row. */
+  /* minmax(0, 1fr) here too (see .sheet-row above, issue #9) -- the desktop
+     definition above already gets this right per column. */
+  .add-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 12px; }
+  .add-grid > :nth-child(1),
+  .add-grid > :nth-child(4),
+  .add-grid > .btn-primary { grid-column: 1 / -1; }
+  .add-grid .btn-primary { margin-top: 0; width: 100%; min-height: 48px; }
+  .add-section { display: none; }
+  .plan-type-seg { display: flex; width: 100%; }
+  .plan-type-seg .seg-opt { flex: 1 1 0; min-height: 48px; justify-content: center; }
+
+  /* — empty state — */
+  .empty-hero { padding: 32px 0 0; }
+  .empty-total { font-size: clamp(40px, 13vw, 56px); }
+  .quick-add { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .quick-add button { min-height: 56px; padding: 0 14px; }
+  .manual-add-section { padding: 36px 0 24px; }
+  .manual-add-section .btn-block { min-height: 48px; }
+  /* The empty state's "Import a file" entry: same full-width-buttons
+     treatment as "Add it yourself" above it, rather than the desktop's
+     text-plus-button row. */
+  .io-entry { grid-template-columns: 1fr; gap: 12px; }
+  .io-entry .btn { width: 100%; min-height: 48px; }
+
+  /* — fixed action bar (populated view only; rendered unconditionally in
+     Dashboard.jsx, hidden here on desktop by simply not existing above) — */
+  .mobile-action-bar {
+    display: grid;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 25;
+    padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+    background: var(--color-bg);
+    border-top: 2px solid var(--color-divider);
+  }
+  .mobile-action-bar .btn { min-height: 48px; white-space: nowrap; }
+  .mobile-action-bar .btn-primary { justify-content: center; }
+
+  /* Clears the fixed action bar the same way .page's own bottom padding
+     does -- otherwise the bar permanently covers the footer link. */
+  .app-footer { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+
+  /* — how this list works: one column, the term over its explanation — */
+  .guide-section { padding: 28px 0; }
+  .guide-body:not([hidden]) { display: block; margin-top: 20px; }
+  .guide-terms { padding: 0; }
+  .guide-row { grid-template-columns: 1fr; }
+
+  /* — import & export — */
+  .io-section { padding: 28px 0 32px; margin-top: 28px; }
+  .io-cols { grid-template-columns: 1fr; }
+  .io-export { padding: 0 0 24px; border-right: 0; border-bottom: 1px solid var(--color-divider); }
+  .io-import { padding: 24px 0 0; }
+  .io-export-controls { flex-direction: column; align-items: stretch; }
+  .io-export-controls .btn { width: 100%; min-height: 48px; }
+  .io-drop { grid-template-columns: 1fr; text-align: left; }
+  .io-drop .btn { width: 100%; min-height: 44px; margin-top: 12px; }
+}
+
+/* — resilience —
+   Names are user-typed, up to 100 characters, and sometimes one unbroken
+   string (a URL, a product code). Wherever one is printed in running layout
+   it may break mid-word rather than push its column, or the page, wider.
+   `anywhere` only breaks when nothing else fits, so ordinary names wrap
+   exactly as before. The mobile row and detail-sheet names truncate instead
+   (see their own rules); those are single-line by design. */
+.name-stack,
+.trial-headline,
+.trial-row-name,
+.cat-name,
+.cat-members,
+.coming-up .name,
+.panel-note,
+.kpi-label,
+.kpi-note,
+.dialog-title,
+.dialog-body,
+.cat-row .name,
+.field-warning,
+.field-hint,
+.form-error,
+.dialog-error,
+.row-message-inner,
+.server-banner-detail {
+  overflow-wrap: anywhere;
+}
+.name-stack { min-width: 0; }
+
+/* The dialog itself takes focus when it opens (useModal.js), only so that a
+   screen reader starts at its label; it is not a control, so it draws no
+   ring. Every control inside keeps its own. */
+.dialog:focus { outline: none; }
+
+/* A failed archive or restore on the mobile list, under the row it was for. */
+.mobile-row-error {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 0 12px;
+  align-items: center;
+  margin: 0;
+  padding: 12px 0 14px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-accent-900);
+  overflow-wrap: anywhere;
+}
+
+/* A figure too long for its column (a cost in the millions) breaks after a
+   thousands separator rather than overflowing into the next cell -- see
+   Figure in KpiBand.jsx. Each group is unbreakable on its own, so the sign
+   never wraps away from the number. */
+.figure-group { white-space: nowrap; }
+.kpi { min-width: 0; }
+.kpi-figure.long { font-size: 26px; line-height: 32px; }
+@media (max-width: 760px) {
+  .kpi-figure.long { font-size: 22px; line-height: 28px; }
+}
+
+    </style>
+    <style>
+      /* ===== new for milestone 10 ===== */
+
+      /* "≈" marks a converted figure. It is set lighter and in ink rather
+         than in the figure's own colour, so the hero total stays the one red
+         thing and the mark reads as a qualifier, not as part of the number.
+         Screen readers get the word instead of the glyph. */
+      .approx {
+        font-weight: 400;
+        color: color-mix(in srgb, var(--color-text) 70%, transparent);
+        margin-right: .14em;
+      }
+      .hero-total .approx { font-size: .52em; vertical-align: .32em; letter-spacing: 0; margin-right: .1em; }
+      .kpi-figure .approx { font-size: .7em; }
+      .sr-only {
+        position: absolute; width: 1px; height: 1px; overflow: hidden;
+        clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+      }
+
+      /* A native amount's converted twin, wherever the native one leads:
+         next-charge strip, coming up, trial rows, table sub-notes. Body
+         weight, hint ink, never red: it is a reading aid, not a charge. */
+      .fx {
+        font-family: var(--font-body);
+        font-weight: 400;
+        font-feature-settings: 'tnum' 1;
+        color: color-mix(in srgb, var(--color-text) 68%, transparent);
+        white-space: nowrap;
+      }
+      .coming-up .amount .fx { display: block; font-size: 12px; line-height: 16px; }
+
+      /* The per-currency statement under the hero prose. It answers "what
+         actually charges, in what money", so it is a ruled three-column
+         table like the coming-up grid, not a row of chips. Shown only when
+         the period holds more than one currency. */
+      .fx-breakdown { margin: 28px 0 0; max-width: 520px; }
+      .fx-breakdown .field-label { display: block; margin: 0 0 10px; }
+      .fx-grid {
+        display: grid;
+        grid-template-columns: auto auto 1fr;
+        border-top: 1px solid var(--color-divider);
+        font-feature-settings: 'tnum' 1;
+      }
+      .fx-grid > span {
+        padding: 9px 0;
+        border-bottom: 1px solid var(--color-divider);
+        font-size: 15px;
+        line-height: 22px;
+      }
+      .fx-grid .code {
+        padding-right: 24px;
+        font-size: 13px;
+        letter-spacing: .08em;
+        color: color-mix(in srgb, var(--color-text) 70%, transparent);
+      }
+      .fx-grid .native { padding-right: 24px; font-family: var(--font-heading); font-weight: 800; text-align: right; }
+      .fx-grid .converted { text-align: right; color: color-mix(in srgb, var(--color-text) 78%, transparent); }
+      .fx-note {
+        margin: 12px 0 0;
+        font-size: 13px;
+        line-height: 19px;
+        color: color-mix(in srgb, var(--color-text) 70%, transparent);
+        max-width: 60ch;
+      }
+
+      /* Cost field in the add form: amount and currency are one control,
+         joined like a segmented control, so the currency is impossible to
+         miss and impossible to separate from the number it qualifies. */
+      /* With "≈" leading, the optical pull-back belongs to the mark, not
+         to the figure: the column edge stays where it is today. */
+      .hero-total:has(.approx) { margin-left: 0; }
+      /* The cost column widens by the currency select; Service gives it up. */
+      .add-grid.with-currency {
+        grid-template-columns:
+          minmax(0, 1.6fr) minmax(0, 1.4fr) minmax(0, 1fr)
+          minmax(0, 1.25fr) minmax(0, 1.25fr) minmax(0, 1.2fr) auto;
+      }
+      .money-field { display: grid; grid-template-columns: minmax(0, 1fr) 72px; }
+      .money-field .input + .input { border-left: 0; }
+      .money-field select.input { padding-right: 24px; letter-spacing: .04em; }
+
+      /* In an edit, the currency is fixed: it shows as text inside the
+         field's edge rather than as a disabled select, which would invite a
+         click that does nothing. */
+      .money-locked { position: relative; display: block; }
+      .money-locked .input { width: 100%; padding-right: 48px; }
+      .money-locked .code {
+        position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+        font-size: 12px; letter-spacing: .08em; pointer-events: none;
+        color: color-mix(in srgb, var(--color-text) 70%, transparent);
+      }
+
+      /* Account dialog: the select carries the code and the name. */
+      .currency-select { margin-top: 16px; max-width: 320px; }
+      .account-currency .fx-note { margin-top: 10px; }
+      .account-saved { margin: 8px 0 0; font-size: 13px; color: var(--color-text); min-height: 19px; }
+
+      @media (max-width: 760px) {
+        .add-grid.with-currency { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+        .fx-breakdown { max-width: none; }
+        .money-field { grid-template-columns: minmax(0, 1fr) 96px; }
+        .mobile-row-permonth .approx { font-size: inherit; }
+      }
+    </style>
+    <style>
+      /* ===== mock chrome: not part of the proposal ===== */
+      .mock-toolbar {
+        position: relative; z-index: 60;
+        display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px;
+        padding: 10px max(16px, calc((100% - 1240px) / 2 + 32px));
+        background: #201e1d; color: #f8f4f4;
+        font: 12px/1.5 var(--font-body);
+      }
+      .mock-toolbar strong { text-transform: uppercase; letter-spacing: .08em; }
+      .mock-toolbar .spacer { margin-right: auto; }
+      .mock-toolbar a { color: #f8f4f4; }
+      .mock-seg { display: inline-flex; border: 1px solid #6b6767; }
+      .mock-seg button { border: 0; padding: 4px 10px; background: none; color: #f8f4f4; font: inherit; cursor: pointer; }
+      .mock-seg button + button { border-left: 1px solid #6b6767; }
+      .mock-seg button[aria-pressed="true"] { background: #f8f4f4; color: #201e1d; }
+      .mock-seg button:focus-visible { outline: 2px solid #ff9783; outline-offset: -2px; }
+      .mock-frame-wrap { display: flex; justify-content: center; padding: 28px 16px 64px; background: color-mix(in srgb, var(--color-text) 6%, var(--color-bg)); }
+      .mock-frame { width: 390px; height: 844px; border: 1px solid var(--color-stroke); background: var(--color-bg); }
+      .mock-section { border-top: 2px solid var(--color-divider); margin-top: 56px; padding-top: 40px; }
+      .mock-section > h2 { font: 800 24px/1.2 var(--font-heading); letter-spacing: -.01em; margin: 0 0 8px; }
+      .mock-section > p { margin: 0 0 28px; max-width: 68ch; color: color-mix(in srgb, var(--color-text) 78%, transparent); }
+      .specimen { margin-top: 42px; }
+      .specimen-label { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 14px; color: color-mix(in srgb, var(--color-text) 70%, transparent); }
+      .specimen .dialog { position: static; box-shadow: var(--shadow-lg); max-height: none; }
+      .intro { max-width: 760px; padding-top: 40px; }
+      .intro h1 { font: 800 32px/1.12 var(--font-heading); letter-spacing: -.015em; margin: 0 0 12px; text-wrap: balance; }
+      .intro p { margin: 0; color: color-mix(in srgb, var(--color-text) 78%, transparent); max-width: 68ch; }
+      .intro p + p { margin-top: 10px; }
+      .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px 56px; }
+      .notes h3 { font: 800 20px/1.2 var(--font-heading); margin: 0 0 12px; letter-spacing: -.01em; }
+      .notes * + h3 { margin-top: 32px; }
+      .notes ol, .notes ul { margin: 0; padding-left: 20px; font-size: 14px; line-height: 22px; }
+      .notes li { max-width: 68ch; }
+      .notes li + li { margin-top: 8px; }
+      .notes li strong { font-weight: 600; }
+      .strings { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 19px; }
+      .strings th { text-align: left; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: 0 12px 8px 0; border-bottom: 2px solid var(--color-divider); }
+      .strings td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--color-divider); vertical-align: top; }
+      body.framed .mock-only { display: none !important; }
+      @media (max-width: 760px) {
+        .intro h1 { font-size: 26px; }
+        #all .section-head { flex-direction: column; align-items: stretch; gap: 14px; }
+        #all .table-actions { flex-wrap: wrap; }
+        #all .subscription-search { width: 100%; flex: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="mock-toolbar mock-only" role="region" aria-label="Mock controls">
+      <strong>Milestone 10 mock</strong>
+      <span class="spacer">Sample data · 15 Sep 2026 · Nothing is saved</span>
+      <span class="mock-seg" role="group" aria-label="Currencies">
+        <button type="button" data-set="mix" data-value="mixed" aria-pressed="true">Mixed currencies</button>
+        <button type="button" data-set="mix" data-value="single" aria-pressed="false">All in euros</button>
+      </span>
+      <span class="mock-seg" role="group" aria-label="Exchange rates">
+        <button type="button" data-set="rates" data-value="fresh" aria-pressed="true">Rates fresh</button>
+        <button type="button" data-set="rates" data-value="stale" aria-pressed="false">Rates stale</button>
+      </span>
+      <span class="mock-seg" role="group" aria-label="Layout">
+        <button type="button" data-set="layout" data-value="desktop" aria-pressed="true">Desktop</button>
+        <button type="button" data-set="layout" data-value="mobile" aria-pressed="false">Mobile</button>
+      </span>
+    </div>
+
+    <div id="desktop">
+      <div class="page mock-only">
+        <header class="intro">
+          <h1>Subscriptions in more than one currency</h1>
+          <p>
+            Each subscription keeps the currency it is billed in, and that amount is what the
+            list, the next-charge strip and Coming up show. Every total is converted into your
+            currency (euros here) at the European Central Bank's reference rate and marked
+            <strong>≈</strong>. Under the headline, a short statement shows how much charges in
+            each currency.
+          </p>
+          <p>
+            Use <strong>All in euros</strong> to check that an account with one currency looks
+            exactly as it does today. Use <strong>Rates stale</strong> to see what changes when
+            the rate source can't be reached.
+          </p>
+        </header>
+      </div>
+
+      <nav class="nav app-nav" id="app-nav"></nav>
+      <main id="main"><div class="page" id="app"></div></main>
+
+      <div class="page mock-only">
+        <section class="mock-section" aria-labelledby="pieces">
+          <h2 id="pieces">Outside the dashboard</h2>
+          <p>Where the currency is chosen, where it is fixed, and where the setting lives.</p>
+
+          <div class="specimen">
+            <p class="specimen-label">Add a subscription: the currency joins the cost field</p>
+            <section class="add-section" style="border-top:0;padding-top:0">
+              <form novalidate onsubmit="return false">
+                <div class="add-grid with-currency">
+                  <label class="field">
+                    <span class="field-label">Service</span>
+                    <input class="input" type="text" value="ChatGPT Plus" />
+                  </label>
+                  <div class="field">
+                    <label class="field-label" for="add-cost">Cost</label>
+                    <span class="money-field">
+                      <input id="add-cost" class="input tnum" inputmode="decimal" type="text" value="20.00" aria-describedby="add-cost-hint" />
+                      <select class="input" aria-label="Currency" id="add-currency"></select>
+                    </span>
+                    <span class="field-hint" id="add-cost-hint"></span>
+                  </div>
+                  <label class="field">
+                    <span class="field-label">Cycle</span>
+                    <select class="input"><option>Monthly</option><option>Quarterly</option><option>Yearly</option></select>
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Started</span>
+                    <input class="input tnum" type="date" value="2026-09-15" />
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Next renewal</span>
+                    <input class="input tnum" type="date" value="2026-09-28" />
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Category</span>
+                    <select class="input"><option>Work</option></select>
+                  </label>
+                  <button type="submit" class="btn btn-primary">Add</button>
+                </div>
+              </form>
+            </section>
+          </div>
+
+          <div class="specimen">
+            <p class="specimen-label">Editing in place: the currency is fixed</p>
+            <table class="table">
+              <thead><tr>
+                <th scope="col">Name</th><th scope="col">Category</th><th scope="col">Status</th><th scope="col">Cost</th>
+                <th scope="col">Per month</th><th scope="col">Started</th><th scope="col">Next renewal</th><th scope="col"></th>
+              </tr></thead>
+              <tbody>
+                <tr class="row-editing">
+                  <td><span class="row-name"><span class="mono-tile" aria-hidden="true" style="background:#10a37f;color:#fff;font-size:11px">C</span><input class="input" aria-label="Service" type="text" value="ChatGPT Plus" /></span></td>
+                  <td><select class="input" aria-label="Category"><option>Work</option></select></td>
+                  <td><select class="input" aria-label="Status"><option>Active</option></select></td>
+                  <td>
+                    <span class="edit-cost">
+                      <span class="money-locked">
+                        <input class="input tnum" inputmode="decimal" aria-label="Cost in US dollars" aria-describedby="locked-why" type="text" value="20.00" />
+                        <span class="code" aria-hidden="true">USD</span>
+                      </span>
+                      <select class="input cycle-select" aria-label="Cycle"><option>Monthly</option></select>
+                    </span>
+                  </td>
+                  <td class="edit-per-month"><span class="approx" aria-hidden="true">≈</span><span class="sr-only">about </span>€17.05</td>
+                  <td><input class="input tnum" aria-label="Started" type="date" value="2025-09-28" /></td>
+                  <td><input class="input tnum" aria-label="Next renewal" type="date" value="2026-09-28" /></td>
+                  <td class="row-actions"><button type="button" class="btn btn-primary">Save</button> <button type="button" class="btn btn-ghost btn-small">Discard</button></td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="fx-note" id="locked-why">The currency is set when a subscription is added and doesn't change after that, because its past charges were in that currency. If a service starts billing in another currency, cancel it and add the new plan: the two runs group together, like any restart.</p>
+          </div>
+
+          <div class="specimen">
+            <p class="specimen-label">Account dialog: a Currency section after Language</p>
+            <div class="dialog dialog-account" role="group" aria-label="Account dialog (specimen)" style="width:620px;max-width:100%">
+              <div class="dialog-head">
+                <p class="dialog-title">Account</p>
+                <button type="button" class="btn btn-ghost btn-small">Close</button>
+              </div>
+              <div class="account-identity">
+                <span class="field-label">Signed in as</span>
+                <span class="account-email">demo@example.com</span>
+              </div>
+              <div class="account-section account-language">
+                <h3 class="account-heading">Language</h3>
+                <p class="account-explainer">Remembered on this device.</p>
+                <div class="seg language-picker" role="group" aria-label="Language">
+                  <button type="button" class="seg-opt" aria-pressed="true">English</button>
+                  <button type="button" class="seg-opt" aria-pressed="false">Suomi</button>
+                </div>
+              </div>
+              <div class="account-section account-currency">
+                <h3 class="account-heading" id="cur-heading">Currency</h3>
+                <p class="account-explainer">Totals, the chart and categories are shown in this currency, and new subscriptions start in it. Each subscription keeps the currency it's billed in.</p>
+                <select class="input currency-select" id="account-currency" aria-labelledby="cur-heading"></select>
+                <p class="account-saved" role="status" id="account-saved"></p>
+                <p class="fx-note" id="account-rates"></p>
+              </div>
+              <div class="account-section">
+                <h3 class="account-heading">Change password</h3>
+                <p class="account-explainer">At least 8 characters. Changing it signs you out on other devices — your subscriptions are untouched.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="mock-section" aria-labelledby="notes-h">
+          <h2 id="notes-h">How it's counted, and what's still open</h2>
+          <div class="notes">
+            <div>
+              <h3>The rules</h3>
+              <ol>
+                <li><strong>What charges stays in its own money.</strong> A row, the next-charge strip, Coming up and the trial section all lead with the amount the service will actually take: “$20.00”. The converted figure follows in hint ink, “≈ €17.05”, and only when the currency differs from yours.</li>
+                <li><strong>Every total is in your currency, marked ≈.</strong> The hero, the KPI band, categories and the chart add up converted charges. An account in one currency never sees “≈” or the breakdown: nothing changes for it.</li>
+                <li><strong>Each charge at its own day's rate.</strong> A charge already taken is converted at the ECB rate of its day: the latest published on or before it, so a weekend uses Friday's. A charge still to come uses the latest rate. Paid to date and a group's lifetime line add up charges converted the same way.</li>
+                <li><strong>Rounded per charge, then summed.</strong> The lines of the per-currency statement add up to the hero total exactly, to the cent.</li>
+                <li><strong>Change since… says when it's only the rate.</strong> If the same charges simply cost more or less in euros, the KPI note says so (switch the toolbar to compare: August and September hold the same charges).</li>
+                <li><strong>Stale is said, never hidden.</strong> If the rates can't be refreshed, the last stored rates are used and the note under the breakdown names their date. No banner and no red: the user's own data is fine. If no rate has ever been stored for a currency, its charges stay out of the total and the breakdown lists them as “not converted yet”, without a ≈ figure.</li>
+              </ol>
+            </div>
+            <div>
+              <h3>Behaviour</h3>
+              <ul>
+                <li><strong>Sorting by Cost, Per month or Paid</strong> compares converted values, so $20.00 sorts beside €17.05, not beside €20.00.</li>
+                <li><strong>Search</strong> also matches the code and the symbol: “usd”, “$20”.</li>
+                <li><strong>On mobile</strong>, the row's right column keeps the native cost on top, and the per-month line under it is in your currency, with ≈ when converted. The detail sheet lists “Billed in: US dollar (USD)”.</li>
+                <li><strong>The add form</strong> starts on your currency. Choosing another shows one line of hint: “Totals show it in euros, at the ECB rate.”</li>
+                <li><strong>Backups</strong> gain a currency column. An old file without one imports in your currency. An unknown code is a row error, like a bad date.</li>
+                <li><strong>Changing your currency</strong> in Account re-renders every total. No subscription changes.</li>
+              </ul>
+              <h3>Open questions</h3>
+              <ul>
+                <li><strong>A wrong currency typed by mistake</strong> can't be corrected in an edit. The fix is to delete the row and add it again. That follows the 2026-09-06 mock (“currency cannot be changed”). The alternative is to allow the change and treat it as a correction to every past charge of that run.</li>
+                <li><strong>One setting, not two.</strong> The mock uses one Currency setting for both the display currency and the default for new subscriptions. Splitting them has no use case yet.</li>
+              </ul>
+            </div>
+            <div style="grid-column: 1 / -1">
+              <h3>New strings</h3>
+              <table class="strings">
+                <thead><tr><th>Where</th><th>English</th><th>Suomi</th></tr></thead>
+                <tbody>
+                  <tr><td>Hero prose (mixed)</td><td>…in 3 categories and 3 currencies, shown in euros.</td><td>…3 kategoriassa ja 3 valuutassa, euroiksi muunnettuna.</td></tr>
+                  <tr><td>Breakdown label</td><td>In each currency</td><td>Valuutoittain</td></tr>
+                  <tr><td>Breakdown note</td><td>Converted at European Central Bank reference rates: a charge already taken at its own day's rate, one still to come at the latest rate (14 Sep 2026).</td><td>Muunnettu Euroopan keskuspankin viitekursseilla: jo veloitettu maksu oman päivänsä kurssilla, tuleva maksu uusimmalla kurssilla (14.9.2026).</td></tr>
+                  <tr><td>Breakdown note (stale)</td><td>…at the latest rate we have (9 Sep 2026). Newer rates couldn't be fetched, so charges still to come may be off by a little.</td><td>…uusimmalla saatavilla olevalla kurssilla (9.9.2026). Uudempia kursseja ei saatu haettua, joten tulevat maksut voivat heittää hieman.</td></tr>
+                  <tr><td>Not converted</td><td>not converted yet</td><td>ei vielä muunnettu</td></tr>
+                  <tr><td>KPI note, rate only</td><td>The same charges as August. The difference is the exchange rate.</td><td>Samat maksut kuin elokuussa. Ero johtuu valuuttakurssista.</td></tr>
+                  <tr><td>Add form hint</td><td>Totals show it in euros, at the ECB rate.</td><td>Yhteissummissa se näkyy euroina EKP:n kurssilla.</td></tr>
+                  <tr><td>Locked currency</td><td>The currency is set when a subscription is added…</td><td>Valuutta valitaan, kun tilaus lisätään…</td></tr>
+                  <tr><td>Account section</td><td>Currency · Totals, the chart and categories are shown in this currency…</td><td>Valuutta · Yhteissummat, kaavio ja kategoriat näytetään tässä valuutassa…</td></tr>
+                  <tr><td>Screen reader, ≈</td><td>about</td><td>noin</td></tr>
+                </tbody>
+              </table>
+              <p class="fx-note">Currency names come from <code>Intl.DisplayNames</code> and amounts from <code>Intl.NumberFormat</code> with the currency style, so Finnish reads “20,00 $” and “≈ 60,28 €” without new strings.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div id="mobile" class="mock-frame-wrap mock-only" hidden>
+      <iframe class="mock-frame" title="Mobile layout, 390px" loading="lazy"></iframe>
+    </div>
+
+    <script>
+      const params = new URLSearchParams(location.search);
+      const FRAMED = params.get("frame") === "mobile";
+      if (FRAMED) document.body.classList.add("framed");
+
+      const TODAY = "2026-09-15";
+      const LATEST = { fresh: "2026-09-14", stale: "2026-09-09" };
+      const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const MONTHS_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+      // ECB reference rates, units per 1 EUR (sample values). The rate a charge
+      // uses is the latest one dated on or before the charge.
+      const RATES = {
+        USD: [["2025-09-26", 1.1690], ["2025-10-28", 1.1640], ["2025-11-28", 1.1590], ["2025-12-26", 1.1720],
+              ["2026-01-28", 1.1650], ["2026-02-27", 1.1700], ["2026-03-27", 1.1580], ["2026-04-28", 1.1620],
+              ["2026-05-28", 1.1690], ["2026-06-26", 1.1750], ["2026-07-28", 1.1710], ["2026-08-28", 1.1650],
+              ["2026-09-09", 1.1690], ["2026-09-14", 1.1730]],
+        GBP: [["2026-03-09", 0.8610], ["2026-04-09", 0.8590], ["2026-05-08", 0.8640], ["2026-06-09", 0.8660],
+              ["2026-07-09", 0.8655], ["2026-08-07", 0.8640], ["2026-09-09", 0.8695], ["2026-09-14", 0.8695]],
+      };
+      const CURRENCIES = [
+        ["EUR", "Euro"], ["USD", "US dollar"], ["GBP", "British pound"], ["SEK", "Swedish krona"],
+        ["NOK", "Norwegian krone"], ["DKK", "Danish krone"], ["CHF", "Swiss franc"], ["PLN", "Polish złoty"],
+        ["CZK", "Czech koruna"], ["JPY", "Japanese yen"], ["CAD", "Canadian dollar"], ["AUD", "Australian dollar"],
+      ];
+
+      const state = {
+        mix: params.get("mix") || "mixed",
+        rates: params.get("rates") || "fresh",
+        layout: "desktop",
+      };
+
+      // — formatting, as format.js would do it with Intl currency style —
+      const fmt = (n, cur = "EUR") =>
+        new Intl.NumberFormat("en-US", { style: "currency", currency: cur, minimumFractionDigits: 2 }).format(Math.abs(n));
+      const signed = (n, cur = "EUR") => {
+        const c = Math.round(n * 100);
+        return c === 0 ? fmt(0, cur) : (c < 0 ? "−" : "+") + fmt(c / 100, cur);
+      };
+      const APPROX = '<span class="approx" aria-hidden="true">≈</span><span class="sr-only">about </span>';
+      const approx = (n) => APPROX + fmt(n);
+      const shortDate = (iso) => { const [, m, d] = iso.split("-"); return `${d} ${MONTHS[m - 1]}`; };
+      const longDate = (iso) => { const [y, m, d] = iso.split("-"); return `${d} ${MONTHS[m - 1]} ${y}`; };
+      const round2 = (n) => Math.round(n * 100) / 100;
+
+      function rateOn(cur, iso) {
+        const cap = iso > LATEST[state.rates] ? LATEST[state.rates] : iso;
+        let r = null;
+        for (const [day, v] of RATES[cur]) if (day <= cap) r = v;
+        return r;
+      }
+      // A charge in euros: native for EUR, else native ÷ rate, cent-rounded.
+      const toEur = (amount, cur, iso) => (cur === "EUR" ? amount : round2(amount / rateOn(cur, iso)));
+
+      // — sample rows: the ui.html seed, plus two foreign subscriptions —
+      function rows() {
+        const base = [
+          { name: "Spotify", tile: ["S", "#1db954", "#000"], cur: "EUR", cost: 9.99, cycle: "monthly", status: "active", category: "Entertainment", started: "2023-05-01", next: "2026-10-05", charged: "2026-09-05", paid: 409.59, since: "May 2023" },
+          { name: "Netflix", tile: ["N", "#e50914", "#fff"], cur: "EUR", cost: 15.99, cycle: "monthly", status: "active", category: "Entertainment", started: "2024-01-10", next: "2026-09-20", paid: 527.67, since: "Jan 2024" },
+          { name: "Notion", tile: ["N", "#605d5d", "#fff"], cur: "EUR", cost: 8, cycle: "monthly", status: "trial", category: "Work", started: "2026-09-01", next: "2026-09-25", paid: 0 },
+          { name: "Adobe Creative Cloud", tile: ["A", "#605d5d", "#fff"], cur: "EUR", cost: 239.88, cycle: "yearly", status: "active", category: "Work", started: "2025-03-12", next: "2027-03-12", paid: 479.76, since: "Mar 2025" },
+        ];
+        if (state.mix === "single") return base;
+        base[2] = { ...base[2], cur: "USD", cost: 10 };
+        return [
+          ...base,
+          { name: "ChatGPT Plus", tile: ["C", "#10a37f", "#fff"], cur: "USD", cost: 20, cycle: "monthly", status: "active", category: "Work", started: "2025-09-28", next: "2026-09-28", paid: 240, paidEur: 205.73, since: "Sep 2025" },
+          { name: "The Economist", tile: ["E", "#e3120b", "#fff"], cur: "GBP", cost: 15, cycle: "monthly", status: "active", category: "News", started: "2026-03-09", next: "2026-10-09", charged: "2026-09-09", paid: 105, paidEur: 121.5, since: "Mar 2026" },
+        ];
+      }
+
+      // Monthly charges in 2026, per row, as [iso, native]. Dropbox (cancelled
+      // 1 Jul, hidden from the list) adds €11.99 in Jan–Jun, as in the harness.
+      function chargesIn(month) {
+        const list = [];
+        const mm = String(month + 1).padStart(2, "0");
+        for (const r of rows()) {
+          if (r.status !== "active") continue;
+          if (r.cycle === "yearly") { if (r.started.slice(5, 7) === mm) list.push({ r, iso: `2026-${mm}-${r.started.slice(8)}` }); continue; }
+          const day = (r.charged || r.next).slice(8);
+          const iso = `2026-${mm}-${day}`;
+          if (iso >= r.started) list.push({ r, iso });
+        }
+        if (month < 6) list.push({ r: { name: "Dropbox", cur: "EUR", cost: 11.99 }, iso: `2026-${mm}-14` });
+        return list.map((c) => ({ ...c, eur: toEur(c.r.cost, c.r.cur, c.iso) }));
+      }
+      const monthTotal = (m) => round2(chargesIn(m).reduce((s, c) => s + c.eur, 0));
+
+      // — rendering —
+      const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const tile = (r) => `<span class="mono-tile" aria-hidden="true" style="background:${r.tile[1]};color:${r.tile[2]};font-size:11px">${r.tile[0]}</span>`;
+      const fxTwin = (amount, cur, iso) => (cur === "EUR" ? "" : ` <span class="fx">${approx(toEur(amount, cur, iso))}</span>`);
+      const mixed = () => state.mix === "mixed";
+
+      function renderNav() {
+        document.getElementById("app-nav").innerHTML = `
+          <span class="nav-brand">Subscriptions <span class="tag tag-outline nav-beta-tag">Beta</span></span>
+          <a class="nav-link" href="#overview" aria-current="location">Overview</a>
+          <a class="nav-link" href="#all">All subscriptions</a>
+          <button type="button" class="btn btn-ghost nav-account" aria-label="Account — demo@example.com"><span class="nav-email">demo@example.com</span><span class="nav-avatar" aria-hidden="true">D</span></button>
+          <button type="button" class="btn btn-secondary">Log out</button>`;
+      }
+
+      function breakdown(charges) {
+        const by = {};
+        for (const c of charges) {
+          by[c.r.cur] ??= { native: 0, eur: 0 };
+          by[c.r.cur].native = round2(by[c.r.cur].native + c.r.cost);
+          by[c.r.cur].eur = round2(by[c.r.cur].eur + c.eur);
+        }
+        const codes = Object.keys(by);
+        if (codes.length < 2) return "";
+        const order = ["EUR", ...codes.filter((c) => c !== "EUR").sort((a, b) => by[b].eur - by[a].eur)];
+        const lines = order.filter((c) => by[c]).map((c) => `
+          <span class="code">${c}</span>
+          <span class="native">${fmt(by[c].native, c)}</span>
+          <span class="converted">${c === "EUR" ? "" : approx(by[c].eur)}</span>`).join("");
+        const note = state.rates === "fresh"
+          ? `Converted at European Central Bank reference rates: a charge already taken at its own day's rate, one still to come at the latest rate (${longDate(LATEST.fresh)}).`
+          : `Converted at European Central Bank reference rates: a charge already taken at its own day's rate, one still to come at the latest rate we have (${longDate(LATEST.stale)}). Newer rates couldn't be fetched, so charges still to come may be off by a little.`;
+        return `
+          <div class="fx-breakdown">
+            <span class="field-label" id="fx-label">In each currency</span>
+            <div class="fx-grid" role="table" aria-labelledby="fx-label">${lines}</div>
+            <p class="fx-note">${note}</p>
+          </div>`;
+      }
+
+      function render() {
+        const list = rows();
+        const sep = chargesIn(8);
+        const total = monthTotal(8);
+        const curCount = new Set(list.filter((r) => r.status === "active").map((r) => r.cur)).size;
+        const active = list.filter((r) => r.status === "active");
+        const cats = new Set(active.map((r) => r.category));
+        const notion = list.find((r) => r.name === "Notion");
+        const totalHtml = mixed() ? approx(total) : fmt(total);
+
+        // hero
+        let html = `
+          <section id="overview" class="hero">
+            <div>
+              <h1 class="eyebrow">Monthly spend · September 2026</h1>
+              <p class="hero-total"><span><span class="figure-group">${totalHtml}</span></span></p>
+              <p class="hero-body">Across ${active.length} active subscriptions in ${cats.size} categories${curCount > 1 ? ` and ${curCount} currencies, shown in euros` : ""}. A yearly plan counts in full in the month it renews; trials, paused and cancelled plans are excluded until they charge.</p>
+              ${mixed() ? breakdown(sep) : ""}
+            </div>
+            <div class="period">
+              <span class="field-label">View</span>
+              <div class="period-controls">
+                <div class="seg seg-view" role="group" aria-label="Spending period">
+                  <button type="button" class="seg-opt" aria-pressed="true">Monthly</button>
+                  <button type="button" class="seg-opt" aria-pressed="false">Yearly</button>
+                </div>
+                <div class="stepper">
+                  <button type="button" class="stepper-arrow" aria-label="Previous period"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true" width="16" height="16"><path d="m15 18-6-6 6-6"></path></svg></button>
+                  <button type="button" class="stepper-label" aria-label="Choose period, currently September 2026"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true" width="16" height="16"><rect x="3" y="4" width="18" height="18"></rect><path d="M3 10h18M8 2v4M16 2v4"></path></svg><span>September 2026</span></button>
+                  <button type="button" class="stepper-arrow" aria-label="Next period"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true" width="16" height="16"><path d="m9 18 6-6-6-6"></path></svg></button>
+                </div>
+              </div>
+            </div>
+            <section aria-label="Next charge" class="next-charge">
+              <div class="next-charge-row">
+                <p class="next-charge-label">Next charge</p>
+                <p class="next-charge-what"><span class="next-charge-name">Netflix</span> <span class="next-charge-amount">€15.99</span> <span class="next-charge-when">20 Sep, in 5 days</span></p>
+                <div class="next-charge-actions"><button type="button" class="btn btn-ghost btn-small">Mark as cancelled</button></div>
+              </div>
+              <div class="next-charge-row">
+                <p class="next-charge-label">Trial converts</p>
+                <p class="next-charge-what"><span class="next-charge-name">Notion</span> <span class="next-charge-amount">${fmt(notion.cost, notion.cur)}/mo <span class="if-kept">if kept</span>${fxTwin(notion.cost, notion.cur, notion.next)}</span> <span class="next-charge-when">25 Sep, in 10 days</span></p>
+                <div class="next-charge-actions"><button type="button" class="btn btn-ghost btn-small">Convert to paid</button><button type="button" class="btn btn-ghost btn-small">Cancel before it charges</button></div>
+              </div>
+            </section>
+          </section>
+          <hr class="rule">`;
+
+        // trend
+        const totals = MONTHS.map((_, m) => monthTotal(m));
+        const max = Math.max(...totals);
+        html += `
+          <section aria-label="Spending over time" class="trend">
+            <div class="section-head">
+              <h2 class="eyebrow">Per month · 2026${mixed() ? " · in euros" : ""}</h2>
+              <span class="hint">Click a bar to jump to it</span>
+            </div>
+            <div class="trend-bars">${totals.map((t, m) => `
+              <button type="button" title="${MONTHS[m]} · ${mixed() ? "≈ " : ""}${fmt(t)}" aria-label="${MONTHS_LONG[m]} 2026: ${mixed() ? "about " : ""}${fmt(t)}" aria-pressed="${m === 8}">
+                <span class="trend-value">${m === 8 ? (mixed() ? approx(t) : fmt(t)) : ""}</span>
+                <span class="trend-bar${m === 8 ? " on" : ""}" style="height:${Math.max(4, Math.round((t / max) * 92))}px"></span>
+              </button>`).join("")}
+            </div>
+            <div class="trend-ticks">${MONTHS.map((n, m) => `<span class="trend-tick${m === 8 ? " on" : ""}"><span class="tick-full">${n}</span><span class="tick-short">${n[0]}</span></span>`).join("")}</div>
+          </section>
+          <hr class="rule" style="margin:42px 0 0">`;
+
+        // KPIs
+        const next30 = list.filter((r) => r.status === "active").map((r) => {
+          const iso = r.next <= "2026-10-15" ? r.next : null;
+          return iso ? toEur(r.cost, r.cur, iso) : 0;
+        });
+        const sum30 = round2(next30.reduce((a, b) => a + b, 0));
+        const largest = sep.slice().sort((a, b) => b.eur - a.eur)[0];
+        const change = round2(total - totals[7]);
+        const sameCharges = mixed();
+        const trialNote = notion.cur === "EUR"
+          ? `Not counting the Notion trial: ${fmt(notion.cost)} more if kept`
+          : `Not counting the Notion trial: ${fmt(notion.cost, notion.cur)} (≈ ${fmt(toEur(notion.cost, notion.cur, notion.next))}) more if kept`;
+        const kpi = (figure, label, note = "") => `
+          <div class="kpi"><p class="kpi-figure"><span><span class="figure-group">${figure}</span></span></p><p class="kpi-label">${label}</p>${note ? `<p class="kpi-note">${note}</p>` : ""}</div>`;
+        html += `<section aria-label="Key figures" class="kpis">
+          ${kpi(mixed() ? approx(sum30) : fmt(sum30), "Charging in the next 30 days", trialNote)}
+          ${kpi(String(sep.length + 1), "Renewals this month")}
+          ${kpi(fmt(largest.r.cost, largest.r.cur), `Largest single charge — ${largest.r.name}`, largest.r.cur === "EUR" ? "" : `<span class="fx">${approx(largest.eur)}</span>`)}
+          ${kpi((mixed() ? APPROX : "") + signed(change), "Change since Aug", sameCharges && change !== 0 ? "The same charges as August. The difference is the exchange rate." : "")}
+        </section>`;
+
+        // categories + coming up
+        const catTotals = {};
+        for (const c of sep) catTotals[c.r.category] = round2((catTotals[c.r.category] || 0) + c.eur);
+        const catNames = Object.keys(catTotals).sort((a, b) => catTotals[b] - catTotals[a]);
+        const idle = [...new Set(list.map((r) => r.category))].filter((c) => !catTotals[c]);
+        const members = (cat) => sep.filter((c) => c.r.category === cat)
+          .map((c) => (c.r.cur === "EUR" ? esc(c.r.name) : `${esc(c.r.name)} (${fmt(c.r.cost, c.r.cur)})`)).join(" · ");
+        const toCome = [
+          { iso: "2026-09-20", name: "Netflix", cost: 15.99, cur: "EUR" },
+          { iso: "2026-09-25", name: "Notion", cost: notion.cost, cur: notion.cur, trial: true },
+          ...(mixed() ? [{ iso: "2026-09-28", name: "ChatGPT Plus", cost: 20, cur: "USD" }] : []),
+        ];
+        const charged = [
+          { iso: "2026-09-05", name: "Spotify", cost: 9.99, cur: "EUR" },
+          ...(mixed() ? [{ iso: "2026-09-09", name: "The Economist", cost: 15, cur: "GBP" }] : []),
+        ];
+        const grid = (items, past) => `<div class="coming-up${past ? " charged" : ""}">${items.map((c, i) => {
+          const f = i === 0 ? " first" : "";
+          return `<span class="date${f}">${shortDate(c.iso)}</span>
+            <span class="name${f}">${esc(c.name)}${c.trial ? ' <span class="trial-note">trial converts</span>' : ""}</span>
+            <span class="amount${f}">${fmt(c.cost, c.cur)}${c.trial ? ' <span class="if-kept">if kept</span>' : ""}${fxTwin(c.cost, c.cur, c.iso)}</span>`;
+        }).join("")}</div>`;
+        html += `
+          <section class="split">
+            <div class="split-left">
+              <div class="section-head"><h2 class="eyebrow">By category${mixed() ? " · in euros" : ""}</h2><button type="button" class="btn btn-ghost btn-small">Manage</button></div>
+              ${catNames.map((cat, i) => {
+                const share = Math.round((catTotals[cat] / total) * 100);
+                const isMixed = sep.some((c) => c.r.category === cat && c.r.cur !== "EUR");
+                return `<div>
+                  <div class="cat-head${i === 0 ? " first" : ""}"><span class="cat-name">${esc(cat)}</span><span class="cat-amount">${isMixed ? approx(catTotals[cat]) : fmt(catTotals[cat])}<span class="cat-share"> · ${share}%</span></span></div>
+                  <div class="cat-track"><div class="cat-fill" style="width:${share}%"></div></div>
+                  <p class="cat-members">${members(cat)}</p>
+                </div>`;
+              }).join("")}
+              ${idle.length ? `<p class="cat-idle"><span class="cat-idle-label">Nothing billed in September</span><span class="cat-idle-names">${idle.join(" · ")}</span></p>` : ""}
+            </div>
+            <div class="split-right">
+              <h2 class="eyebrow" style="margin:0 0 28px">Coming up</h2>
+              ${grid(toCome, false)}
+              <h3 class="coming-up-label">Already charged this month</h3>
+              ${grid(charged, true)}
+              <p class="panel-note">Next annual charge: Adobe Creative Cloud, €239.88 on 12 Mar 2027.</p>
+            </div>
+          </section>`;
+
+        // trial section
+        html += `
+          <section aria-label="Trials converting soon" class="trial-banner">
+            <div class="section-head trial-head"><p class="trial-headline">Notion converts to a paid plan on 25 Sep 2026</p><button type="button" class="btn btn-ghost trial-review">Review trials in the table</button></div>
+            <ul class="trial-list"><li class="trial-row">
+              <div><p class="trial-row-name">Notion</p><p class="trial-row-detail tnum">${fmt(notion.cost, notion.cur)}/mo from 25 Sep 2026 if kept${notion.cur === "EUR" ? "" : ` · ${approx(toEur(notion.cost, notion.cur, notion.next))}`}</p></div>
+              <div class="trial-row-actions"><button type="button" class="btn btn-secondary btn-small">Convert to paid</button><button type="button" class="btn btn-secondary btn-small">Cancel before it charges</button></div>
+            </li></ul>
+          </section>`;
+
+        // list
+        const narrow = window.matchMedia("(max-width: 760px)").matches;
+        const sorted = list.slice().sort((a, b) => a.next.localeCompare(b.next));
+        const perMonth = (r) => r.cost / (r.cycle === "yearly" ? 12 : 1);
+        const costNote = (r) => {
+          if (r.status === "trial") return `then ${fmt(r.cost, r.cur)}/mo`;
+          const cyc = r.cycle;
+          return r.cur === "EUR" ? cyc : `${cyc} · ${approx(toEur(r.cost, r.cur, r.next))}`;
+        };
+        const paidNote = (r) => {
+          if (r.status === "trial") return "free trial, nothing charged";
+          return r.cur === "EUR" ? `since ${r.since}` : `since ${r.since} · ${approx(r.paidEur)}`;
+        };
+        html += `
+          <section id="all" class="table-section">
+            <div class="section-head">
+              <h2 class="eyebrow">All subscriptions — ${list.length}</h2>
+              <span class="table-actions">
+                <div class="subscription-search"><input class="input subscription-search-input" aria-label="Search subscriptions" placeholder="Name, cost, date — press /" type="search"></div>
+                <button type="button" class="btn btn-ghost btn-small">Show ended — 1</button>
+                ${narrow ? "" : '<button type="button" class="btn btn-primary">Add subscription</button>'}
+              </span>
+            </div>
+            <p role="status" class="save-notice"></p>`;
+        if (!narrow) {
+          html += `<table class="table"><thead><tr>
+              ${["Name", "Category", "Status", "Cost", "Per month", "Paid to date"].map((h) => `<th scope="col" aria-sort="none"><button type="button" class="sort-button"><span>${h}</span><span class="sort-arrow" aria-hidden="true">↕</span></button></th>`).join("")}
+              <th scope="col" aria-sort="ascending"><button type="button" class="sort-button on"><span>Next renewal</span><span class="sort-arrow" aria-hidden="true">↑</span></button></th><th scope="col"></th>
+            </tr></thead><tbody>
+            ${sorted.map((r) => `<tr>
+              <td><span class="row-name">${tile(r)}<span class="name-stack"><span>${esc(r.name)}</span></span></span></td>
+              <td>${esc(r.category)}</td>
+              <td><span class="tag ${r.status === "trial" ? "tag-accent" : "tag-neutral"}">${r.status === "trial" ? "Trial" : "Active"}</span></td>
+              <td class="tnum"><span>${fmt(r.status === "trial" ? 0 : r.cost, r.cur)}</span><span class="sub-note">${costNote(r)}</span></td>
+              <td class="tnum">${r.status === "trial" ? "—" : fmt(perMonth(r), r.cur)}</td>
+              <td class="tnum"><span>${fmt(r.paid, r.cur)}</span><span class="sub-note">${paidNote(r)}</span></td>
+              <td class="tnum"><span>${longDate(r.next)}</span><span class="sub-note">${r.status === "trial" ? "trial ends" : ""}</span></td>
+              <td class="row-actions"><button type="button" class="btn btn-ghost">Edit</button><button type="button" class="btn btn-ghost">More ▾</button></td>
+            </tr>`).join("")}
+            </tbody></table>`;
+        } else {
+          html += `<div class="mobile-list">${sorted.map((r) => {
+            const pm = perMonth(r);
+            const pmLine = r.status === "trial" ? `then ${fmt(r.cost, r.cur)}/mo` : r.cur === "EUR" ? `${fmt(pm)}/mo` : `${approx(toEur(pm, r.cur, r.next))}/mo`;
+            return `<button type="button" class="mobile-row">${tile(r)}
+              <span class="mobile-row-main">
+                <span class="mobile-row-title"><span class="mobile-row-name">${esc(r.name)}</span>${r.status === "trial" ? ' <span class="tag tag-accent">Trial</span>' : ""}</span>
+                <span class="mobile-row-meta">${esc(r.category)} · ${longDate(r.next)}</span>
+                <span class="mobile-row-paid"><strong>${fmt(r.paid, r.cur)}</strong> ${r.status === "trial" ? "free trial, nothing charged" : `paid since ${r.since}`}</span>
+              </span>
+              <span class="mobile-row-cost"><span class="mobile-row-amount">${fmt(r.status === "trial" ? 0 : r.cost, r.cur)}</span><span class="mobile-row-permonth">${pmLine}</span></span>
+            </button>`;
+          }).join("")}</div>`;
+        }
+        html += `</section>`;
+        document.getElementById("app").innerHTML = html;
+      }
+
+      function renderPieces() {
+        const options = CURRENCIES.map(([c, n]) => `<option value="${c}">${c} — ${n}</option>`).join("");
+        const add = document.getElementById("add-currency");
+        if (!add) return;
+        add.innerHTML = CURRENCIES.map(([c]) => `<option value="${c}">${c}</option>`).join("");
+        add.value = "USD";
+        const hint = document.getElementById("add-cost-hint");
+        const syncHint = () => { hint.textContent = add.value === "EUR" ? "" : "Totals show it in euros, at the ECB rate."; };
+        add.onchange = syncHint; syncHint();
+        const acc = document.getElementById("account-currency");
+        acc.innerHTML = options; acc.value = "EUR";
+        acc.onchange = () => {
+          const name = CURRENCIES.find(([c]) => c === acc.value)[1].toLowerCase();
+          document.getElementById("account-saved").textContent = `Saved. Totals now show in ${acc.value === "EUR" ? "euros" : name + "s"}.`;
+        };
+        document.getElementById("account-rates").textContent = state.rates === "fresh"
+          ? `Exchange rates: European Central Bank reference rates, published each working day. Latest: ${longDate(LATEST.fresh)}.`
+          : `Exchange rates: European Central Bank reference rates. Latest we have: ${longDate(LATEST.stale)}. Newer rates couldn't be fetched just now.`;
+      }
+
+      function sync() {
+        document.querySelectorAll(".mock-seg button").forEach((b) => b.setAttribute("aria-pressed", String(state[b.dataset.set] === b.dataset.value)));
+        const mobile = state.layout === "mobile";
+        document.getElementById("desktop").hidden = mobile;
+        document.getElementById("mobile").hidden = !mobile;
+        if (mobile) document.querySelector(".mock-frame").src = `?frame=mobile&mix=${state.mix}&rates=${state.rates}`;
+        renderNav(); render(); renderPieces();
+      }
+
+      document.querySelectorAll(".mock-seg button").forEach((b) =>
+        b.addEventListener("click", () => { state[b.dataset.set] = b.dataset.value; sync(); }));
+      sync();
+    </script>
+  </body>
+</html>
