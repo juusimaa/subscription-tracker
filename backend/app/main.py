@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -86,6 +87,67 @@ app = FastAPI(
     ],
 )
 
+# No request this API takes needs more than a few kilobytes, except /import,
+# and a backup at the subscription limit (crud.MAX_SUBSCRIPTIONS) is well
+# under 1 MB -- the same size the import dialog already refuses files over.
+# Without a limit, one POST could make the server parse and hold any amount
+# of JSON (issue #105).
+MAX_BODY_BYTES = 1024 * 1024
+
+
+class BodySizeLimit:
+    """Answers 413 to any request whose body is over MAX_BODY_BYTES.
+
+    A plain ASGI middleware rather than an @app.middleware function, because
+    it has to see the body as it arrives: Content-Length is checked first, but
+    a chunked request has none, so the body is also counted while it is read.
+    It is read in full here (at most MAX_BODY_BYTES of it) and replayed to the
+    app, because by the time a chunk tips it over the limit the route may
+    already be running, and FastAPI turns an error raised mid-read into a 400.
+
+    Added before CORSMiddleware, which makes it the inner of the two: the 413
+    then still carries CORS headers, and the browser hands the page the status
+    instead of reporting a network error.
+    """
+
+    def __init__(self, app, limit: int):
+        self.app = app
+        self.limit = limit
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        length = dict(scope["headers"]).get(b"content-length")
+        if length is not None and length.isdigit() and int(length) > self.limit:
+            return await self.refuse(scope, receive, send)
+        messages, size = [], 0
+        while True:
+            message = await receive()
+            messages.append(message)
+            if message["type"] != "http.request":
+                # The client went away; the app sees that just as it would have.
+                break
+            size += len(message.get("body", b""))
+            if size > self.limit:
+                return await self.refuse(scope, receive, send)
+            if not message.get("more_body", False):
+                break
+
+        async def replay():
+            return messages.pop(0) if messages else await receive()
+
+        await self.app(scope, replay, send)
+
+    async def refuse(self, scope, receive, send):
+        response = JSONResponse(
+            status_code=413,
+            content={"detail": f"Request body is larger than {self.limit // (1024 * 1024)} MB"},
+        )
+        await response(scope, receive, send)
+
+
+app.add_middleware(BodySizeLimit, limit=MAX_BODY_BYTES)
+
 # The React dev server runs on a different origin (localhost:5173) than this
 # API (localhost:8000). Browsers block cross-origin requests by default, so
 # CORS middleware explicitly allows the frontend's origin(s) to call this API.
@@ -155,6 +217,17 @@ def client_address(request: Request) -> str:
 limiter = Limiter(key_func=client_address, enabled=RATE_LIMIT_ENABLED)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(crud.LimitError)
+def limit_reached(request: Request, exc: crud.LimitError):
+    """Every write that adds rows can hit the per-account limits in crud.py:
+    a subscription (created, restored or imported) and a category (created
+    directly, or named for the first time by a subscription). One handler, so
+    each of those routes answers the same 409 without its own try/except.
+    409 like the other "conflicts with what is already stored" answers: the
+    request is fine, the account is full."""
+    return JSONResponse(status_code=409, content={"detail": exc.detail})
 app.add_middleware(SlowAPIMiddleware)
 
 
