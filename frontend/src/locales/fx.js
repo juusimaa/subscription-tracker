@@ -20,6 +20,10 @@ export default {
       "No exchange rate could be fetched yet, so charges in other currencies are left out of the total until one can.",
     "fx.rateOnly": ({ month, year }) => `The same charges as ${month ?? year}. The difference is the exchange rate.`,
     "fx.currency": "Currency",
+    // Under the hero total: which currency every total is in, and the way to
+    // change it, which otherwise lives only in the Account dialog.
+    "fx.totalsIn": ({ code }) => `Totals in ${code}`,
+    "fx.changeCurrency": "Change currency",
     "fx.addHint": ({ shownIn }) => `Totals show it ${shownIn}, at the ECB rate.`,
     "fx.locked":
       "The currency is set when a subscription is added and doesn't change after that, because its past charges " +
@@ -65,6 +69,8 @@ export default {
     "fx.rateOnly": ({ month, year }) =>
       `Samat maksut kuin ${month ? `${month}ssa` : `vuonna ${year}`}. Ero johtuu valuuttakurssista.`,
     "fx.currency": "Valuutta",
+    "fx.totalsIn": ({ code }) => `Yhteissummat valuutassa ${code}`,
+    "fx.changeCurrency": "Vaihda valuutta",
     "fx.addHint": ({ shownIn }) => `Yhteissummissa se muunnetaan valuuttaan ${shownIn} EKP:n kurssilla.`,
     "fx.locked":
       "Valuutta valitaan, kun tilaus lisätään, eikä sitä voi muuttaa jälkeenpäin, koska tilauksen aiemmat maksut " +

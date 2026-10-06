@@ -513,6 +513,7 @@ function App() {
           setPeriod={setPeriod}
           actions={actions}
           staleId={staleId}
+          onChangeCurrency={() => setAccountOpen("currency")}
         />
       )}
       </main>
@@ -524,6 +525,7 @@ function App() {
           subscriptionCount={data.subscriptions.length}
           categoryCount={data.categories.length}
           currency={currency}
+          focusCurrency={accountOpen === "currency"}
           onChangeCurrency={handleChangeCurrency}
           rates={data.rates}
           usesForeign={data.subscriptions.some((s) => isForeign(s.currency))}

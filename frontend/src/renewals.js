@@ -116,15 +116,6 @@ export function chargesInMonth(subscriptions, year, month) {
   return rows;
 }
 
-/** How many charges fall in a whole calendar year -- the yearly KPI. */
-export function chargeCountInYear(subscriptions, year) {
-  let count = 0;
-  for (let month = 0; month < 12; month += 1) {
-    count += chargesInMonth(subscriptions, year, month).length;
-  }
-  return count;
-}
-
 /**
  * The first renewal on or after `todayIso` of a plan that started on
  * `startedIso` and bills every `billingCycle` -- what the add form suggests
