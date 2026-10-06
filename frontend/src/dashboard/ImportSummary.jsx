@@ -4,13 +4,14 @@
 // that estimates is worse than none, because it is believed.
 
 import { TriangleAlert } from "../icons";
+import { t } from "../i18n";
 import { useModal } from "../useModal";
 
 // Enough names to recognise the file, then a count. The full list of fourteen
 // tells the user nothing the number above it did not.
 function names(list) {
   if (list.length <= 5) return list.join(", ");
-  return `${list.slice(0, 5).join(", ")} and ${list.length - 5} more`;
+  return t("importSummary.more", { list: list.slice(0, 5).join(", "), n: list.length - 5 });
 }
 
 function Row({ kind, detail, count }) {
@@ -25,7 +26,6 @@ function Row({ kind, detail, count }) {
 
 function ImportSummary({ filename, diff, busy, error, onConfirm, onCancel, onAnotherFile }) {
   const replace = diff.mode === "replace";
-  const plural = diff.subscriptions === 1 ? "" : "s";
   // Like the backdrop, Escape does nothing while the import is being written.
   const ref = useModal(busy ? undefined : onCancel);
 
@@ -40,46 +40,61 @@ function ImportSummary({ filename, diff, busy, error, onConfirm, onCancel, onAno
         aria-busy={busy || undefined}
         onClick={(event) => event.stopPropagation()}
       >
-        <p className="dialog-title" id="import-title">Import {filename}?</p>
+        <p className="dialog-title" id="import-title">{t("importSummary.title", { filename })}</p>
         <p className="dialog-body">
-          {diff.subscriptions} subscription{plural} and {diff.categories} categor
-          {diff.categories === 1 ? "y" : "ies"}{" "}
-          {replace
-            ? "read. Your current list will be cleared and replaced by this file."
-            : "read, checked against your list. Nothing is written until you confirm."}
+          {t(replace ? "importSummary.body.replace" : "importSummary.body.merge", {
+            subscriptions: diff.subscriptions,
+            categories: diff.categories,
+          })}
         </p>
 
         <div className="ledger">
           {replace ? (
             <>
-              <Row kind="Import" detail="Subscriptions in the file" count={diff.subscriptions} />
-              <Row kind="Import" detail="Categories in the file" count={diff.categories} />
               <Row
-                kind="Remove"
-                detail="Subscriptions you have now, cancelled ones included"
+                kind={t("importSummary.kind.import")}
+                detail={t("importSummary.fileSubscriptions")}
+                count={diff.subscriptions}
+              />
+              <Row
+                kind={t("importSummary.kind.import")}
+                detail={t("importSummary.fileCategories")}
+                count={diff.categories}
+              />
+              <Row
+                kind={t("importSummary.kind.remove")}
+                detail={t("importSummary.currentSubscriptions")}
                 count={diff.removed}
               />
             </>
           ) : (
             <>
               <Row
-                kind="Add"
-                detail={diff.added.length ? `New to your list — ${names(diff.added)}` : "Nothing new in this file"}
+                kind={t("importSummary.kind.add")}
+                detail={
+                  diff.added.length
+                    ? t("importSummary.added", { names: names(diff.added) })
+                    : t("importSummary.nothingNew")
+                }
                 count={diff.added.length}
               />
               <Row
-                kind="Update"
+                kind={t("importSummary.kind.update")}
                 detail={
                   diff.updated.length
-                    ? `Same name, different cost or renewal date — ${names(diff.updated)}`
-                    : "Nothing to change"
+                    ? t("importSummary.updated", { names: names(diff.updated) })
+                    : t("importSummary.nothingToChange")
                 }
                 count={diff.updated.length}
               />
-              <Row kind="Unchanged" detail="Already identical, left alone" count={diff.unchanged} />
+              <Row
+                kind={t("importSummary.kind.unchanged")}
+                detail={t("importSummary.unchanged")}
+                count={diff.unchanged}
+              />
               {diff.newCategories.length > 0 && (
                 <Row
-                  kind="New category"
+                  kind={t("importSummary.kind.newCategory")}
                   detail={names(diff.newCategories)}
                   count={diff.newCategories.length}
                 />
@@ -94,10 +109,7 @@ function ImportSummary({ filename, diff, busy, error, onConfirm, onCancel, onAno
         {replace && (
           <div className="import-warning">
             <TriangleAlert size={16} color="var(--color-accent-900)" />
-            <p>
-              Replace all wipes the {diff.removed} subscription{diff.removed === 1 ? "" : "s"} you
-              have now, including cancelled ones. Export first if you might want them back.
-            </p>
+            <p>{t("importSummary.warning", { n: diff.removed })}</p>
           </div>
         )}
 
@@ -116,11 +128,13 @@ function ImportSummary({ filename, diff, busy, error, onConfirm, onCancel, onAno
               for both modes, and one of them deletes everything. */}
           <button type="button" className="btn btn-primary" disabled={busy} onClick={onConfirm}>
             {busy
-              ? "Importing…"
-              : `${replace ? "Replace with" : "Merge"} ${diff.subscriptions} subscription${plural}`}
+              ? t("importSummary.importing")
+              : t(replace ? "importSummary.confirm.replace" : "importSummary.confirm.merge", {
+                  n: diff.subscriptions,
+                })}
           </button>
           <button type="button" className="btn btn-secondary" disabled={busy} onClick={onCancel}>
-            Cancel
+            {t("importSummary.cancel")}
           </button>
           <button
             type="button"
@@ -128,7 +142,7 @@ function ImportSummary({ filename, diff, busy, error, onConfirm, onCancel, onAno
             disabled={busy}
             onClick={onAnotherFile}
           >
-            Choose another file
+            {t("importSummary.anotherFile")}
           </button>
         </div>
       </div>

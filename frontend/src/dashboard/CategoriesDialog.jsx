@@ -17,7 +17,8 @@
 import { useState } from "react";
 import { describeWriteError } from "../api";
 import { TriangleAlert } from "../icons";
-import { money, perMonth } from "../format";
+import { cycleSuffix, money, perMonth } from "../format";
+import { t } from "../i18n";
 import { useModal } from "../useModal";
 
 // schemas.CategoryBase: the server refuses anything longer.
@@ -34,19 +35,17 @@ function ConfirmCategoryDelete({ category, onConfirm, onClose }) {
         className="dialog dialog-confirm"
         role="dialog"
         aria-modal="true"
-        aria-label={`Delete the ${category.name} category?`}
+        aria-label={t("categories.deleteTitle", { name: category.name })}
         onClick={(event) => event.stopPropagation()}
       >
-        <p className="dialog-title">Delete the {category.name} category?</p>
-        <p className="dialog-body">
-          Nothing uses it, so no subscription changes. You can add it again later.
-        </p>
+        <p className="dialog-title">{t("categories.deleteTitle", { name: category.name })}</p>
+        <p className="dialog-body">{t("categories.deleteBody")}</p>
         <div className="dialog-actions">
           <button type="button" className="btn btn-primary" onClick={onConfirm}>
-            Delete
+            {t("categories.delete")}
           </button>
           <button type="button" className="btn btn-secondary" onClick={onClose}>
-            Keep it
+            {t("categories.keep")}
           </button>
         </div>
       </div>
@@ -79,11 +78,11 @@ function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDel
       // Both hold the category; neither contributes to the monthly figure.
       label:
         live.length === 0
-          ? cancelled > 0 ? "Only cancelled plans" : "Unused"
-          : `${live.length} subscription${live.length === 1 ? "" : "s"}`,
+          ? cancelled > 0 ? t("categories.onlyCancelled") : t("categories.unused")
+          : t("categories.count", { n: live.length }),
       monthly: charging.length === 0
         ? "—"
-        : `${money(charging.reduce((sum, s) => sum + perMonth(s), 0))}/mo`,
+        : `${money(charging.reduce((sum, s) => sum + perMonth(s), 0))}${cycleSuffix("monthly")}`,
     };
   }
 
@@ -106,11 +105,11 @@ function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDel
   // dialog's own copy. Case-insensitive, like usageOf above: "work" next to
   // "Work" would split one category's subscriptions across two bars.
   function nameProblem(name, exceptId) {
-    if (!name) return "A category needs a name.";
+    if (!name) return t("categories.nameRequired");
     const clash = categories.find(
       (c) => c.id !== exceptId && c.name.toLowerCase() === name.toLowerCase(),
     );
-    return clash ? `There is already a category called ${clash.name}.` : null;
+    return clash ? t("categories.nameTaken", { name: clash.name }) : null;
   }
 
   async function saveRename(category) {
@@ -140,9 +139,9 @@ function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDel
         onClick={(event) => event.stopPropagation()}
       >
         <div className="dialog-head">
-          <p className="dialog-title" id="categories-title">Categories — {categories.length}</p>
-          <button type="button" className="btn btn-ghost btn-small" onClick={onClose} aria-label="Close">
-            Close
+          <p className="dialog-title" id="categories-title">{t("categories.title", { n: categories.length })}</p>
+          <button type="button" className="btn btn-ghost btn-small" onClick={onClose} aria-label={t("categories.close")}>
+            {t("categories.close")}
           </button>
         </div>
 
@@ -159,7 +158,7 @@ function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDel
                   <input
                     className="input"
                     type="text"
-                    aria-label={`New name for ${category.name}`}
+                    aria-label={t("categories.newNameFor", { name: category.name })}
                     maxLength={CATEGORY_MAX}
                     autoComplete="off"
                     value={renameValue}
@@ -177,14 +176,14 @@ function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDel
                     autoFocus
                   />
                   <button type="submit" className="btn btn-primary" disabled={busy}>
-                    Save
+                    {t("categories.save")}
                   </button>
                   <button
                     type="button"
                     className="btn btn-ghost btn-small"
                     onClick={() => setRenamingId(null)}
                   >
-                    Cancel
+                    {t("categories.cancelRename")}
                   </button>
                 </form>
               );
@@ -198,24 +197,24 @@ function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDel
                   <button
                     type="button"
                     className="btn btn-ghost btn-small"
-                    aria-label={`Rename ${category.name}`}
+                    aria-label={t("categories.renameLabel", { name: category.name })}
                     onClick={() => { setRenamingId(category.id); setRenameValue(category.name); setError(null); }}
                   >
-                    Rename
+                    {t("categories.rename")}
                   </button>
                   <button
                     type="button"
                     className="btn btn-ghost btn-small"
                     disabled={usage.live > 0 || busy}
-                    aria-label={`Delete ${category.name}`}
+                    aria-label={t("categories.deleteLabel", { name: category.name })}
                     title={
                       usage.live > 0
-                        ? `${usage.live} subscription${usage.live === 1 ? "" : "s"} still use${usage.live === 1 ? "s" : ""} this category`
+                        ? t("categories.stillUsed", { n: usage.live })
                         : undefined
                     }
                     onClick={() => setConfirmDelete(category)}
                   >
-                    Delete
+                    {t("categories.delete")}
                   </button>
                 </span>
               </div>
@@ -227,11 +226,11 @@ function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDel
             onSubmit={(event) => { event.preventDefault(); addCategory(); }}
           >
             <label className="field">
-              <span className="field-label">New category</span>
+              <span className="field-label">{t("categories.newCategory")}</span>
               <input
                 className="input"
                 type="text"
-                placeholder="Transport, Education, …"
+                placeholder={t("categories.placeholder")}
                 maxLength={CATEGORY_MAX}
                 autoComplete="off"
                 value={newName}
@@ -239,7 +238,7 @@ function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDel
               />
             </label>
             <button type="submit" className="btn btn-secondary" disabled={busy}>
-              Add category
+              {t("categories.add")}
             </button>
           </form>
 
@@ -250,11 +249,7 @@ function CategoriesDialog({ categories, subscriptions, onCreate, onRename, onDel
             </p>
           )}
 
-          <p className="cat-rule">
-            A category can only be deleted once no live subscription uses it — move or cancel its
-            subscriptions first. Cancelled plans keep their category on record but don&apos;t block
-            deletion. Renaming applies everywhere it appears.
-          </p>
+          <p className="cat-rule">{t("categories.rule")}</p>
         </div>
       </div>
 

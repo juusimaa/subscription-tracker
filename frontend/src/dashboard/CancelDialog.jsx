@@ -17,6 +17,7 @@ import { describeWriteError } from "../api";
 import { longDate, todayISO } from "../format";
 import { TriangleAlert } from "../icons";
 import { accessEndsAfter } from "../renewals";
+import { t } from "../i18n";
 import { useModal } from "../useModal";
 
 function CancelDialog({ subscription, onConfirm, onClose }) {
@@ -38,7 +39,7 @@ function CancelDialog({ subscription, onConfirm, onClose }) {
   // date the user picked still in the field.
   async function confirm() {
     if (asksForDate && !cancelledDate) {
-      setError("Choose the date you cancelled it.");
+      setError(t("cancel.dateRequired"));
       return;
     }
     setBusy(true);
@@ -51,17 +52,18 @@ function CancelDialog({ subscription, onConfirm, onClose }) {
     }
   }
 
+  const name = subscription.name;
   const title = notStarted
-    ? `Mark ${subscription.name}'s new run as cancelled?`
+    ? t("cancel.title.newRun", { name })
     : isTrial
-    ? `Mark the ${subscription.name} trial as cancelled?`
-    : `Mark ${subscription.name} as cancelled?`;
+    ? t("cancel.title.trial", { name })
+    : t("cancel.title.paid", { name });
 
   // The provider is the one who charges. Said once, before anything else,
   // with the date that is at stake when there is one.
   const provider = isTrial
-    ? `This updates your records only. To avoid the charge on ${longDate(subscription.next_renewal_date)}, cancel the trial with ${subscription.name} too.`
-    : `This updates your records only. Cancel with ${subscription.name} too, or they will keep charging.`;
+    ? t("cancel.provider.trial", { name, date: longDate(subscription.next_renewal_date) })
+    : t("cancel.provider.paid", { name });
 
   const anchor = subscription.started_date || subscription.next_renewal_date;
   const accessEnds =
@@ -71,13 +73,13 @@ function CancelDialog({ subscription, onConfirm, onClose }) {
 
   let outcome;
   if (notStarted) {
-    outcome = "It has not charged yet. The earlier paid run stays in your history.";
+    outcome = t("cancel.outcome.notStarted");
   } else if (isTrial) {
-    outcome = "It moves to your ended plans without a charge on record. You can reactivate it any time.";
+    outcome = t("cancel.outcome.trial");
   } else if (accessEnds && accessEnds > today) {
-    outcome = `Access runs until ${longDate(accessEnds)}, the end of the time already paid for. It stays in the list until then and stops counting toward your totals.`;
+    outcome = t("cancel.outcome.accessRuns", { date: longDate(accessEnds) });
   } else if (accessEnds) {
-    outcome = `Access ended ${longDate(accessEnds)}. It moves to your ended plans, where its past charges stay on record.`;
+    outcome = t("cancel.outcome.accessEnded", { date: longDate(accessEnds) });
   }
 
   return (
@@ -95,7 +97,7 @@ function CancelDialog({ subscription, onConfirm, onClose }) {
         <p className="dialog-body">{provider}</p>
         {asksForDate && (
           <label className="field cancel-date">
-            <span className="field-label">Cancelled on</span>
+            <span className="field-label">{t("cancel.cancelledOn")}</span>
             <input
               className="input tnum"
               type="date"
@@ -118,10 +120,10 @@ function CancelDialog({ subscription, onConfirm, onClose }) {
         )}
         <div className="dialog-actions">
           <button type="button" className="btn btn-primary" disabled={busy} onClick={confirm}>
-            Mark as cancelled
+            {t("cancel.confirm")}
           </button>
           <button type="button" className="btn btn-secondary" disabled={busy} onClick={onClose}>
-            Keep it
+            {t("cancel.keep")}
           </button>
         </div>
       </div>

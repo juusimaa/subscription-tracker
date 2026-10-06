@@ -8,6 +8,10 @@
 // empty when there is nothing to say, so a screen reader hears the first
 // message too -- a region inserted together with its text is often missed.
 
+// The message and the action's label may be functions: the dashboard passes
+// them that way so a notice still on screen follows a change of language.
+const text = (value) => (typeof value === "function" ? value() : value);
+
 function SaveNotice({ notice }) {
   return (
     <p role="status" className="save-notice">
@@ -15,12 +19,12 @@ function SaveNotice({ notice }) {
         // Keyed by the write, so the same sentence twice in a row ("Netflix
         // saved." after two edits) is new content and is announced again.
         <span key={notice.seq}>
-          {notice.message}
+          {text(notice.message)}
           {notice.action && (
             <>
               {" "}
               <button type="button" className="link-button" onClick={notice.action.run}>
-                {notice.action.label}
+                {text(notice.action.label)}
               </button>
             </>
           )}

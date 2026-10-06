@@ -8,11 +8,12 @@
 
 import { useEffect, useRef } from "react";
 import { Calendar, ChevronLeft, ChevronRight } from "../icons";
-import { MAX_YEAR, MIN_YEAR, MONTHS, SHORT_MONTHS, todayISO } from "../format";
+import { MAX_YEAR, MIN_YEAR, monthName, shortMonthName, todayISO } from "../format";
+import { t } from "../i18n";
 
 function PeriodControls({ view, year, month, onChange, pickerOpen, setPickerOpen }) {
   const monthly = view === "monthly";
-  const label = monthly ? `${MONTHS[month]} ${year}` : String(year);
+  const label = monthly ? t("period.monthYear", { month: monthName(month), year }) : String(year);
   // Today's month and year carry aria-current in the picker grid.
   const [thisYear, thisMonthNumber] = todayISO().split("-").map(Number);
   const thisMonth = thisMonthNumber - 1;
@@ -63,16 +64,16 @@ function PeriodControls({ view, year, month, onChange, pickerOpen, setPickerOpen
 
   return (
     <div className="period" ref={root}>
-      <span className="field-label">View</span>
+      <span className="field-label">{t("period.view")}</span>
       <div className="period-controls">
-        <div className="seg seg-view" role="group" aria-label="Spending period">
+        <div className="seg seg-view" role="group" aria-label={t("period.spendingPeriod")}>
           <button
             type="button"
             className="seg-opt"
             aria-pressed={monthly}
             onClick={() => onChange({ view: "monthly" })}
           >
-            Monthly
+            {t("period.monthly")}
           </button>
           <button
             type="button"
@@ -80,7 +81,7 @@ function PeriodControls({ view, year, month, onChange, pickerOpen, setPickerOpen
             aria-pressed={!monthly}
             onClick={() => onChange({ view: "yearly" })}
           >
-            Yearly
+            {t("period.yearly")}
           </button>
         </div>
 
@@ -90,8 +91,8 @@ function PeriodControls({ view, year, month, onChange, pickerOpen, setPickerOpen
             className="stepper-arrow"
             onClick={() => step(-1)}
             disabled={atMin}
-            aria-label="Previous period"
-            title="Previous"
+            aria-label={t("period.previousPeriod")}
+            title={t("period.previous")}
           >
             <ChevronLeft />
           </button>
@@ -99,7 +100,7 @@ function PeriodControls({ view, year, month, onChange, pickerOpen, setPickerOpen
             type="button"
             className="stepper-label"
             ref={opener}
-            aria-label={`Choose period, currently ${label}`}
+            aria-label={t("period.choose", { label })}
             onClick={() => setPickerOpen(!pickerOpen)}
             aria-haspopup="dialog"
             aria-expanded={pickerOpen}
@@ -112,8 +113,8 @@ function PeriodControls({ view, year, month, onChange, pickerOpen, setPickerOpen
             className="stepper-arrow"
             onClick={() => step(1)}
             disabled={atMax}
-            aria-label="Next period"
-            title="Next"
+            aria-label={t("period.nextPeriod")}
+            title={t("period.next")}
           >
             <ChevronRight />
           </button>
@@ -121,7 +122,7 @@ function PeriodControls({ view, year, month, onChange, pickerOpen, setPickerOpen
       </div>
 
       {pickerOpen && (
-        <div className="picker" role="dialog" aria-label="Select period">
+        <div className="picker" role="dialog" aria-label={t("period.select")}>
           {monthly ? (
             <>
               <div className="picker-year">
@@ -129,7 +130,7 @@ function PeriodControls({ view, year, month, onChange, pickerOpen, setPickerOpen
                   type="button"
                   onClick={() => onChange({ year: Math.max(MIN_YEAR, year - 1) }, { keepPicker: true })}
                   disabled={year === MIN_YEAR}
-                  aria-label="Previous year"
+                  aria-label={t("period.previousYear")}
                 >
                   <ChevronLeft size={14} />
                 </button>
@@ -138,13 +139,13 @@ function PeriodControls({ view, year, month, onChange, pickerOpen, setPickerOpen
                   type="button"
                   onClick={() => onChange({ year: Math.min(MAX_YEAR, year + 1) }, { keepPicker: true })}
                   disabled={year === MAX_YEAR}
-                  aria-label="Next year"
+                  aria-label={t("period.nextYear")}
                 >
                   <ChevronRight size={14} />
                 </button>
               </div>
               <div className="picker-grid months">
-                {SHORT_MONTHS.map((name, index) => (
+                {Array.from({ length: 12 }, (_, index) => shortMonthName(index)).map((name, index) => (
                   <button
                     key={name}
                     type="button"
@@ -159,7 +160,7 @@ function PeriodControls({ view, year, month, onChange, pickerOpen, setPickerOpen
             </>
           ) : (
             <>
-              <span className="field-label" style={{ marginBottom: 16 }}>Select year</span>
+              <span className="field-label" style={{ marginBottom: 16 }}>{t("period.selectYear")}</span>
               <div className="picker-grid years">
                 {Array.from({ length: MAX_YEAR - MIN_YEAR + 1 }, (_, i) => MIN_YEAR + i).map((y) => (
                   <button

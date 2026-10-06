@@ -7,6 +7,8 @@
 
 import { useState } from "react";
 import { login, register } from "./api";
+import { t } from "./i18n";
+import { LanguagePicker } from "./Language";
 import { TriangleAlert } from "./icons";
 
 function Login({ onLogin, email: knownEmail, compact = false }) {
@@ -40,12 +42,16 @@ function Login({ onLogin, email: knownEmail, compact = false }) {
   const form = (
     <>
       <span className="eyebrow">
-        {compact ? "Session expired" : isRegistering ? "Create an account" : "Welcome back"}
+        {compact
+          ? t("login.eyebrowExpired")
+          : isRegistering
+            ? t("login.eyebrowRegister")
+            : t("login.eyebrowWelcome")}
       </span>
       {compact ? (
-        <p className="dialog-title">Sign in again</p>
+        <p className="dialog-title">{t("login.again")}</p>
       ) : (
-        <h1>Subscriptions.</h1>
+        <h1>{t("login.headline")}</h1>
       )}
 
       {error && (
@@ -57,7 +63,7 @@ function Login({ onLogin, email: knownEmail, compact = false }) {
 
       <form className="login-form" onSubmit={handleSubmit}>
         <label className="field">
-          <span className="field-label">Email</span>
+          <span className="field-label">{t("login.email")}</span>
           <input
             className="input"
             type="email"
@@ -67,7 +73,7 @@ function Login({ onLogin, email: knownEmail, compact = false }) {
           />
         </label>
         <label className="field">
-          <span className="field-label">Password</span>
+          <span className="field-label">{t("login.password")}</span>
           <input
             className="input"
             type="password"
@@ -81,7 +87,7 @@ function Login({ onLogin, email: knownEmail, compact = false }) {
         </label>
         {isRegistering && (
           <label className="field">
-            <span className="field-label">Invite code</span>
+            <span className="field-label">{t("login.invite")}</span>
             <input
               className="input"
               type="text"
@@ -95,7 +101,7 @@ function Login({ onLogin, email: knownEmail, compact = false }) {
           </label>
         )}
         <button type="submit" className="btn btn-primary" disabled={busy}>
-          {isRegistering ? "Sign up" : "Log in"}
+          {isRegistering ? t("login.signUp") : t("login.logIn")}
         </button>
       </form>
 
@@ -105,9 +111,11 @@ function Login({ onLogin, email: knownEmail, compact = false }) {
           className="link-button login-toggle"
           onClick={() => { setIsRegistering(!isRegistering); setError(null); setInviteCode(""); }}
         >
-          {isRegistering ? "Already have an account? Log in" : "Need an account? Sign up"}
+          {isRegistering ? t("login.toLogin") : t("login.toRegister")}
         </button>
       )}
+
+      {!compact && <LanguagePicker className="login-language" />}
     </>
   );
 

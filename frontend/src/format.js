@@ -5,14 +5,18 @@
 // an assumption, not a decision anyone made (see TODO.md D7), and it lives
 // here so there is exactly one place to change when a currency column exists.
 
-export const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-export const SHORT_MONTHS = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
+//
+// Everything a reader sees -- month names, the money format, dates, the cost
+// field's complaints -- follows the interface language (src/i18n.js). In
+// Finnish that means "1 234,56 €" and "4.9.2026"; in English "€1,234.56" and
+// "04 Sep 2026", as before.
+
+import { getLanguage, getLocaleTag, t } from "./i18n";
+
+// Month names by zero-based index, in the current language. Finnish names
+// are lower case and nominative ("syyskuu"); see locales/common.js.
+export const monthName = (index) => t("months.long")[index];
+export const shortMonthName = (index) => t("months.short")[index];
 
 // The period picker's range, straight from the design. Deliberately fixed
 // rather than derived from the data: the stepper needs stable ends, and a
@@ -20,18 +24,18 @@ export const SHORT_MONTHS = [
 export const MIN_YEAR = 2025;
 export const MAX_YEAR = 2027;
 
-// en-US grouping with a euro sign, always two decimals: "€1,234.56". Note the
-// absolute value -- signed figures are built by `signed` below, which uses a
-// real minus sign (U+2212) rather than a hyphen, as the design specifies.
+// Always two decimals, grouped the way the language writes numbers:
+// "€1,234.56" in English, "1 234,56 €" in Finnish (with no-break spaces, so
+// the figure never wraps away from its sign). Note the absolute value --
+// signed figures are built by `signed` below, which uses a real minus sign
+// (U+2212) rather than a hyphen, as the design specifies.
 export function money(amount) {
   const n = Number(amount) || 0;
-  return (
-    "€" +
-    Math.abs(n).toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-  );
+  const digits = Math.abs(n).toLocaleString(getLocaleTag(), {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return getLanguage() === "fi" ? `${digits}\u00a0€` : `€${digits}`;
 }
 
 // Rounded to the cent before the sign is chosen, so a difference that prints
@@ -61,28 +65,31 @@ export const MAX_COST = 99999999.99;
 // The check every cost field runs before saving: the message for what is
 // wrong with it, or null when it is a cost the server will take.
 export function costProblem(text) {
-  if (!String(text ?? "").trim()) return "Required — enter what it charges.";
+  if (!String(text ?? "").trim()) return t("cost.required");
   const value = parseAmount(text);
-  if (Number.isNaN(value)) return "Enter an amount like 9.99 or 9,99.";
-  if (!(value > 0)) return "Must be greater than 0.";
-  if (value > MAX_COST) return "Must be under €100,000,000.";
+  if (Number.isNaN(value)) return t("cost.notNumber");
+  if (!(value > 0)) return t("cost.notPositive");
+  if (value > MAX_COST) return t("cost.tooLarge");
   return null;
 }
 
-// "2026-09-04" -> "04 Sep 2026". Split on the string rather than parsed as a
-// Date: `new Date("2026-09-04")` is UTC midnight, which renders as the 3rd in
-// any timezone west of Greenwich.
+// "2026-09-04" -> "04 Sep 2026", or "4.9.2026" in Finnish. Split on the
+// string rather than parsed as a Date: `new Date("2026-09-04")` is UTC
+// midnight, which renders as the 3rd in any timezone west of Greenwich.
 export function longDate(iso) {
   if (!iso) return "";
   const [y, m, d] = iso.split("-");
-  return `${d} ${SHORT_MONTHS[Number(m) - 1]} ${y}`;
+  if (getLanguage() === "fi") return `${Number(d)}.${Number(m)}.${y}`;
+  return `${d} ${shortMonthName(Number(m) - 1)} ${y}`;
 }
 
-// "04 Sep", for the Coming up list where the year is implied by the period.
+// "04 Sep" (or "4.9."), for the Coming up list where the year is implied by
+// the period.
 export function shortDate(iso) {
   if (!iso) return "";
   const [, m, d] = iso.split("-");
-  return `${d} ${SHORT_MONTHS[Number(m) - 1]}`;
+  if (getLanguage() === "fi") return `${Number(d)}.${Number(m)}.`;
+  return `${d} ${shortMonthName(Number(m) - 1)}`;
 }
 
 // Local-time ISO date, unlike Date.prototype.toISOString(), which converts to
@@ -106,24 +113,30 @@ export function perMonth(subscription) {
   return cost / CYCLE_MONTHS[subscription.billing_cycle];
 }
 
-// "/mo", "/qtr" or "/yr" -- the short form used next to a price wherever
-// space is tight (trial rows, the mobile table).
+// "/mo", "/qtr" or "/yr" ("/kk", "/nelj.", "/v") -- the short form used next
+// to a price wherever space is tight (trial rows, the mobile table).
 export function cycleSuffix(billing_cycle) {
-  if (billing_cycle === "yearly") return "/yr";
-  if (billing_cycle === "quarterly") return "/qtr";
-  return "/mo";
+  if (billing_cycle === "yearly") return t("cycle.suffix.yearly");
+  if (billing_cycle === "quarterly") return t("cycle.suffix.quarterly");
+  return t("cycle.suffix.monthly");
 }
+
+// "Monthly", "Quarterly" or "Yearly", for selects and labels.
+export const cycleLabel = (billing_cycle) => t(`cycle.${billing_cycle}`);
+
+// "Active", "Trial", "Paused", "Cancelled" (and "Archived"), for selects and
+// tags.
+export const statusLabel = (status) => t(`status.${status}`);
 
 // "14 minutes ago" for the 500 banner, which has to state the real age of the
 // data still on screen rather than a placeholder.
 export function ageInWords(since) {
-  if (!since) return "just now";
+  if (!since) return t("age.now");
   const seconds = Math.floor((Date.now() - since) / 1000);
-  if (seconds < 60) return "less than a minute ago";
+  if (seconds < 60) return t("age.underMinute");
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  if (minutes < 60) return t("age.minutes", { n: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  const days = Math.floor(hours / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
+  if (hours < 24) return t("age.hours", { n: hours });
+  return t("age.days", { n: Math.floor(hours / 24) });
 }

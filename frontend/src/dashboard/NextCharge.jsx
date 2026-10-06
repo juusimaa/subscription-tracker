@@ -12,13 +12,14 @@
 import { useState } from "react";
 import { describeWriteError } from "../api";
 import { cycleSuffix, money, shortDate, todayISO } from "../format";
+import { t } from "../i18n";
 import { TriangleAlert } from "../icons";
 
 function daysUntil(iso, today) {
   const days = Math.round((Date.parse(iso) - Date.parse(today)) / 86400000);
-  if (days === 0) return "today";
-  if (days === 1) return "tomorrow";
-  return `in ${days} days`;
+  if (days === 0) return t("nextCharge.today");
+  if (days === 1) return t("nextCharge.tomorrow");
+  return t("nextCharge.inDays", { n: days });
 }
 
 function NextCharge({ subscriptions, onConvert, onCancel }) {
@@ -50,18 +51,18 @@ function NextCharge({ subscriptions, onConvert, onCancel }) {
   }
 
   return (
-    <section aria-label="Next charge" className="next-charge">
+    <section aria-label={t("nextCharge.label")} className="next-charge">
       {rows.map((s) => {
         const isTrial = s.status === "trial";
         return (
           <div key={s.id} className="next-charge-row" aria-busy={convertingId === s.id || undefined}>
-            <p className="next-charge-label">{isTrial ? "Trial converts" : "Next charge"}</p>
+            <p className="next-charge-label">{isTrial ? t("nextCharge.trialConverts") : t("nextCharge.label")}</p>
             <p className="next-charge-what">
               <span className="next-charge-name">{s.name}</span>{" "}
               <span className="next-charge-amount">
                 {money(s.cost)}
                 {isTrial && cycleSuffix(s.billing_cycle)}
-                {isTrial && <>{" "}<span className="if-kept">if kept</span></>}
+                {isTrial && <>{" "}<span className="if-kept">{t("trial.ifKept")}</span></>}
               </span>{" "}
               <span className="next-charge-when">
                 {shortDate(s.next_renewal_date)}, {daysUntil(s.next_renewal_date, today)}
@@ -75,7 +76,7 @@ function NextCharge({ subscriptions, onConvert, onCancel }) {
                   disabled={convertingId != null}
                   onClick={() => convert(s)}
                 >
-                  {convertingId === s.id ? "Converting…" : "Convert to paid"}
+                  {convertingId === s.id ? t("trial.converting") : t("trial.convert")}
                 </button>
               )}
               <button
@@ -84,7 +85,7 @@ function NextCharge({ subscriptions, onConvert, onCancel }) {
                 disabled={convertingId === s.id}
                 onClick={() => onCancel(s)}
               >
-                {isTrial ? "Cancel before it charges" : "Mark as cancelled"}
+                {isTrial ? t("trial.cancelBefore") : t("nextCharge.markCancelled")}
               </button>
             </div>
             {failure?.id === s.id && (

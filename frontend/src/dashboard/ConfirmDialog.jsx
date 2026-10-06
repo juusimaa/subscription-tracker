@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { describeWriteError } from "../api";
 import { TriangleAlert } from "../icons";
+import { t } from "../i18n";
 import { useModal } from "../useModal";
 
 function ConfirmDialog({ title, body, confirmLabel, onConfirm, onClose, destructive }) {
@@ -52,7 +53,7 @@ function ConfirmDialog({ title, body, confirmLabel, onConfirm, onClose, destruct
             {confirmLabel}
           </button>
           <button type="button" className="btn btn-secondary" disabled={busy} onClick={onClose}>
-            Keep it
+            {t("confirm.keep")}
           </button>
           {/* Destruction is opt-in and deliberately de-emphasised: the default
               is archive, which keeps the past charges on record. */}

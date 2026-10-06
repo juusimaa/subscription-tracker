@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { describeWriteError } from "../api";
 import { cycleSuffix, longDate, money } from "../format";
+import { t } from "../i18n";
 import { TriangleAlert } from "../icons";
 
 function TrialBanner({ trials, year, month, onReview, onConvert, onCancel }) {
@@ -36,19 +37,17 @@ function TrialBanner({ trials, year, month, onReview, onConvert, onCancel }) {
 
   const headline =
     converting.length === 1
-      ? `${converting[0].name} converts to a paid plan on ${longDate(converting[0].next_renewal_date)}`
+      ? t("trial.headlineOne", { name: converting[0].name, date: longDate(converting[0].next_renewal_date) })
       : converting.length > 1
-        ? `${converting.length} trials convert to paid plans this month`
-        : `${trials.length} trial${trials.length === 1 ? " is" : "s are"} running — ${
-            trials.length === 1 ? "it does not convert" : "none converts"
-          } this month`;
+        ? t("trial.headlineMany", { n: converting.length })
+        : t("trial.headlineNone", { n: trials.length });
 
   return (
-    <section aria-label="Trials converting soon" className="trial-banner">
+    <section aria-label={t("trial.label")} className="trial-banner">
       <div className="section-head trial-head">
         <p className="trial-headline">{headline}</p>
         <button type="button" className="btn btn-ghost trial-review" onClick={onReview}>
-          Review trials in the table
+          {t("trial.review")}
         </button>
       </div>
       <ul className="trial-list">
@@ -57,9 +56,10 @@ function TrialBanner({ trials, year, month, onReview, onConvert, onCancel }) {
             <div>
               <p className="trial-row-name">{trial.name}</p>
               <p className="trial-row-detail tnum">
-                {money(trial.cost)}
-                {cycleSuffix(trial.billing_cycle)} from{" "}
-                {longDate(trial.next_renewal_date)} if kept
+                {t("trial.rowDetail", {
+                  price: money(trial.cost) + cycleSuffix(trial.billing_cycle),
+                  date: longDate(trial.next_renewal_date),
+                })}
               </p>
             </div>
             <div className="trial-row-actions">
@@ -69,7 +69,7 @@ function TrialBanner({ trials, year, month, onReview, onConvert, onCancel }) {
                 disabled={convertingId != null}
                 onClick={() => convert(trial)}
               >
-                {convertingId === trial.id ? "Converting…" : "Convert to paid"}
+                {convertingId === trial.id ? t("trial.converting") : t("trial.convert")}
               </button>
               <button
                 type="button"
@@ -77,7 +77,7 @@ function TrialBanner({ trials, year, month, onReview, onConvert, onCancel }) {
                 disabled={convertingId === trial.id}
                 onClick={() => onCancel(trial)}
               >
-                Cancel before it charges
+                {t("trial.cancelBefore")}
               </button>
             </div>
             {failure?.id === trial.id && (
