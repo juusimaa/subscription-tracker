@@ -26,11 +26,12 @@ server {
     # DOM's style object, which CSP doesn't police, and the app sets no style
     # attributes in markup.
     #
-    # Report-Only for now (issue #106): browsers log what an enforced policy
-    # would block, without blocking it. Once the console is clean on the
-    # live site (sign-in, signup with Turnstile, the dashboard, a real
-    # iPhone), drop the "-Report-Only" to enforce it.
-    add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' ${API_URL}; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    # Enforced since issue #106, after a clean report-only run in Chrome on
+    # the live site. Safari ignores a report-only policy that has no
+    # report-to endpoint, so it was checked against an enforced copy instead.
+    # A new origin the app needs (another CDN, an analytics host) has to be
+    # added here, or the browser will block it.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' ${API_URL}; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options "nosniff" always;
     # Emailed ?verify=/?reset= tokens are already stripped from the URL on
     # load (src/linkParams.js); this is cheap cover in case one ever isn't.
