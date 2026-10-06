@@ -61,11 +61,13 @@ never surprised by a charge.
   backend, JWT auth. Deployed on Azure Container Apps with Neon Postgres.
 - **€0 hosting.** Both apps scale to zero and the database is on Neon's free
   tier. Avoid features that need always-on infrastructure or paid APIs.
-- **EUR only for now.** Every cost is assumed to be EUR. Multi-currency is
-  planned (PLAN.md milestone 10): currency per subscription and a default
-  currency per user. Still undecided: how category and period totals show a
-  mix of currencies (per-currency subtotals, a converted total, or something
-  else) and where exchange rates come from.
+- **Multi-currency (PLAN.md milestone 10).** Each subscription keeps the
+  currency it is billed in, and each user has one currency that totals are
+  shown in and new subscriptions start in. Totals are converted at European
+  Central Bank reference rates (fetched from Frankfurter, cached in Postgres)
+  and marked ≈. A charge already taken uses its own day's rate, and one still
+  to come uses the latest rate. What actually charges is always shown in its
+  own currency first. Only the currencies the ECB publishes are supported.
 - **Not built yet:** password reset and email verification (milestone 9), and
   any email or notification delivery. Renewal reminders by email depend on
   milestone 9.
