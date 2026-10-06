@@ -19,7 +19,9 @@
 import { MAX_YEAR, MIN_YEAR } from "./format";
 
 export const DEFAULT_SORT = { key: "renewal", dir: "asc" };
-const SORT_KEYS = ["name", "category", "status", "cost", "perMonth", "started", "renewal"];
+// "started" was a column until #88 replaced it with "paid"; an old bookmark
+// that still names it falls back to the default sort like any unknown key.
+const SORT_KEYS = ["name", "category", "status", "cost", "perMonth", "paid", "renewal"];
 
 // This month, or the nearest end of the range if today falls outside it.
 // Clamping rather than showing an empty period keeps the first render

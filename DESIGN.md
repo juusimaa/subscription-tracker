@@ -405,7 +405,12 @@ Uppercase 11px headers over a 2px rule, and 1px rules between rows. Each
 header is a sort button. The active one shows its arrow in full Ink, and the
 idle arrows sit at 35%. On mobile the active sort chip fills with Ink. Rows carry a
 brand tile, a sub-note line at 12px (Ink at 68%), and Ghost actions aligned
-right. Cancelled rows mute to Ink at 66%, tile included. Grouped runs fold
+right. Cancelled rows mute to Ink at 66%, tile included. The Paid to date column
+shows what a service has charged so far, across every run, in the same
+weight as the Cost beside it; its sub-note always says the span it covers
+("since May 2023", "Sep 2022 – Aug 2026") or why there is no figure. On
+mobile it is the row's third line. It sorts largest first, with unknown
+figures last either way. Grouped runs fold
 under a disclosure chevron. An open group has no rules inside it and closes
 with a 2px rule under its lifetime row. Editing happens in place, marked by the
 inset left rule.

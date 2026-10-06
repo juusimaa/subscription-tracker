@@ -7,7 +7,7 @@
 // reasons that have nothing to do with the UI. See openDashboard() below for
 // the other half of this (freezing "now").
 
-const subscriptions = [
+export const subscriptions = [
   {
     id: 1,
     group_id: 1,

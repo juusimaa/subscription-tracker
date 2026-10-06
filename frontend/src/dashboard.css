@@ -1869,7 +1869,21 @@ kbd {
     font-feature-settings: 'tnum' 1;
     margin-top: 2px;
   }
-  .mobile-row-cost { text-align: right; }
+  /* Paid to date (issue #88): a third line in the meta line's size and
+     step, so the row grows by a line rather than gaining a new voice. Only
+     the amount steps up to full ink, to be found while scanning. */
+  .mobile-row-paid {
+    display: block;
+    font-size: 12px;
+    line-height: 18px;
+    color: color-mix(in srgb, var(--color-text) 68%, transparent);
+    font-feature-settings: 'tnum' 1;
+  }
+  .mobile-row-paid strong { color: var(--color-text); font-weight: 600; }
+  .mobile-row.cancelled .mobile-row-paid strong { color: inherit; }
+  /* Three lines on the left, two on the right: the cost pins to the top so
+     it stays level with the name it prices. */
+  .mobile-row-cost { text-align: right; align-self: start; }
   .mobile-row-amount {
     display: block;
     font-family: var(--font-heading);
