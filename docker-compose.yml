@@ -86,6 +86,7 @@ services:
       # default, switches it off -- see .env.example for Cloudflare's
       # always-pass test keys.
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      TURNSTILE_HOSTNAMES: ${TURNSTILE_HOSTNAMES:-}
       EMAIL_DAILY_CAP: ${EMAIL_DAILY_CAP:-90}
       # Outgoing email (see app/mailer.py). The defaults keep local dev on the
       # console backend, which logs each message -- links included -- to

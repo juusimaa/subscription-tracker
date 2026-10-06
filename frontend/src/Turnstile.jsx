@@ -34,8 +34,9 @@ function loadScript() {
 }
 
 // `onToken` gets the token once the check passes, and null when it expires
-// or fails, so the form can hold its submit until there is one.
-function Turnstile({ onToken }) {
+// or fails, so the form can hold its submit until there is one. `action`
+// names the form; the backend refuses a token solved for another one.
+function Turnstile({ action, onToken }) {
   const box = useRef(null);
   // The latest callback without re-rendering the widget when it changes.
   const callback = useRef(onToken);
@@ -52,6 +53,7 @@ function Turnstile({ onToken }) {
         if (cancelled || !box.current) return;
         widget = turnstile.render(box.current, {
           sitekey: TURNSTILE_SITE_KEY,
+          action,
           language: getLanguage(),
           theme: "auto",
           callback: (token) => callback.current(token),
@@ -64,7 +66,7 @@ function Turnstile({ onToken }) {
       cancelled = true;
       if (widget !== null) window.turnstile?.remove(widget);
     };
-  }, []);
+  }, [action]);
 
   if (!TURNSTILE_SITE_KEY) return null;
   return <div ref={box} className="turnstile" />;

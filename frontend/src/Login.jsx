@@ -217,7 +217,13 @@ function Login({ onLogin, email: knownEmail, compact = false, notice = null, ini
               )}
             </div>
           )}
-          {needsCaptcha && <Turnstile key={captchaRound} onToken={setCaptcha} />}
+          {needsCaptcha && (
+            <Turnstile
+              key={captchaRound}
+              action={isRegistering ? "signup" : "password_reset"}
+              onToken={setCaptcha}
+            />
+          )}
           <button
             type="submit"
             className="btn btn-primary"

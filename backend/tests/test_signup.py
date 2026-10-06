@@ -112,16 +112,33 @@ class TestEmailCaps:
 
 
 @contextmanager
-def turnstile_on(monkeypatch, accepted: set[str]):
+def turnstile_on(monkeypatch, accepted: set[str], answer=None):
+    """Cloudflare accepts the tokens in `accepted`, each as solved on the form
+    the route expects at subscriptionstrack.com, unless `answer` overrides
+    fields of the reply."""
     calls = []
 
     def fake_siteverify(token, remote_ip):
         calls.append((token, remote_ip))
-        return {"success": token in accepted}
+        action = "signup" if token.startswith("good") else "password_reset"
+        return {
+            "success": token in accepted,
+            "hostname": "subscriptionstrack.com",
+            "action": action,
+            **(answer or {}),
+        }
 
     monkeypatch.setattr(turnstile, "SECRET_KEY", "test-secret")
+    monkeypatch.setattr(turnstile, "HOSTNAMES", {"subscriptionstrack.com"})
     monkeypatch.setattr(turnstile, "_siteverify", fake_siteverify)
     yield calls
+
+
+def signup_with_token(client, token):
+    return client.post(
+        "/register",
+        json={"email": "a@example.com", "password": "password123", "turnstile_token": token},
+    )
 
 
 class TestTurnstile:
@@ -148,21 +165,42 @@ class TestTurnstile:
     def test_password_reset_needs_one_too(self, client, outbox, monkeypatch):
         register(client, email="a@example.com")
         outbox.clear()
-        with turnstile_on(monkeypatch, {"good"}):
+        with turnstile_on(monkeypatch, {"reset"}):
             bad = client.post("/password-reset", json={"email": "a@example.com"})
             good = client.post(
-                "/password-reset", json={"email": "a@example.com", "turnstile_token": "good"}
+                "/password-reset", json={"email": "a@example.com", "turnstile_token": "reset"}
             )
 
         assert bad.status_code == 400
         assert good.status_code == 202
         assert len(outbox) == 1
 
+    def test_token_from_another_hostname_is_refused(self, client, monkeypatch):
+        with turnstile_on(monkeypatch, {"good"}, answer={"hostname": "evil.example"}):
+            assert signup_with_token(client, "good").status_code == 400
+
+    def test_token_for_the_other_form_is_refused(self, client, monkeypatch):
+        # Solved on the reset form, so not good for signing up.
+        with turnstile_on(monkeypatch, {"reset"}):
+            assert signup_with_token(client, "reset").status_code == 400
+
+    def test_test_keys_pass_without_an_action(self, client, outbox, monkeypatch):
+        # Cloudflare's always-pass test secret answers with no action.
+        testing = {"action": None, "metadata": {"result_with_testing_key": True}}
+        with turnstile_on(monkeypatch, {"good"}, answer=testing):
+            assert signup_with_token(client, "good").status_code == 202
+
+    def test_no_hostnames_fails_closed(self, client, monkeypatch):
+        with turnstile_on(monkeypatch, {"good"}):
+            monkeypatch.setattr(turnstile, "HOSTNAMES", set())
+            assert signup_with_token(client, "good").status_code == 400
+
     def test_cloudflare_unreachable_fails_closed(self, client, monkeypatch):
         def down(token, remote_ip):
             raise RuntimeError("cloudflare is down")
 
         monkeypatch.setattr(turnstile, "SECRET_KEY", "test-secret")
+        monkeypatch.setattr(turnstile, "HOSTNAMES", {"subscriptionstrack.com"})
         monkeypatch.setattr(turnstile, "_siteverify", down)
         response = client.post(
             "/register",

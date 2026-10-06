@@ -637,13 +637,17 @@ arriving from Azure's ingress (`100.100.0.x`), so the 5/minute limits on
 - **Turnstile** on `/register` and `/password-reset`, the two routes that
   mail an address nobody has proven. It is off unless
   `TURNSTILE_SECRET_KEY` (backend) and `TURNSTILE_SITE_KEY` (frontend
-  runtime config) are set. If Cloudflare can't be reached, it fails closed.
+  runtime config) are set. A token must also be solved on that form (widget
+  action `signup` or `password_reset`) at a hostname in `TURNSTILE_HOSTNAMES`.
+  If Cloudflare can't be reached, it fails closed.
   Sign-in has no captcha: it needs the password, and is rate limited.
 
 **Go-live order.** Merging the second PR opens signup, because nothing reads
 `INVITE_CODE` any more. Before that: set `TRUST_FORWARDED_FOR=true` and check
 the logs, then create the Turnstile widget (hostname
-`subscriptionstrack.com`) and set both keys. Afterwards, remove `INVITE_CODE`
+`subscriptionstrack.com`; created 2026-10-06, site key
+`0x4AAAAAAFPKdaenIDafZU0R`) and set both keys plus
+`TURNSTILE_HOSTNAMES=subscriptionstrack.com`. Afterwards, remove `INVITE_CODE`
 from the backend app.
 
 ## Notes / rationale

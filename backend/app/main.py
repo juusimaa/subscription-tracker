@@ -248,8 +248,9 @@ def queue_email(db: Session, background_tasks: BackgroundTasks, to: str, send, *
         request_logger.warning("email cap reached; not sending %s", send.__name__)
 
 
-def require_turnstile(token: str | None, request: Request) -> None:
-    if not turnstile.passes(token, client_address(request)):
+def require_turnstile(token: str | None, request: Request, action: str) -> None:
+    """`action` names the form, matching the widget's in frontend/src/Login.jsx."""
+    if not turnstile.passes(token, client_address(request), action):
         raise HTTPException(status_code=400, detail="captcha")
 
 
@@ -279,7 +280,7 @@ def register(
     Rate limited to 5/minute per client, and behind the Turnstile check when
     it is configured.
     """
-    require_turnstile(user.turnstile_token, request)
+    require_turnstile(user.turnstile_token, request, "signup")
     existing = crud.get_user_by_email(db, user.email)
     if existing is None:
         try:
@@ -500,7 +501,7 @@ def request_password_reset(
 
     Behind the Turnstile check when it is configured, like /register: both
     mail an address the caller hasn't proven is theirs."""
-    require_turnstile(payload.turnstile_token, request)
+    require_turnstile(payload.turnstile_token, request, "password_reset")
     user = crud.get_user_by_email(db, payload.email)
     if user is not None:
         queue_email(

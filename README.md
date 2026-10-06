@@ -80,6 +80,7 @@ that need them ([.env.example](.env.example) documents the same list):
 | `CORS_ORIGINS` | `backend` | Comma-separated origins allowed to call the API. Locally the Vite dev server. |
 | `SECRET_KEY` | `backend` | Signs the JWTs. Changing it logs everyone out. |
 | `TURNSTILE_SECRET_KEY` | `backend` | Optional. Turns on the [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/) bot check on `/register` and `/password-reset` — see [Accounts](#accounts). Set it together with the frontend's site key. |
+| `TURNSTILE_HOSTNAMES` | `backend` | Required with `TURNSTILE_SECRET_KEY`. Comma-separated hostnames a token may be solved on (production: `subscriptionstrack.com`; Cloudflare's test secret: `example.com`). Left empty, the check refuses every token. |
 | `EMAIL_DAILY_CAP` | `backend` | Most emails sent in any 24 hours, all addresses together (default 90; Resend's free tier stops at 100). |
 | `TRUST_FORWARDED_FOR` | `backend` | Production only. Key rate limits on the last `X-Forwarded-For` entry, which is the real client behind Azure's ingress. Leave `false` without a proxy. |
 | `EMAIL_BACKEND` | `backend` | `console` (default) logs verification and reset emails instead of sending them; `resend` sends through [Resend](https://resend.com). See [Email](#email). |
