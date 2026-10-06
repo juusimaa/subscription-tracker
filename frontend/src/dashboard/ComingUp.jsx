@@ -1,7 +1,8 @@
 // The charges falling in the selected month, in date order.
 //
 // A trial shows the price it converts to, marked "if kept": that is the one
-// answer the next-charge strip and the trial banner give too. Nothing has
+// answer the next-charge strip and the trial banner give too. Its label stays
+// Ink here: the strip above already spends the red on it, with the actions. Nothing has
 // charged yet -- the charge happens only if the user keeps the plan -- which
 // is why the 30-day KPI and the period totals leave it out until then.
 //

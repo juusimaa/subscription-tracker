@@ -319,9 +319,10 @@ function Dashboard({
     .sort((a, b) => comparable(b.cost, b.currency) - comparable(a.cost, a.currency))[0];
 
   // Trials converting inside the same 30 days. The route counts them at 0 --
-  // nothing has charged yet -- so the figure says so, and gives the price
-  // they bring if kept: the same "if kept" figure the strip, the banner and
-  // Coming up show, rather than a fourth answer.
+  // nothing has charged yet -- so the figure says so. One such trial is
+  // always the one the next-charge strip shows, name and "if kept" price
+  // included, so the note points there instead of saying it a second time.
+  // Several only get their sum here, which nothing else on the page gives.
   const horizon = new Date(`${today}T00:00:00`);
   horizon.setDate(horizon.getDate() + 30);
   const trialsSoon = trials.filter((s) => s.next_renewal_date >= today && s.next_renewal_date <= toISO(horizon));
@@ -330,19 +331,15 @@ function Dashboard({
     (sum, s) => sum + (convert(s.cost, s.currency, s.next_renewal_date) ?? 0),
     0,
   );
-  const trialsForeign = trialsSoon.some((s) => isForeign(s.currency));
-  const trialsSoonAmount =
-    trialsSoon.length === 1 && trialsForeign
-      ? `${money(trialsSoon[0].cost, trialsSoon[0].currency)} (${approxText(trialsSoonCost)})`
-      : trialsForeign
-        ? approxText(trialsSoonCost)
-        : money(trialsSoonCost);
   const trialsSoonNote =
     trialsSoon.length === 0
       ? null
       : trialsSoon.length === 1
-        ? t("kpi.trialNoteOne", { name: trialsSoon[0].name, amount: trialsSoonAmount })
-        : t("kpi.trialNoteMany", { n: trialsSoon.length, amount: trialsSoonAmount });
+        ? t("kpi.trialNoteOne")
+        : t("kpi.trialNoteMany", {
+            n: trialsSoon.length,
+            amount: trialsSoon.some((s) => isForeign(s.currency)) ? approxText(trialsSoonCost) : money(trialsSoonCost),
+          });
 
   const kpis = [
     {
