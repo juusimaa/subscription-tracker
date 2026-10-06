@@ -347,7 +347,11 @@ Heavy type with no softening. Neutral unless the button is the main action.
   (`.destructive`) is the one exception and keeps Signal Red Deep text.
 - **Disabled:** 45% opacity.
 - **Focus:** a 2px Signal Red outline, offset 2px, on every interactive
-  element.
+  element except text fields (see Inputs).
+- **Trial actions:** "Convert to paid" and "Cancel before it charges" are
+  Secondary small buttons wherever a trial appears (the next-charge strip and
+  the trial section), and so is the strip's "Mark as cancelled". On mobile
+  the strip stacks them beside the charge at one width.
 
 ### Segmented control
 A row of square options joined by 1px Stroke separators inside a 1px Stroke
@@ -365,7 +369,9 @@ and "Archived".
 ### Inputs / Fields
 - **Style:** Paper Raised fill, 1px Rule stroke, square, 36px minimum height
   (44px on mobile), 14px text, Signal Red caret.
-- **Focus:** the border turns Signal Red and the outline sits flush.
+- **Focus:** the border turns Ink with a 1px Ink outline flush around it, a
+  2px Ink frame. Never red: a red frame on a field means an error. An invalid
+  field keeps its red border while focused.
 - **Error:** a 2px Signal Red border, a Signal Red Deep label, and the message
   at the field. Warnings, such as a duplicate service name, are advisory and
   never block saving.
