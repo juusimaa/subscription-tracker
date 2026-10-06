@@ -46,7 +46,7 @@ export default defineConfig({
       // inline section, not a dialog). The account dialog is the one
       // exception: AccountDialog.jsx is a real dialog on both, re-chromed to
       // a bottom sheet by CSS alone at 760px, so it's worth both baselines.
-      testMatch: /(dashboard|account-dialog|ui-mock|grouped-runs|save-notice|quick-add|add-form-dates|shortcuts|cancelled-access|list-guide|paid-to-date|language)\.spec\.js/,
+      testMatch: /(dashboard|account-dialog|ui-mock|grouped-runs|save-notice|quick-add|add-form-dates|shortcuts|cancelled-access|list-guide|paid-to-date|language|email-links)\.spec\.js/,
     },
   ],
   webServer: {

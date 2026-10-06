@@ -11,6 +11,7 @@ from decimal import Decimal
 from sqlalchemy import (
     Column,
     Date,
+    DateTime,
     Enum,
     ForeignKey,
     Integer,
@@ -88,6 +89,17 @@ class User(Base):
     # password signs out other devices" (see the Account dialog copy) true
     # rather than aspirational.
     token_version = Column(Integer, nullable=False, default=0, server_default="0")
+    # When the user clicked a verification link, or completed a password
+    # reset, which proves the same thing (PLAN.md milestone 9). Null means
+    # unverified. Unverified accounts work normally; only mail the user did
+    # not ask for (future renewal reminders) is gated on this.
+    email_verified_at = Column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def email_verified(self) -> bool:
+        """What schemas.User serializes, so the API never exposes the
+        timestamp itself, only whether there is one."""
+        return self.email_verified_at is not None
 
 
 class SubscriptionGroup(Base):

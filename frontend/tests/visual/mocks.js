@@ -169,13 +169,33 @@ async function mockApi(page) {
  * for real content instead of a fixed delay. Call this as the whole of a
  * test file's beforeEach.
  */
-export async function openDashboard(page, path = "/") {
+export async function openDashboard(page, path = "/", { me, routes } = {}) {
   await page.clock.install({ time: new Date(FROZEN_NOW) });
   // App.jsx reads the token from localStorage on its very first render (see
   // api.js's getToken), so this has to be in place before page.goto()
   // resolves -- an init script is the only hook that runs early enough.
   await page.addInitScript(() => localStorage.setItem("token", "visual-test-token"));
   await mockApi(page);
+  // Registered after mockApi on purpose: Playwright tries the newest route
+  // first, so these win over the defaults above.
+  if (me) {
+    await page.route("**/me", (route) =>
+      route.fulfill({ json: { email: "demo@example.com", ...me } }),
+    );
+  }
+  if (routes) await routes(page);
   await page.goto(path);
   await page.getByText("Netflix").first().waitFor();
+}
+
+/**
+ * The sign-in side of the app: no token, time frozen, and the same API
+ * mocks in place for whatever the test signs into. `routes` adds the ones a
+ * test needs, such as an emailed link's endpoint.
+ */
+export async function openSignedOut(page, path = "/", { routes } = {}) {
+  await page.clock.install({ time: new Date(FROZEN_NOW) });
+  await mockApi(page);
+  if (routes) await routes(page);
+  await page.goto(path);
 }

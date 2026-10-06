@@ -78,6 +78,62 @@ def create_access_token(user_id: int, token_version: int = 0) -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
+# Lifetimes of the tokens carried in emailed links. A reset link is short
+# because it can take the account over; a verification link only proves an
+# address, and people often open that mail a day later.
+VERIFY_TOKEN_HOURS = 48
+RESET_TOKEN_HOURS = 1
+
+
+class LinkTokenError(Exception):
+    """An emailed link's token could not be used. `reason` is "expired" or
+    "invalid" -- the only distinction the frontend shows, since telling a
+    user *why* a link is invalid helps nobody but someone forging one."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
+def create_verify_token(user: models.User) -> str:
+    """The token in a verification link. Carries the address it was sent to,
+    so it only ever confirms that exact address."""
+    expire = datetime.now(timezone.utc) + timedelta(hours=VERIFY_TOKEN_HOURS)
+    payload = {"sub": str(user.id), "purpose": "verify", "email": user.email, "exp": expire}
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def create_reset_token(user: models.User) -> str:
+    """The token in a password-reset link. Carries the current token_version:
+    completing a reset bumps it (crud.update_password), which is what makes
+    every reset link single-use without storing anything."""
+    expire = datetime.now(timezone.utc) + timedelta(hours=RESET_TOKEN_HOURS)
+    payload = {"sub": str(user.id), "purpose": "reset", "tv": user.token_version, "exp": expire}
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def decode_link_token(token: str, purpose: str, db: Session) -> tuple[models.User, dict]:
+    """Checks an emailed link's token and returns its user and claims.
+
+    The purpose check is what keeps a verify token from being replayed as a
+    reset token, and both apart from access tokens (get_current_user refuses
+    anything that has a purpose at all)."""
+    try:
+        payload = jwt.decode(
+            token, SECRET_KEY, algorithms=[ALGORITHM], options={"require": ["exp"]}
+        )
+    except jwt.ExpiredSignatureError:
+        raise LinkTokenError("expired") from None
+    except jwt.PyJWTError:
+        raise LinkTokenError("invalid") from None
+    if payload.get("purpose") != purpose or payload.get("sub") is None:
+        raise LinkTokenError("invalid")
+    user = db.query(models.User).filter(models.User.id == int(payload["sub"])).first()
+    if user is None:
+        raise LinkTokenError("invalid")
+    return user, payload
+
+
 def get_current_user(
     token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
 ) -> models.User:
@@ -107,6 +163,12 @@ def get_current_user(
 
     user_id = payload.get("sub")
     if user_id is None:
+        raise credentials_error
+    # Tokens from emailed links (create_verify_token, create_reset_token) are
+    # signed with the same key and carry a "sub" too. Their "purpose" claim is
+    # what stops one being used as a bearer token: an access token never has
+    # one.
+    if "purpose" in payload:
         raise credentials_error
 
     # The user is loaded fresh on every request rather than trusted from the

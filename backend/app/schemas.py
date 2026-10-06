@@ -456,6 +456,9 @@ class User(BaseModel):
 
     id: int
     email: EmailStr
+    # Read from models.User.email_verified, a property over
+    # email_verified_at -- the timestamp itself is never exposed.
+    email_verified: bool = False
 
 
 class Token(BaseModel):
@@ -474,6 +477,32 @@ class PasswordChange(BaseModel):
     re-asks for your password before changing it."""
 
     current_password: str
+    new_password: Password
+
+
+class LinkToken(BaseModel):
+    """What the client sends on POST /verify-email: the token from the
+    ?verify= link, passed through untouched."""
+
+    token: str
+
+
+class VerifiedEmail(BaseModel):
+    """The address a verification link just confirmed, so a signed-out
+    browser can say which account it was."""
+
+    email: EmailStr
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    """What the client sends on POST /password-reset/confirm. The same
+    Password rules as registration and change password apply."""
+
+    token: str
     new_password: Password
 
 

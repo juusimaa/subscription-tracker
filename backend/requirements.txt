@@ -22,3 +22,7 @@ redis==5.2.1
 # by default -- fine for local Compose's single backend container, not for
 # multiple replicas behind a load balancer (a milestone 8 decision).
 slowapi==0.1.10
+# Sends verification and password-reset email through Resend's HTTP API (see
+# app/mailer.py). Also what Starlette's TestClient is built on, which is why
+# it used to live in requirements-dev.txt only.
+httpx==0.27.2

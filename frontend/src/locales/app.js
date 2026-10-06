@@ -37,10 +37,46 @@ export default {
     "login.logIn": "Log in",
     "login.toLogin": "Already have an account? Log in",
     "login.toRegister": "Need an account? Sign up",
+    "login.forgot": "Forgot your password?",
+    "login.eyebrowForgot": "Forgotten password",
+    "login.forgotNote": "Enter the email you signed up with. A link to choose a new password will be sent there.",
+    "login.sendReset": "Send reset link",
+    "login.resetSent": ({ email }) =>
+      `If there's an account for ${email}, a reset link is on its way. It works once, for 1 hour. If nothing arrives, check your spam folder.`,
+    "login.backToLogin": "Back to log in",
+    "login.verified": ({ email }) => `${email} is confirmed. Log in to continue.`,
+    "login.verifyExpired": "That confirmation link has expired. Log in to send yourself a new one.",
+    "login.verifyInvalid": "That confirmation link doesn't work. Log in to send yourself a new one.",
+    "login.resetExpired":
+      "That reset link has expired or was already used. Each link works once, for 1 hour. Send yourself a new one below.",
+
+    // Where a reset email's link lands (ResetPassword.jsx).
+    "reset.eyebrow": "Reset password",
+    "reset.headline": "New password.",
+    "reset.note": "At least 8 characters. Setting it signs you out on every other device.",
+    "reset.mismatch": "The two passwords don't match.",
+    "reset.submit": "Set password and log in",
+    "reset.done": "Password changed. Every other device has been signed out.",
+
+    // The strip under the header about the account's email (EmailStrip.jsx).
+    "verify.checking": "Checking your confirmation link…",
+    "verify.nudge": ({ email }) =>
+      `Confirm ${email} with the link we emailed you, so you can reset your password by email if you forget it.`,
+    "verify.sendAgain": "Send the link again",
+    "verify.sendNew": "Send a new one",
+    "verify.sent": ({ email }) => `Sent. Check ${email}; the link works for 48 hours.`,
+    "verify.nothingSent": "Nothing was sent.",
+    "verify.done": ({ email }) => `${email} is confirmed.`,
+    "verify.expired": "That confirmation link has expired.",
+    "verify.invalid": "That confirmation link doesn't work.",
 
     "account.title": "Account",
     "account.close": "Close",
     "account.signedInAs": "Signed in as",
+    "account.emailConfirmed": "Confirmed",
+    "account.emailUnconfirmed": "Not confirmed yet.",
+    "account.sendConfirm": "Send confirmation link",
+    "account.confirmSent": "Sent. Check your inbox.",
     "account.languageNote": "Remembered on this device.",
     "account.changePassword": "Change password",
     "account.passwordNote":
@@ -120,10 +156,44 @@ export default {
     "login.logIn": "Kirjaudu sisään",
     "login.toLogin": "Onko sinulla jo tili? Kirjaudu sisään",
     "login.toRegister": "Eikö sinulla ole tiliä? Luo tili",
+    "login.forgot": "Unohditko salasanasi?",
+    "login.eyebrowForgot": "Unohtunut salasana",
+    "login.forgotNote": "Anna sähköpostiosoite, jolla loit tilin. Sinne lähetetään linkki uuden salasanan valitsemiseen.",
+    "login.sendReset": "Lähetä palautuslinkki",
+    "login.resetSent": ({ email }) =>
+      `Jos osoitteella ${email} on tili, palautuslinkki on matkalla. Linkki toimii kerran, tunnin ajan. Jos viestiä ei kuulu, katso roskapostikansio.`,
+    "login.backToLogin": "Takaisin kirjautumiseen",
+    "login.verified": ({ email }) => `${email} on vahvistettu. Kirjaudu sisään jatkaaksesi.`,
+    "login.verifyExpired": "Vahvistuslinkki on vanhentunut. Kirjaudu sisään, niin voit lähettää itsellesi uuden.",
+    "login.verifyInvalid": "Vahvistuslinkki ei toimi. Kirjaudu sisään, niin voit lähettää itsellesi uuden.",
+    "login.resetExpired":
+      "Palautuslinkki on vanhentunut tai jo käytetty. Jokainen linkki toimii kerran, tunnin ajan. Lähetä itsellesi uusi alla.",
+
+    "reset.eyebrow": "Salasanan vaihto",
+    "reset.headline": "Uusi salasana.",
+    "reset.note": "Vähintään 8 merkkiä. Vaihto kirjaa sinut ulos kaikilla muilla laitteilla.",
+    "reset.mismatch": "Salasanat eivät täsmää.",
+    "reset.submit": "Vaihda salasana ja kirjaudu",
+    "reset.done": "Salasana vaihdettu. Kaikki muut laitteet on kirjattu ulos.",
+
+    "verify.checking": "Tarkistetaan vahvistuslinkkiä…",
+    "verify.nudge": ({ email }) =>
+      `Vahvista ${email} sähköpostiisi lähetetyllä linkillä, niin voit vaihtaa salasanan sähköpostitse, jos unohdat sen.`,
+    "verify.sendAgain": "Lähetä linkki uudelleen",
+    "verify.sendNew": "Lähetä uusi",
+    "verify.sent": ({ email }) => `Lähetetty. Katso osoitteen ${email} saapuneet viestit; linkki toimii 48 tuntia.`,
+    "verify.nothingSent": "Mitään ei lähetetty.",
+    "verify.done": ({ email }) => `${email} on vahvistettu.`,
+    "verify.expired": "Vahvistuslinkki on vanhentunut.",
+    "verify.invalid": "Vahvistuslinkki ei toimi.",
 
     "account.title": "Tili",
     "account.close": "Sulje",
     "account.signedInAs": "Kirjautuneena",
+    "account.emailConfirmed": "Vahvistettu",
+    "account.emailUnconfirmed": "Ei vielä vahvistettu.",
+    "account.sendConfirm": "Lähetä vahvistuslinkki",
+    "account.confirmSent": "Lähetetty. Katso saapuneet viestit.",
     "account.languageNote": "Valinta muistetaan tällä laitteella.",
     "account.changePassword": "Vaihda salasana",
     "account.passwordNote":

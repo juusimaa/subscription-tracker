@@ -8,7 +8,7 @@ from calendar import monthrange
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -19,7 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app import auth, backup_csv, cache, crud, models, renewals, schemas
+from app import auth, backup_csv, cache, crud, mailer, models, renewals, schemas
 from app.database import get_db
 from app.logging_config import configure_logging, request_logger
 
@@ -46,7 +46,8 @@ app = FastAPI(
     version="0.1.0",
     description=(
         "Track recurring subscriptions and what they cost.\n\n"
-        "Every route except `/health`, `/register` and `/token` needs a Bearer "
+        "Every route except `/health`, `/register`, `/token`, `/verify-email` "
+        "and the two `/password-reset` routes needs a Bearer "
         "token, and only ever sees the calling user's own data. To try them "
         "out in the Swagger UI at `/docs`: register, then use **Authorize** "
         "(the OAuth2 password flow posts to `/token`, where the email goes in "
@@ -54,7 +55,13 @@ app = FastAPI(
     ),
     openapi_tags=[
         {"name": "Health", "description": "Liveness check. No authentication."},
-        {"name": "Auth", "description": "Registration, login, and who-am-I."},
+        {
+            "name": "Auth",
+            "description": (
+                "Registration, login, who-am-I, email verification and "
+                "password reset."
+            ),
+        },
         {
             "name": "Subscriptions",
             "description": "The subscriptions themselves, plus what they cost per period.",
@@ -125,12 +132,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
 # PLAN.md milestone 7: a stopgap for the gap between "registration is
-# architecturally open to anyone" (milestone 6) and "an email is verified
-# before it can do anything" (milestone 9, not built yet). Unset -- the
-# default for local dev and the whole test suite -- /register stays open, the
-# same as before this existed. Set it once the app is reachable on a public
-# URL and only people holding the code can create an account; take it back
-# out once milestone 9 lands.
+# architecturally open to anyone" (milestone 6) and "an email is verified"
+# (milestone 9). Milestone 9 has landed, but the invite code deliberately
+# stays while the app is in beta; dropping it is a separate decision. Unset
+# -- the default for local dev and the whole test suite -- /register stays
+# open, the same as before this existed.
 #
 # `or None` so an explicitly empty value (INVITE_CODE=) is also "disabled",
 # the same convention TEST_DATABASE_URL uses in conftest.py.
@@ -212,7 +218,12 @@ def health(db: Session = Depends(get_db)):
 
 @app.post("/register", response_model=schemas.User, status_code=201, tags=["Auth"])
 @limiter.limit("5/minute")
-def register(request: Request, user: schemas.UserCreate, db: Session = Depends(get_db)):
+def register(
+    request: Request,
+    user: schemas.UserCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """Create an account. Returns the new user without a token: the frontend
     follows this immediately with a call to /token.
 
@@ -223,19 +234,26 @@ def register(request: Request, user: schemas.UserCreate, db: Session = Depends(g
     Checked before the email lookup below, on purpose: if INVITE_CODE is set,
     a wrong or missing one is rejected without ever touching the users table,
     so no response here can be used to probe which emails are registered.
+
+    The new account starts unverified and fully usable; a verification link
+    goes out after the response (see app/mailer.py).
     """
     if INVITE_CODE and user.invite_code != INVITE_CODE:
         raise HTTPException(status_code=403, detail="Invalid invite code")
     if crud.get_user_by_email(db, user.email):
         raise HTTPException(status_code=400, detail="Email already registered")
     try:
-        return crud.create_user(db, user)
+        db_user = crud.create_user(db, user)
     except crud.DuplicateError:
         # Two concurrent registrations for the same email can both pass the
         # check above before either commits (TODO.md item 5) -- this gives
         # the second one the same answer the check would have, instead of an
         # unhandled IntegrityError surfacing as a 500.
         raise HTTPException(status_code=400, detail="Email already registered") from None
+    background_tasks.add_task(
+        mailer.send_verification_email, db_user.email, auth.create_verify_token(db_user)
+    )
+    return db_user
 
 
 @app.post("/token", response_model=schemas.Token, tags=["Auth"])
@@ -297,6 +315,100 @@ def change_password(
     return schemas.Token(
         access_token=auth.create_access_token(current_user.id, current_user.token_version)
     )
+
+
+# --- Email verification and password reset (PLAN.md milestone 9) ---
+#
+# A bad link answers 400, never 401: the frontend treats any 401 as "your
+# session expired" and signs the user out (frontend/src/api.js), which is the
+# wrong response to a stale link opened while signed in.
+
+
+def _link_error(exc: auth.LinkTokenError) -> HTTPException:
+    return HTTPException(status_code=400, detail=exc.reason)
+
+
+@app.post("/me/verification", status_code=204, tags=["Auth"])
+@limiter.limit("3/hour")
+def resend_verification(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Sends the calling user a fresh verification link. A no-op for an
+    address that is already verified. Limited to 3/hour per remote address so
+    the button can't be used to flood someone's inbox."""
+    if not current_user.email_verified:
+        background_tasks.add_task(
+            mailer.send_verification_email,
+            current_user.email,
+            auth.create_verify_token(current_user),
+        )
+
+
+@app.post("/verify-email", response_model=schemas.VerifiedEmail, tags=["Auth"])
+def verify_email(payload: schemas.LinkToken, db: Session = Depends(get_db)):
+    """Marks the address in a verification link as verified. Needs no login,
+    because the link is often opened in a different browser from the one
+    that registered. Idempotent: opening the same link twice is fine."""
+    try:
+        user, claims = auth.decode_link_token(payload.token, "verify", db)
+    except auth.LinkTokenError as exc:
+        raise _link_error(exc) from None
+    # The address the link was sent to has to still be the account's address.
+    if claims.get("email") != user.email:
+        raise HTTPException(status_code=400, detail="invalid")
+    crud.mark_email_verified(db, user)
+    return {"email": user.email}
+
+
+@app.post("/password-reset", status_code=202, tags=["Auth"])
+@limiter.limit("5/hour")
+def request_password_reset(
+    request: Request,
+    payload: schemas.PasswordResetRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Emails a reset link if the address has an account. Always 202 with an
+    empty body, so this route can't be used to find out which addresses are
+    registered (the same reasoning as /token's single error message).
+
+    Works for unverified accounts too: a user who forgets their password
+    before verifying would otherwise be locked out for good. Opening the link
+    proves the address, so completing the reset also verifies it."""
+    user = crud.get_user_by_email(db, payload.email)
+    if user is not None:
+        background_tasks.add_task(
+            mailer.send_password_reset_email, user.email, auth.create_reset_token(user)
+        )
+    return Response(status_code=202)
+
+
+@app.post("/password-reset/confirm", response_model=schemas.Token, tags=["Auth"])
+@limiter.limit("10/hour")
+def confirm_password_reset(
+    request: Request,
+    payload: schemas.PasswordResetConfirm,
+    db: Session = Depends(get_db),
+):
+    """Sets a new password from a reset link and signs the user straight in.
+
+    The link's "tv" claim has to match the account's current token_version.
+    Setting the password bumps it, so a link works exactly once, and every
+    session signed in before the reset stops working (the same as change
+    password)."""
+    try:
+        user, claims = auth.decode_link_token(payload.token, "reset", db)
+    except auth.LinkTokenError as exc:
+        raise _link_error(exc) from None
+    if claims.get("tv") != user.token_version:
+        # Already used, or the password changed some other way since the
+        # link was sent. Either way the link is spent.
+        raise HTTPException(status_code=400, detail="expired")
+    crud.update_password(db, user, payload.new_password)
+    crud.mark_email_verified(db, user)
+    return schemas.Token(access_token=auth.create_access_token(user.id, user.token_version))
 
 
 @app.delete("/me", status_code=204, tags=["Auth"])

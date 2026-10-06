@@ -25,19 +25,24 @@ import {
   getToken,
   getUpcoming,
   importBackup,
+  linkProblem,
   logout,
   onAuthExpired,
   renameCategory,
   restoreSubscription,
   unarchiveSubscription,
   updateSubscription,
+  verifyEmail,
 } from "./api";
 import AccountDialog from "./AccountDialog";
 import Dashboard from "./dashboard/Dashboard";
+import EmailStrip from "./EmailStrip";
 import Login from "./Login";
+import ResetPassword from "./ResetPassword";
 import { MAX_YEAR, MIN_YEAR, ageInWords } from "./format";
 import { t } from "./i18n";
 import { GitHub, TriangleAlert } from "./icons";
+import { linkParams } from "./linkParams";
 import { useModal } from "./useModal";
 import { readPeriod } from "./viewUrl";
 import "./modernist.css";
@@ -70,6 +75,21 @@ function App() {
   // means localStorage is read once on mount, not on every render.
   const [token, setToken] = useState(() => getToken());
   const [email, setEmail] = useState(null);
+  // From GET /me. Left undefined when the API doesn't say, which shows no
+  // nudge (EmailStrip.jsx).
+  const [emailVerified, setEmailVerified] = useState(undefined);
+  // The token from an emailed link this page was opened with (linkParams.js),
+  // cleared once it has been dealt with.
+  const [resetToken, setResetToken] = useState(linkParams.reset);
+  // What a link just did, shown once: "verified", "verifyExpired",
+  // "verifyInvalid" or "resetDone". `verifiedEmail` names the confirmed
+  // address on the sign-in screen, where nobody is signed in to name it.
+  const [linkMessage, setLinkMessage] = useState(null);
+  const [verifiedEmail, setVerifiedEmail] = useState(null);
+  const [verifying, setVerifying] = useState(Boolean(linkParams.verify));
+  // A reset link that turned out to be spent sends the user to the "forgot
+  // password" form instead of a dead end.
+  const [loginMode, setLoginMode] = useState("login");
   const [data, setData] = useState(null);
   const [catSpend, setCatSpend] = useState({});
   const [loadedAt, setLoadedAt] = useState(null);
@@ -127,12 +147,39 @@ function App() {
         // discovering it from a failed data fetch.
         const me = await getMe();
         setEmail(me.email);
+        setEmailVerified(me.email_verified);
         await load();
       } catch (err) {
         if (!(err instanceof ApiError && err.status === 401)) setLoadError(err);
       }
     })();
   }, [token, load]);
+
+  // A confirmation link works signed in or out: the link often opens in a
+  // different browser from the one that registered. Sent once, on load; the
+  // ref keeps StrictMode's double effect from sending it twice.
+  const verifySent = useRef(false);
+  useEffect(() => {
+    if (!linkParams.verify || verifySent.current) return;
+    verifySent.current = true;
+    (async () => {
+      try {
+        const confirmed = await verifyEmail(linkParams.verify);
+        setVerifiedEmail(confirmed.email);
+        setLinkMessage("verified");
+        // The link may have been for another account than the one signed in
+        // here, so ask rather than assume.
+        if (getToken()) {
+          getMe().then((me) => setEmailVerified(me.email_verified)).catch(() => {});
+        }
+      } catch (err) {
+        const problem = linkProblem(err);
+        setLinkMessage(problem === "expired" ? "verifyExpired" : "verifyInvalid");
+      } finally {
+        setVerifying(false);
+      }
+    })();
+  }, []);
 
   // A 401 while the page is already rendered is not a reason to throw the
   // page away. The figures are still worth reading and only writes will fail,
@@ -249,6 +296,8 @@ function App() {
     logout();
     setToken(null);
     setEmail(null);
+    setEmailVerified(undefined);
+    setLinkMessage(null);
     // Drop the previous user's data so it can't flash on screen if someone
     // else logs in on the same browser.
     setData(null);
@@ -285,8 +334,61 @@ function App() {
     document.getElementById("io")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  // A reset link comes first, signed in or not: it may be this browser's
+  // own forgotten password, or a different account altogether.
+  if (resetToken) {
+    return (
+      <ResetPassword
+        token={resetToken}
+        onDone={(newToken) => {
+          // Whatever this browser was showing belonged to a session the
+          // reset just signed out, possibly of another account.
+          setData(null);
+          setCatSpend({});
+          setSessionExpired(false);
+          setResetToken(null);
+          setLinkMessage("resetDone");
+          setToken(newToken);
+        }}
+        onExpired={() => {
+          setResetToken(null);
+          setLinkMessage("resetExpired");
+          setLoginMode("forgot");
+          // Any session this browser held was signed out by the reset that
+          // spent the link, or will be by the next one.
+          logout();
+          setToken(null);
+        }}
+        onCancel={() => setResetToken(null)}
+      />
+    );
+  }
+
   // The gate: no token, no app.
-  if (!token) return <Login onLogin={setToken} />;
+  if (!token) {
+    const notice =
+      verifying ? t("verify.checking")
+        : linkMessage === "verified" ? t("login.verified", { email: verifiedEmail })
+        : linkMessage === "verifyExpired" ? t("login.verifyExpired")
+          : linkMessage === "verifyInvalid" ? t("login.verifyInvalid")
+            : linkMessage === "resetExpired" ? t("login.resetExpired")
+              : null;
+    return (
+      <Login
+        // Remounted when a spent reset link switches it to the "forgot"
+        // form; a changing notice alone keeps whatever was typed.
+        key={loginMode}
+        onLogin={(newToken) => {
+          setLinkMessage(null);
+          setLoginMode("login");
+          setToken(newToken);
+        }}
+        email={verifiedEmail ?? undefined}
+        notice={notice}
+        initialMode={loginMode}
+      />
+    );
+  }
 
   const showBanner = loadError && !dismissed;
 
@@ -355,6 +457,17 @@ function App() {
         </div>
       )}
 
+      {email && (
+        <EmailStrip
+          key={email}
+          email={email}
+          confirmedEmail={verifiedEmail}
+          verified={emailVerified}
+          message={["verified", "verifyExpired", "verifyInvalid", "resetDone"].includes(linkMessage) ? linkMessage : null}
+          onDismissMessage={() => setLinkMessage(null)}
+        />
+      )}
+
       {/* The landmark is here rather than in Dashboard so it exists before
           the first load has finished, and so the banner and session strip
           above it stay outside it, next to the nav they qualify. */}
@@ -377,6 +490,7 @@ function App() {
       {accountOpen && data && (
         <AccountDialog
           email={email}
+          emailVerified={emailVerified}
           subscriptionCount={data.subscriptions.length}
           categoryCount={data.categories.length}
           onChangePassword={handleChangePassword}
