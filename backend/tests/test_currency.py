@@ -206,6 +206,21 @@ class TestWhenTheRateSourceFails:
         assert len(frankfurter.calls) == calls
 
 
+class TestPaidToDate:
+    def test_the_list_converts_each_past_charge_at_its_own_rate(self, client, auth, frankfurter):
+        frankfurter.set("USD", "2025-01-10", 1.0)
+        frankfurter.set("USD", "2025-02-14", 2.0)
+        frankfurter.set("USD", str(TODAY), 4.0)
+        start = date(2025, 1, 15)
+        add_subscription(client, auth, cost="20.00", currency="USD", started_date=str(start), next_renewal_date=str(start), status="cancelled", cancelled_date="2025-02-20")
+        add_subscription(client, auth, name="Spotify", cost="9.99", started_date=str(TODAY), next_renewal_date=str(TODAY))
+        rows = {row["name"]: row for row in client.get("/subscriptions", headers=auth).json()}
+        assert money(rows["Netflix"]["paid_total"]) == money("40.00")
+        # $20 at 1.0 on 15 Jan, $20 at 2.0 on 15 Feb (Friday's rate)
+        assert rows["Netflix"]["paid_total_converted"] == 30.0
+        assert rows["Spotify"]["paid_total_converted"] == rows["Spotify"]["paid_total"]
+
+
 class TestUpcomingAndRates:
     def test_upcoming_converts_at_the_latest_rate(self, client, auth, frankfurter):
         frankfurter.set("USD", str(TODAY), 1.25)

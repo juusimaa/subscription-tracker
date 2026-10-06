@@ -825,11 +825,48 @@ def list_subscriptions(
         active=active,
         status=status,
     )
+    converted = _paid_totals_converted(db, subscriptions, current_user.currency)
     result = [
-        schemas.Subscription.model_validate(sub).model_dump(mode="json") for sub in subscriptions
+        schemas.Subscription.model_validate(sub)
+        .model_copy(update={"paid_total_converted": converted.get(sub.id)})
+        .model_dump(mode="json")
+        for sub in subscriptions
     ]
     cache.set_json(key, result)
     return result
+
+
+def _paid_totals_converted(
+    db: Session, subscriptions: list[models.Subscription], target: str
+) -> dict[int, Decimal | None]:
+    """Each subscription's paid_total in `target`, every charge converted at
+    its own day's rate -- what a lifetime line adds up when a service's runs
+    were billed in different currencies. A row already in `target` is its
+    own paid_total, with no rate involved."""
+    out: dict[int, Decimal | None] = {}
+    foreign = [
+        sub
+        for sub in subscriptions
+        if sub.currency != target and sub.started_date is not None and sub.paid_total is not None
+    ]
+    for sub in subscriptions:
+        if sub.currency == target:
+            out[sub.id] = sub.paid_total
+    if not foreign:
+        return out
+    table = fx.load(
+        db, {sub.currency for sub in foreign}, target, min(sub.started_date for sub in foreign)
+    )
+    for sub in foreign:
+        total = Decimal("0")
+        for charge in sub.charge_dates(date.min, date.today()):
+            value = table.convert(sub.cost, sub.currency, charge)
+            if value is None:
+                total = None
+                break
+            total += value
+        out[sub.id] = total
+    return out
 
 
 @app.post(

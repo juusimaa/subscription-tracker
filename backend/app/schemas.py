@@ -273,6 +273,11 @@ class Subscription(SubscriptionBase):
     # what the list sums into a group's lifetime total. Serialized as a number
     # for the same reason as Money below.
     paid_total: Annotated[Decimal, PlainSerializer(float, return_type=float)] | None = None
+    # paid_total in the user's currency, each charge at its own day's rate
+    # (app/fx.py). Filled in by GET /subscriptions only -- the route the
+    # list is drawn from -- and None wherever paid_total is, or when a rate
+    # is missing.
+    paid_total_converted: Annotated[Decimal, PlainSerializer(float, return_type=float)] | None = None
 
 
 class SubscriptionRestore(BaseModel):
