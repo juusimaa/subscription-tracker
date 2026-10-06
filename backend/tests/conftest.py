@@ -56,6 +56,11 @@ os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 # deployment with open signup runs. tests/test_invite_code.py patches
 # main.INVITE_CODE directly and so is unaffected.
 os.environ["INVITE_CODE"] = ""
+# Forced, not defaulted, for the same reason as INVITE_CODE: an exported
+# EMAIL_BACKEND=resend would have the suite emailing real addresses. The
+# memory backend collects messages in app.mailer.outbox instead, which the
+# `outbox` fixture below hands to the tests that read it.
+os.environ["EMAIL_BACKEND"] = "memory"
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -81,6 +86,16 @@ def clean_database():
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture(autouse=True)
+def outbox():
+    """Every email sent during one test, oldest first. Cleared before each
+    test, autouse for the same reason clean_database is."""
+    from app import mailer
+
+    mailer.outbox.clear()
+    return mailer.outbox
 
 
 @pytest.fixture

@@ -18,7 +18,7 @@
 //   copy.
 
 import { useState } from "react";
-import { describeWriteError } from "./api";
+import { describeWriteError, resendVerification } from "./api";
 import { t } from "./i18n";
 import { LanguagePicker } from "./Language";
 import { TriangleAlert } from "./icons";
@@ -36,8 +36,49 @@ function DeletePanel({ onClose, children, ...props }) {
   return <div ref={ref} {...props}>{children}</div>;
 }
 
+// Whether the address is confirmed, under the address itself (PLAN.md
+// milestone 9). This is the status's permanent home: the nudge under the
+// header can be dismissed, and this can't.
+function EmailStatus({ verified }) {
+  const [send, setSend] = useState({ state: "idle", error: null });
+  if (verified === undefined) return null;
+  if (verified) return <span className="account-email-status">{t("account.emailConfirmed")}</span>;
+
+  async function sendLink() {
+    setSend({ state: "sending", error: null });
+    try {
+      await resendVerification();
+      setSend({ state: "sent", error: null });
+    } catch (err) {
+      setSend({ state: "error", error: describeWriteError(err, t("verify.nothingSent")) });
+    }
+  }
+
+  return (
+    <span role="status" className="account-email-status">
+      {send.state === "sent" ? (
+        t("account.confirmSent")
+      ) : (
+        <>
+          {t("account.emailUnconfirmed")}{" "}
+          <button
+            type="button"
+            className="link-button"
+            disabled={send.state === "sending"}
+            onClick={sendLink}
+          >
+            {t("account.sendConfirm")}
+          </button>
+          {send.error && <> {send.error}</>}
+        </>
+      )}
+    </span>
+  );
+}
+
 function AccountDialog({
   email,
+  emailVerified,
   subscriptionCount,
   categoryCount,
   onChangePassword,
@@ -144,6 +185,7 @@ function AccountDialog({
         <div className="account-identity">
           <span className="field-label">{t("account.signedInAs")}</span>
           <span className="account-email">{email}</span>
+          <EmailStatus verified={emailVerified} />
         </div>
 
         <div className="account-section account-language">

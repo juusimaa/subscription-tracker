@@ -1388,6 +1388,65 @@ body { text-wrap: pretty; }
    the full-page rhythm above it. */
 .dialog .login-form { margin-top: 20px; padding-top: 20px; }
 
+/* — email links (PLAN.md milestone 9) —
+   Forgot password, the reset screen and what a confirmation link did. All
+   of it is secondary prose in the existing shells: an emailed link is
+   neither money nor a deadline, so none of it is Signal Red. */
+.login-forgot { display: block; margin-top: 10px; font-size: 13px; line-height: 18px; }
+.login-explainer {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: color-mix(in srgb, var(--color-text) 78%, transparent);
+}
+/* What a link just did, above the form. Plain status, not .login-error:
+   nothing the user typed went wrong. */
+.login-notice {
+  margin: 28px 0 0;
+  font-size: 15px;
+  line-height: 22px;
+}
+/* Replaces the form once a reset link is requested, on the same 2px rule
+   the form sat on, so the screen keeps its shape. */
+.login-sent {
+  margin: 42px 0 0;
+  padding-top: 28px;
+  border-top: 2px solid var(--color-divider);
+  font-size: 15px;
+  line-height: 24px;
+}
+.email-strip-inner {
+  display: flex;
+  align-items: baseline;
+  gap: 8px 24px;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+.email-strip .email-strip-inner p { flex: 1; max-width: 75ch; margin: 0; padding: 14px 0; }
+.email-strip-dismiss {
+  flex: none;
+  margin-left: auto;
+  font-size: 13px;
+  line-height: 20px;
+  color: color-mix(in srgb, var(--color-text) 78%, transparent);
+}
+.email-strip-error { color: var(--color-accent-700); }
+.link-button:disabled { cursor: default; opacity: 0.55; text-decoration: none; }
+.account-email-status {
+  grid-column: 2;
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 20px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+@media (max-width: 760px) {
+  .email-strip-inner { padding: 0 20px; flex-wrap: wrap; }
+  .email-strip .email-strip-inner p { flex-basis: 100%; padding-bottom: 0; }
+  .email-strip-dismiss { margin: -6px 0 2px; min-height: 44px; }
+  .account-email-status { grid-column: auto; }
+}
+
 /* — how this list works —
    Reference, not maintenance, so it sits straight under the list it
    explains and before the add form. Folded it is one ruled line, like the

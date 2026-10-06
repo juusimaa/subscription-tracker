@@ -73,6 +73,10 @@ that need them ([.env.example](.env.example) documents the same list):
 | `DATABASE_URL` | `backend` | Full SQLAlchemy URL. Host is `db`, not `localhost` — see [Docker & Compose](#9-docker--compose). |
 | `SECRET_KEY` | `backend` | Signs the JWTs. Changing it logs everyone out. |
 | `INVITE_CODE` | `backend` | Optional. Set it to gate `/register` behind a shared code — see [Accounts](#accounts). Left blank, signup stays open. |
+| `EMAIL_BACKEND` | `backend` | `console` (default) logs verification and reset emails instead of sending them; `resend` sends through [Resend](https://resend.com). See [Email](#email). |
+| `RESEND_API_KEY` | `backend` | Required when `EMAIL_BACKEND=resend`. |
+| `EMAIL_FROM` | `backend` | Sender, on a domain verified in Resend. |
+| `APP_URL` | `backend` | The frontend's address, used to build the links in emails. |
 | `VITE_API_URL` | `frontend` | Baked into the browser bundle, so it must be an address *your browser* can reach. |
 
 ---
@@ -587,7 +591,11 @@ http://localhost:8000/docs (Swagger UI) and http://localhost:8000/redoc.
 | `GET` | `/health` | Readiness check, used by Docker's healthcheck: 200 only if a `SELECT 1` reaches the database, 503 otherwise. Unauthenticated. |
 | `POST` | `/register` | Create an account. Rejects the request with 403 if `INVITE_CODE` is set and `invite_code` doesn't match. |
 | `POST` | `/token` | Exchange email + password for a JWT (form-encoded; email goes in `username`). |
-| `GET` | `/me` | The logged-in user — used to check a stored token is still valid. |
+| `GET` | `/me` | The logged-in user — used to check a stored token is still valid. Includes `email_verified`. |
+| `POST` | `/me/verification` | Email the logged-in user a fresh confirmation link. No-op once confirmed. 3/hour. |
+| `POST` | `/verify-email` | Confirm the address in a `?verify=` link's token. Unauthenticated; 400 `expired`/`invalid` for a bad token. |
+| `POST` | `/password-reset` | Email a reset link if the address has an account. Always 202, so it can't reveal which addresses are registered. 5/hour. |
+| `POST` | `/password-reset/confirm` | Set a new password from a `?reset=` link's token and return a fresh JWT. Each link works once, for 1 hour; using it signs out every other session and confirms the address. |
 | `GET` | `/subscriptions` | List, with optional `category`, `billing_cycle`, `status`, `active` filters. |
 | `POST` | `/subscriptions` | Create one. |
 | `GET` | `/subscriptions/upcoming` | What is about to be charged: every renewal in the next `days` (default 30), with the full amount due on each day, plus any trial converting in the window. |
@@ -699,11 +707,11 @@ same way.
 
 ### Invite codes
 
-Registration is otherwise open to anyone who can reach `/register` — nothing
-yet verifies that an email belongs to whoever is signing up with it (that's
-PLAN.md milestone 9). Until then, set `INVITE_CODE` in the backend's
-environment and `/register` starts rejecting any request whose `invite_code`
-field doesn't match:
+Registration is otherwise open to anyone who can reach `/register`. Email
+verification (below) proves an address afterwards, but doesn't stop anyone
+signing up, so while the app is in beta `INVITE_CODE` stays: set it in the
+backend's environment and `/register` starts rejecting any request whose
+`invite_code` field doesn't match:
 
 ```
 curl -X POST localhost:8000/register -H 'Content-Type: application/json' \
@@ -711,9 +719,29 @@ curl -X POST localhost:8000/register -H 'Content-Type: application/json' \
 ```
 
 Left unset (the default for local dev and the test suite), `/register`
-behaves exactly as it did before this existed. This is a stopgap for the
-window between public deploy and real email verification, not a long-term
-access-control mechanism — it's one shared string, not a per-invite code.
+behaves exactly as it did before this existed. It is a beta-period gate,
+not a long-term access-control mechanism — it's one shared string, not a
+per-invite code.
+
+### Email
+
+A new account gets a confirmation link by email and is fully usable before
+clicking it; the dashboard shows a dismissible line until it's confirmed. A
+forgotten password is reset from a link sent by **Forgot your password?** on
+the sign-in screen. That works for unconfirmed accounts too, and completing
+it confirms the address, since opening the link proves the inbox is yours.
+
+Links carry short-lived signed tokens (`backend/app/auth.py`) rather than
+rows in a table: a confirmation link lasts 48 hours, and a reset link 1 hour
+and only once, because using it bumps the account's `token_version`.
+
+Locally nothing is sent: `EMAIL_BACKEND=console` logs each message, link
+included, so `docker compose logs backend` is the inbox. Production uses
+[Resend](https://resend.com)'s free tier (3,000 emails/month), which needs a
+sending domain verified in Resend (SPF/DKIM records, plus a DMARC record),
+`EMAIL_BACKEND=resend`, `RESEND_API_KEY` as a Container Apps secret, and
+`EMAIL_FROM`/`APP_URL` on the backend app. Leave Resend's open and click
+tracking off for that domain: the app promises no tracking.
 
 ## Backup and restore
 

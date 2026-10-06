@@ -230,6 +230,40 @@ export async function changePassword(currentPassword, newPassword) {
   setToken(body.access_token);
 }
 
+// --- Email verification and password reset (PLAN.md milestone 9) ---
+//
+// A bad or spent link answers 400 with a detail of "expired" or "invalid",
+// never 401 -- send() would read a 401 as this browser's session expiring.
+
+export const resendVerification = () => request("/me/verification", { method: "POST" });
+
+export const verifyEmail = (token) =>
+  request("/verify-email", { method: "POST", body: JSON.stringify({ token }) });
+
+// 202 with an empty body whether or not the address has an account, so
+// there is nothing to parse -- send(), not request().
+export async function requestPasswordReset(email) {
+  await send("/password-reset", { method: "POST", body: JSON.stringify({ email }) });
+}
+
+// Signs the user in: the new password bumped token_version, so every older
+// token, including one this browser may still hold, is already dead.
+export async function confirmPasswordReset(token, newPassword) {
+  const body = await request("/password-reset/confirm", {
+    method: "POST",
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+  setToken(body.access_token);
+  return body.access_token;
+}
+
+// "expired" or "invalid" for a link the server turned down, otherwise null
+// (a network failure or a 5xx is a different problem with its own copy).
+export function linkProblem(err) {
+  if (!(err instanceof ApiError) || err.status !== 400) return null;
+  return /expired/i.test(err.message) ? "expired" : "invalid";
+}
+
 // Requires the password again even though the request already carries a
 // valid Bearer token -- deleting the account is irreversible, and a token
 // alone proves there is a session, not that whoever is holding it right now

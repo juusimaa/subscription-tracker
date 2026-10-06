@@ -51,9 +51,9 @@ Compose's file instead.
 Change password and delete account are done now (see the fix notes at the
 bottom). What's left:
 
-- **Password reset** and **email verification**, both noted as deliberately
-  skipped in PLAN.md milestone 6. They need an email path, so they are a bigger
-  step than the first two were. Scheduled as PLAN.md milestone 9.
+- ~~**Password reset** and **email verification**~~ -- done in PLAN.md
+  milestone 9 (Resend, link-based). Emails are English-only for now: the
+  backend doesn't know a user's interface language.
 
 ## Spending dashboard follow-ups
 
@@ -480,8 +480,7 @@ keep working, a second concurrent session goes stale), then account deletion
 confirmed for real (login after returns 401, both prompts guarded correctly)
 -- with no console errors at any step.
 
-Still open: password reset and email verification, both needing an email path
-this build does not have. See item 1 above (PLAN.md milestone 9).
+Password reset and email verification followed in PLAN.md milestone 9.
 
 **2. Rate limiting on `/register` and `/token`.** `slowapi` covers both at
 `5/minute`, keyed on remote address -- the two routes it guards are

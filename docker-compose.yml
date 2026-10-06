@@ -87,6 +87,13 @@ services:
       # substitution when unset in .env is exactly what app/main.py treats
       # as "disabled".
       INVITE_CODE: ${INVITE_CODE}
+      # Outgoing email (see app/mailer.py). The defaults keep local dev on the
+      # console backend, which logs each message -- links included -- to
+      # `docker compose logs backend` instead of sending anything.
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-console}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-Subscription Tracker <no-reply@localhost>}
+      APP_URL: ${APP_URL:-http://localhost:5173}
     volumes:
       # Bind mount: maps the host's ./backend/app directly into the
       # container, so edits on your Mac are picked up immediately without

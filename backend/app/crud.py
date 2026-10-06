@@ -6,7 +6,7 @@
 # is the entire multi-user security boundary: the route handlers pass the id
 # from the verified token, never one supplied by the client.
 
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import and_, func
@@ -69,6 +69,17 @@ def update_password(db: Session, user: models.User, new_password: str) -> models
     user.token_version += 1
     db.commit()
     db.refresh(user)
+    return user
+
+
+def mark_email_verified(db: Session, user: models.User) -> models.User:
+    """Stamps the first verification only. Opening the same link twice, or
+    resetting a password on an already verified account, leaves the original
+    time in place."""
+    if user.email_verified_at is None:
+        user.email_verified_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(user)
     return user
 
 
