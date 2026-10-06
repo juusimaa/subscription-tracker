@@ -126,7 +126,32 @@ app.add_middleware(
 # with what those tests are checking. See tests/test_rate_limit.py, which is
 # the one place this comes back on.
 RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() != "false"
-limiter = Limiter(key_func=get_remote_address, enabled=RATE_LIMIT_ENABLED)
+
+# Behind Azure Container Apps, every request reaches uvicorn from the
+# ingress proxy (Envoy, addresses like 100.100.0.x), so the socket's remote
+# address is the same for everyone. Keyed on it, each limit above was one
+# bucket shared by every user: one script hammering /token locked the whole
+# site out of signing in, and was itself throttled no harder than anyone else.
+#
+# Envoy appends the address it received the connection from to
+# X-Forwarded-For, so the *last* entry is the real client. Earlier entries are
+# whatever the client chose to send and are never trusted. Not trusted at all
+# unless TRUST_FORWARDED_FOR is set: without a proxy in front (local Compose,
+# the test suite) the header is entirely client-controlled, and honouring it
+# would let anyone pick a fresh key per request.
+TRUST_FORWARDED_FOR = os.getenv("TRUST_FORWARDED_FOR", "false").lower() == "true"
+
+
+def client_address(request: Request) -> str:
+    if TRUST_FORWARDED_FOR:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        hops = [hop.strip() for hop in forwarded.split(",") if hop.strip()]
+        if hops:
+            return hops[-1]
+    return get_remote_address(request)
+
+
+limiter = Limiter(key_func=client_address, enabled=RATE_LIMIT_ENABLED)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
@@ -145,7 +170,9 @@ INVITE_CODE = os.getenv("INVITE_CODE") or None
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """One structured line per request: method, path, status, duration.
+    """One structured line per request: method, path, status, duration, and
+    the client address the rate limits key on (client_address), so whoever
+    reads the logs sees the same identity the limiter does.
 
     Wraps call_next in a try/except rather than only logging the happy path,
     so an exception that escapes every route and every FastAPI exception
@@ -159,19 +186,21 @@ async def log_requests(request: Request, call_next):
     except Exception:
         duration_ms = round((time.perf_counter() - start) * 1000, 1)
         request_logger.exception(
-            "method=%s path=%s status=500 duration_ms=%s",
+            "method=%s path=%s status=500 duration_ms=%s client=%s",
             request.method,
             request.url.path,
             duration_ms,
+            client_address(request),
         )
         raise
     duration_ms = round((time.perf_counter() - start) * 1000, 1)
     request_logger.info(
-        "method=%s path=%s status=%s duration_ms=%s",
+        "method=%s path=%s status=%s duration_ms=%s client=%s",
         request.method,
         request.url.path,
         response.status_code,
         duration_ms,
+        client_address(request),
     )
     return response
 
