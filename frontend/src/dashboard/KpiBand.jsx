@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+
 // Four figures across the page, separated by hairlines. Each one answers a
 // question the headline total cannot: what is about to leave the account, how
 // many charges there are, which is the biggest, and which way the trend went.
@@ -20,7 +22,7 @@ const LONG_FIGURE = 10;
 
 function KpiBand({ cells }) {
   return (
-    <section aria-label="Key figures" className="kpis">
+    <section aria-label={t("kpi.label")} className="kpis">
       {cells.map((cell) => (
         <div className="kpi" key={cell.label}>
           <p className={cell.figure.length > LONG_FIGURE ? "kpi-figure long" : "kpi-figure"}>

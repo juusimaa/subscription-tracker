@@ -17,21 +17,34 @@ import { ApiError, describeWriteError } from "../api";
 import MonoTile from "../MonoTile";
 import Sheet from "./Sheet";
 import { ChevronRight, Search, TriangleAlert } from "../icons";
-import { SHORT_MONTHS, costProblem, cycleSuffix, longDate, money, parseAmount, perMonth, todayISO } from "../format";
+import {
+  costProblem,
+  cycleLabel,
+  cycleSuffix,
+  longDate,
+  money,
+  parseAmount,
+  perMonth,
+  shortMonthName,
+  statusLabel,
+  todayISO,
+} from "../format";
+import { t } from "../i18n";
 import { NAME_MAX } from "./AddForm";
 import { useIsMobile } from "../useMediaQuery";
 import { accessEnded, buildGroups, endedGroupCount, groupSince, lifetimePaid, runNumber, stoppedDate } from "./groups";
 
 // The sort chip row (mobile only) offers six of the desktop table's seven
 // columns -- "Per month" is left out, the same way the mobile row shows a
-// combined cost line instead of a separate Per month column.
+// combined cost line instead of a separate Per month column. Labels are
+// looked up at render time so they follow the interface language.
 const CHIPS = [
-  { key: "renewal", label: "Renewal" },
-  { key: "name", label: "Name" },
-  { key: "cost", label: "Cost" },
-  { key: "paid", label: "Paid" },
-  { key: "category", label: "Category" },
-  { key: "status", label: "Status" },
+  { key: "renewal", label: () => t("table.chip.renewal") },
+  { key: "name", label: () => t("table.col.name") },
+  { key: "cost", label: () => t("table.col.cost") },
+  { key: "paid", label: () => t("table.chip.paid") },
+  { key: "category", label: () => t("table.col.category") },
+  { key: "status", label: () => t("table.col.status") },
 ];
 
 // Columns whose first click sorts largest first: what a service has cost is
@@ -49,28 +62,41 @@ function mobileMeta(subscription) {
   let dateText;
   if (cancelled && !subscription.cancelled_date) dateText = "—";
   else if (cancelled) {
-    dateText = `access ${accessEnded(subscription) ? "ended" : "ends"} ${longDate(subscription.next_renewal_date)}`;
+    const date = longDate(subscription.next_renewal_date);
+    dateText = t(accessEnded(subscription) ? "table.accessEndedOn" : "table.accessEndsOn", { date });
   }
-  else if (paused) dateText = "resumes when unpaused";
-  else if (trial) dateText = `trial ends ${longDate(subscription.next_renewal_date)}`;
+  else if (paused) dateText = t("table.resumes");
+  else if (trial) dateText = t("table.trialEndsOn", { date: longDate(subscription.next_renewal_date) });
   else dateText = longDate(subscription.next_renewal_date);
   return subscription.category ? `${subscription.category} · ${dateText}` : dateText;
 }
 
+// The billing cycle as the small note under a price: "monthly", or
+// "kuukausittain" in Finnish.
+const cycleNote = (billing_cycle) => cycleLabel(billing_cycle).toLowerCase();
+
+// "then €9.99/mo", under a trial's €0.00.
+const thenNote = (subscription) =>
+  t("table.then", { price: `${money(subscription.cost)}${cycleSuffix(subscription.billing_cycle)}` });
+
 function mobilePerMonthNote(subscription) {
-  if (subscription.status === "trial") {
-    return `then ${money(subscription.cost)}${cycleSuffix(subscription.billing_cycle)}`;
-  }
-  if (subscription.status === "active") return `${money(perMonth(subscription))}/mo`;
-  return subscription.billing_cycle;
+  if (subscription.status === "trial") return thenNote(subscription);
+  if (subscription.status === "active") return `${money(perMonth(subscription))}${cycleSuffix("monthly")}`;
+  return cycleNote(subscription.billing_cycle);
 }
 
-const STATUS = {
-  active: { label: "Active", tag: "tag tag-neutral" },
-  trial: { label: "Trial", tag: "tag tag-accent" },
-  paused: { label: "Paused", tag: "tag tag-outline" },
-  cancelled: { label: "Cancelled", tag: "tag tag-outline" },
+// Each status's tag style; its words come from statusLabel (format.js).
+const STATUS_TAG = {
+  active: "tag tag-neutral",
+  trial: "tag tag-accent",
+  paused: "tag tag-outline",
+  cancelled: "tag tag-outline",
 };
+
+// The status a row's tag shows: "Scheduled" for an active plan that has not
+// started yet, otherwise the status itself.
+const shownStatus = (subscription) =>
+  isScheduled(subscription) ? t("table.scheduled") : statusLabel(subscription.status);
 
 // Fixed, not alphabetical: the order is how far along a subscription is
 // towards costing nothing, which is the thing worth grouping by.
@@ -81,35 +107,21 @@ function isScheduled(subscription) {
 }
 
 // Every row's secondary actions, described rather than left as bare verbs.
-const MENU_LABELS = {
-  cancel: "Mark as cancelled",
-  reactivate: "Reactivate",
-  archive: "Archive",
-  unarchive: "Restore to list",
-  delete: "Delete permanently",
-};
-const MENU_HINTS = {
-  cancel: "Stops counting toward your totals. The record stays.",
-  reactivate: "Starts a new run; the paid history stays unchanged.",
-  archive: "Hides it from the list. Your totals don't change.",
-  unarchive: "Puts it back in the list.",
-  delete: "Removes it and its history. No undo.",
-};
+// Each is a lookup by action key ("cancel", "archive", ...), made at render
+// time so it follows the interface language.
+const menuLabel = (key) => t(`table.menu.${key}`);
+const menuHint = (key) => t(`table.hint.${key}`);
 // An earlier run lives inside its group, so its hints say so.
-const EARLIER_HINTS = {
-  archive: "Hides this run inside the group. Your totals don't change.",
-  unarchive: "Shows this run inside the group again.",
-  delete: "Removes this run and what it cost. No undo.",
-};
+const earlierHint = (key) => t(`table.earlierHint.${key}`);
 
 // The primary control next to "More" -- Edit for a live row, otherwise
 // whichever action a cancelled row is most likely to want next. Only a
 // group's head gets one: a cancelled head never has a newer run, because
 // that run would be the head instead.
 function primaryFor(subscription) {
-  if (subscription.status !== "cancelled") return { key: null, label: "Edit" };
-  if (!subscription.archived_date) return { key: "reactivate", label: "Reactivate" };
-  return { key: "unarchive", label: "Restore to list" };
+  if (subscription.status !== "cancelled") return { key: null, label: t("table.edit") };
+  if (!subscription.archived_date) return { key: "reactivate", label: menuLabel("reactivate") };
+  return { key: "unarchive", label: menuLabel("unarchive") };
 }
 
 // The "More" menu's contents -- never including whichever action is already
@@ -126,12 +138,13 @@ function earlierMenuKeys(run) {
   return [run.archived_date ? "unarchive" : "archive", "delete"];
 }
 
-const runsLabel = (n) => `${n} earlier ${n === 1 ? "run" : "runs"}`;
+const runsLabel = (n) => t("table.earlierRuns", { n });
 
-// "2026-09-04" -> "Sep 2026", for the lifetime line's "since".
+// "2026-09-04" -> "Sep 2026" ("9/2026" in Finnish), for the lifetime line's
+// "since".
 function monthYear(iso) {
   const [y, m] = iso.split("-");
-  return `${SHORT_MONTHS[Number(m) - 1]} ${y}`;
+  return t("table.monthYear", { month: shortMonthName(Number(m) - 1), monthNumber: Number(m), year: y });
 }
 
 // "Lifetime with Netflix: €610.53 across 3 runs since Mar 2022. This run
@@ -146,9 +159,9 @@ function LifetimeLine({ group, prefix }) {
     <>
       {prefix}
       {paid != null && <>: <strong>{money(paid)}</strong></>}
-      {` across ${group.runs.length} runs`}
-      {since && ` since ${monthYear(since)}`}
-      {paid != null && `. This run ${money(own)}, earlier runs ${money(paid - own)}.`}
+      {t("table.lifetimeRuns", { n: group.runs.length })}
+      {since && t("table.lifetimeSince", { since: monthYear(since) })}
+      {paid != null && t("table.lifetimeSplit", { own: money(own), earlier: money(paid - own) })}
     </>
   );
 }
@@ -159,41 +172,38 @@ function LifetimeLine({ group, prefix }) {
 function paidNote(group) {
   const head = group.head;
   const runs = group.runs.length;
-  if (lifetimePaid(group) == null) return "start date unknown";
-  if (head.status === "trial" && runs === 1) return "free trial, nothing charged";
+  if (lifetimePaid(group) == null) return t("table.paidUnknownNote");
+  if (head.status === "trial" && runs === 1) return t("table.freeTrial");
   if (isScheduled(head) && Number(lifetimePaid(group)) === 0) {
-    return `first charge ${monthYear(head.started_date)}`;
+    return t("table.firstCharge", { month: monthYear(head.started_date) });
   }
   const since = monthYear(groupSince(group));
   const stopped = stoppedDate(head);
-  if (stopped) return `${runs > 1 ? `${runs} runs, ` : ""}${since} – ${monthYear(stopped)}`;
-  return runs > 1 ? `${runs} runs since ${since}` : `since ${since}`;
+  if (stopped) {
+    const range = { n: runs, since, stopped: monthYear(stopped) };
+    return t(runs > 1 ? "table.runsRange" : "table.range", range);
+  }
+  return runs > 1 ? t("table.runsSince", { n: runs, since }) : t("table.since", { since });
 }
 
 // The mobile row's third line: the desktop note, shorter, because the run
 // count already sits under the row as "Show N earlier runs".
 function MobilePaid({ group }) {
   const paid = lifetimePaid(group);
-  if (paid == null) return "Paid to date unknown";
-  if (paid === 0) return "Nothing paid yet";
+  if (paid == null) return t("table.mobilePaidUnknown");
+  if (paid === 0) return t("table.nothingPaid");
   const since = monthYear(groupSince(group));
   const stopped = stoppedDate(group.head);
+  const range = stopped ? t("table.range", { since, stopped: monthYear(stopped) }) : t("table.since", { since });
   return (
     <>
-      <strong>{money(paid)}</strong> paid {stopped ? `${since} – ${monthYear(stopped)}` : `since ${since}`}
+      <strong>{money(paid)}</strong>{t("table.mobilePaid", { range })}
     </>
   );
 }
 
-const COLUMNS = [
-  { key: "name", label: "Name" },
-  { key: "category", label: "Category" },
-  { key: "status", label: "Status" },
-  { key: "cost", label: "Cost" },
-  { key: "perMonth", label: "Per month" },
-  { key: "paid", label: "Paid to date" },
-  { key: "renewal", label: "Next renewal" },
-];
+const COLUMNS = ["name", "category", "status", "cost", "perMonth", "paid", "renewal"];
+const columnLabel = (key) => t(`table.col.${key}`);
 
 // Sorting works on groups: every column but one reads the head row, and Paid
 // to date is the whole group's total, the figure the row shows.
@@ -232,8 +242,8 @@ function matchesSearch(subscription, query, group = null) {
   const values = [
     subscription.name,
     subscription.category,
-    isScheduled(subscription) ? "Scheduled" : STATUS[subscription.status].label,
-    subscription.billing_cycle,
+    shownStatus(subscription),
+    cycleNote(subscription.billing_cycle),
     money(subscription.cost),
     subscription.status === "trial" ? money(0) : null,
     subscription.status === "active" ? money(perMonth(subscription)) : null,
@@ -244,7 +254,7 @@ function matchesSearch(subscription, query, group = null) {
     // Earlier runs show when they were cancelled, so that is searchable too.
     subscription.cancelled_date,
     longDate(subscription.cancelled_date),
-    subscription.archived_date ? "Archived" : null,
+    subscription.archived_date ? statusLabel("archived") : null,
     subscription.paid_total == null ? null : money(subscription.paid_total),
     groupPaid == null ? null : money(groupPaid),
   ];
@@ -263,14 +273,14 @@ function SubscriptionSearch({ value, onChange, shortcutHint }) {
       <input
         type="search"
         className="input subscription-search-input"
-        aria-label="Search subscriptions"
-        placeholder={shortcutHint ? "Name, cost, date — press /" : "Name, cost, date"}
+        aria-label={t("table.searchLabel")}
+        placeholder={t(shortcutHint ? "table.searchPlaceholderKey" : "table.searchPlaceholder")}
         aria-keyshortcuts="/"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
       {value && (
-        <button type="button" className="subscription-search-clear" aria-label="Clear search" onClick={() => onChange("")}>
+        <button type="button" className="subscription-search-clear" aria-label={t("table.clearSearch")} onClick={() => onChange("")}>
           ×
         </button>
       )}
@@ -500,14 +510,16 @@ function SubscriptionTable({
   const archiveAllButton = (className) =>
     showEnded && endedCount > 0 && (
       <button type="button" className={className} disabled={archivingAll} onClick={archiveAllEnded}>
-        {`Archive all ended — ${endedCount}`}
+        {t("table.archiveAllEnded", { n: endedCount })}
       </button>
     );
-  const listCount = query ? `${visible.length} of ${available.length}` : visible.length;
+  const listCount = query ? t("table.countOf", { shown: visible.length, total: available.length }) : visible.length;
   const noResults = query && visible.length === 0 && (
     <div className="subscription-search-empty">
-      <span>No subscriptions match “{searchQuery.trim()}” in this list.</span>
-      <button type="button" className="btn btn-ghost btn-small" onClick={() => updateSearch("")}>Clear search</button>
+      <span>{t("table.noResults", { query: searchQuery.trim() })}</span>
+      <button type="button" className="btn btn-ghost btn-small" onClick={() => updateSearch("")}>
+        {t("table.clearSearch")}
+      </button>
     </div>
   );
 
@@ -538,12 +550,12 @@ function SubscriptionTable({
     // rather than as Pydantic's. A server rejection is then the rare second
     // line of defence, and its message is shown verbatim with a next step.
     if (!draft.name.trim()) {
-      setRowError("A name is required. Nothing was saved.");
+      setRowError(t("table.nameRequired"));
       return;
     }
     const costError = costProblem(draft.cost);
     if (costError) {
-      setRowError(`Cost: ${costError} Nothing was saved.`);
+      setRowError(t("table.costError", { problem: costError }));
       return;
     }
     setBusy(true);
@@ -564,7 +576,7 @@ function SubscriptionTable({
     } catch (err) {
       // Save with an error keeps the row open -- closing it would discard the
       // edit the user still has to fix.
-      setRowError(describeWriteError(err, "The change wasn't saved"));
+      setRowError(describeWriteError(err, t("table.notSaved")));
     } finally {
       setBusy(false);
     }
@@ -588,7 +600,7 @@ function SubscriptionTable({
       : detailIsEarlier
         ? earlierMenuKeys(detailSub)
         : [primaryFor(detailSub).key, ...menuKeysFor(detailSub)].filter(Boolean);
-    const detailHints = detailIsEarlier ? EARLIER_HINTS : MENU_HINTS;
+    const detailHints = detailIsEarlier ? earlierHint : menuHint;
     const openDetailActions = (subscription) => (fn) => () => {
       setDetailId(null);
       fn(subscription);
@@ -610,7 +622,7 @@ function SubscriptionTable({
     return (
       <section id="all" className="table-section">
         <div className="section-head">
-          <h2 className="eyebrow">All subscriptions — {listCount}</h2>
+          <h2 className="eyebrow">{t("table.heading", { count: listCount })}</h2>
         </div>
 
         {notice}
@@ -623,7 +635,7 @@ function SubscriptionTable({
             className="btn btn-ghost btn-small mobile-list-toggle"
             onClick={() => { setShowArchived(!showArchived); closeEditor(); }}
           >
-            {showArchived ? "Hide archived" : `Show archived — ${archivedCount}`}
+            {showArchived ? t("table.hideArchived") : t("table.showArchived", { n: archivedCount })}
           </button>
         )}
         <button
@@ -631,23 +643,24 @@ function SubscriptionTable({
           className="btn btn-ghost btn-small mobile-list-toggle"
           onClick={() => { setShowEnded(!showEnded); closeEditor(); }}
         >
-          {showEnded ? "Hide ended" : `Show ended — ${endedCount}`}
+          {showEnded ? t("table.hideEnded") : t("table.showEnded", { n: endedCount })}
         </button>
         {archiveAllButton("btn btn-ghost btn-small mobile-list-toggle")}
 
-        <div className="sort-chips" role="group" aria-label="Sort">
+        <div className="sort-chips" role="group" aria-label={t("table.sortGroup")}>
           {CHIPS.map((chip) => {
             const on = sort.key === chip.key;
+            const label = chip.label();
             return (
               <button
                 key={chip.key}
                 type="button"
                 className={on ? "sort-chip on" : "sort-chip"}
                 aria-pressed={on}
-                aria-label={on ? `${chip.label}, ${sort.dir === "asc" ? "ascending" : "descending"}` : undefined}
+                aria-label={on ? t(sort.dir === "asc" ? "table.chipAsc" : "table.chipDesc", { label }) : undefined}
                 onClick={() => sortBy(chip.key)}
               >
-                {chip.label}
+                {label}
                 {on && <span aria-hidden="true">{sort.dir === "asc" ? " ↑" : " ↓"}</span>}
               </button>
             );
@@ -663,12 +676,9 @@ function SubscriptionTable({
                 <div key={group.key} className="mobile-row-stale">
                   <TriangleAlert />
                   <span>
-                    <span>
-                      {subscription.name} no longer exists — it was removed on another device.
-                      404 on save.
-                    </span>
+                    <span>{t("table.stale", { name: subscription.name })}</span>
                     <button type="button" className="btn btn-ghost btn-small" onClick={onRefreshStale}>
-                      Refresh list
+                      {t("table.refresh")}
                     </button>
                   </span>
                 </div>
@@ -677,7 +687,6 @@ function SubscriptionTable({
             const cancelled = subscription.status === "cancelled";
             const ended = accessEnded(subscription);
             const archived = Boolean(subscription.archived_date);
-            const status = STATUS[subscription.status];
             const earlierCount = group.earlier.length;
             const open = isOpen(group);
             return (
@@ -698,9 +707,9 @@ function SubscriptionTable({
                   <span className="mobile-row-title">
                     <span className="mobile-row-name">{subscription.name}</span>
                     {(subscription.status !== "active" || isScheduled(subscription)) && (
-                      <span className={status.tag}>{isScheduled(subscription) ? "Scheduled" : status.label}</span>
+                      <span className={STATUS_TAG[subscription.status]}>{shownStatus(subscription)}</span>
                     )}
-                    {archived && <span className="tag tag-outline">Archived</span>}
+                    {archived && <span className="tag tag-outline">{statusLabel("archived")}</span>}
                   </span>
                   <span className="mobile-row-meta">{mobileMeta(subscription)}</span>
                   <span className="mobile-row-paid"><MobilePaid group={group} /></span>
@@ -722,7 +731,7 @@ function SubscriptionTable({
                   onClick={() => toggleGroup(group)}
                 >
                   <ChevronRight size={14} />
-                  {open ? "Hide" : "Show"} {runsLabel(earlierCount)}
+                  {t(open ? "table.hideRuns" : "table.showRuns", { runs: runsLabel(earlierCount) })}
                 </button>
               )}
               {open && (
@@ -737,9 +746,9 @@ function SubscriptionTable({
                       <span className="mobile-row-main">
                         <span className="mobile-row-title">
                           <span className="mobile-row-name">
-                            Run {runNumber(group, run)} of {group.runs.length}
+                            {t("table.runOf", { n: runNumber(group, run), total: group.runs.length })}
                           </span>
-                          {run.archived_date && <span className="tag tag-outline">Archived</span>}
+                          {run.archived_date && <span className="tag tag-outline">{statusLabel("archived")}</span>}
                         </span>
                         <span className="mobile-row-meta">
                           {run.started_date ? longDate(run.started_date) : "—"}
@@ -750,7 +759,9 @@ function SubscriptionTable({
                       <span className="mobile-row-cost">
                         <span className="mobile-row-amount">{money(run.cost)}</span>
                         <span className="mobile-row-permonth">
-                          {run.paid_total == null ? run.billing_cycle : `paid ${money(run.paid_total)}`}
+                          {run.paid_total == null
+                            ? cycleNote(run.billing_cycle)
+                            : t("table.paidAmount", { amount: money(run.paid_total) })}
                         </span>
                       </span>
                       <ChevronRight size={16} />
@@ -759,7 +770,7 @@ function SubscriptionTable({
                     </Fragment>
                   ))}
                   <div className="mobile-lifetime">
-                    <LifetimeLine group={group} prefix="Lifetime" />
+                    <LifetimeLine group={group} prefix={t("table.lifetime")} />
                   </div>
                 </div>
               )}
@@ -782,41 +793,49 @@ function SubscriptionTable({
           >
             <div className="row-detail-facts">
               {[
-                ["Status", (isScheduled(detailSub) ? "Scheduled" : STATUS[detailSub.status].label) + (detailSub.archived_date ? " · Archived" : "")],
-                ["Category", detailSub.category || "—"],
                 [
-                  "Cost",
-                  `${detailSub.status === "trial" ? money(0) : money(detailSub.cost)} ${detailSub.billing_cycle}`,
+                  columnLabel("status"),
+                  shownStatus(detailSub) + (detailSub.archived_date ? ` · ${statusLabel("archived")}` : ""),
                 ],
-                ["Per month", detailSub.status === "active" ? money(perMonth(detailSub)) : "—"],
+                [columnLabel("category"), detailSub.category || "—"],
+                [
+                  columnLabel("cost"),
+                  `${detailSub.status === "trial" ? money(0) : money(detailSub.cost)} ${cycleNote(detailSub.billing_cycle)}`,
+                ],
+                [columnLabel("perMonth"), detailSub.status === "active" ? money(perMonth(detailSub)) : "—"],
                 [
                   detailSub.status !== "cancelled"
-                    ? "Next renewal"
-                    : accessEnded(detailSub) ? "Access ended" : "Access ends",
+                    ? columnLabel("renewal")
+                    : t(accessEnded(detailSub) ? "table.fact.accessEnded" : "table.fact.accessEnds"),
                   detailSub.status === "cancelled" && !detailSub.cancelled_date
                     ? "—"
                     : longDate(detailSub.next_renewal_date),
                 ],
-                ["Counts toward", detailSub.status === "active" && !isScheduled(detailSub) ? "Your totals" : "Nothing right now"],
+                [
+                  t("table.fact.countsToward"),
+                  t(detailSub.status === "active" && !isScheduled(detailSub) ? "table.fact.yourTotals" : "table.fact.nothingNow"),
+                ],
                 // The list shows only the month it started; the day is here.
-                ["Started", detailSub.started_date ? longDate(detailSub.started_date) : "—"],
+                [t("table.fact.started"), detailSub.started_date ? longDate(detailSub.started_date) : "—"],
                 // A head row's sheet repeats the row's Paid to date, the whole
                 // group's total, and splits out this run's share when there
                 // are others. An earlier run's sheet is about that run alone.
                 ...(detailIsEarlier
-                  ? detailSub.paid_total == null ? [] : [["Paid", money(detailSub.paid_total)]]
+                  ? detailSub.paid_total == null ? [] : [[t("table.fact.paid"), money(detailSub.paid_total)]]
                   : [
                       [
-                        "Paid to date",
+                        columnLabel("paid"),
                         lifetimePaid(detailGroup) == null
-                          ? "Unknown — no start date"
+                          ? t("table.fact.paidUnknown")
                           : `${money(lifetimePaid(detailGroup))} · ${paidNote(detailGroup)}`,
                       ],
                       ...(detailGroup.runs.length > 1 && detailSub.paid_total != null
-                        ? [["This run", money(detailSub.paid_total)]]
+                        ? [[t("table.fact.thisRun"), money(detailSub.paid_total)]]
                         : []),
                     ]),
-                ...(detailIsEarlier ? [["Run", `${runNumber(detailGroup, detailSub)} of ${detailGroup.runs.length}`]] : []),
+                ...(detailIsEarlier
+                  ? [[t("table.fact.run"), t("table.runNofM", { n: runNumber(detailGroup, detailSub), total: detailGroup.runs.length })]]
+                  : []),
               ].map(([label, value]) => (
                 <div className="row-detail-fact" key={label}>
                   <span className="field-label">{label}</span>
@@ -825,7 +844,7 @@ function SubscriptionTable({
               ))}
             </div>
             <div className="manage-plan">
-              <span className="field-label">Manage plan</span>
+              <span className="field-label">{t("table.managePlan")}</span>
               <div className="manage-plan-list">
                 {/* This sheet only ever opens for a cancelled row (see the
                     row buttons above): a cancelled head or an earlier run.
@@ -839,8 +858,8 @@ function SubscriptionTable({
                     className={key === "delete" ? "manage-plan-item destructive" : "manage-plan-item"}
                     onClick={openDetailActions(detailSub)(actionHandlers[key])}
                   >
-                    <span className="manage-plan-label">{MENU_LABELS[key]}</span>
-                    <span className="manage-plan-hint">{detailHints[key]}</span>
+                    <span className="manage-plan-label">{menuLabel(key)}</span>
+                    <span className="manage-plan-hint">{detailHints(key)}</span>
                   </button>
                 ))}
               </div>
@@ -849,10 +868,10 @@ function SubscriptionTable({
         )}
 
         {editing && draft && draft.id === editingId && (
-          <Sheet title={`Edit ${editing.name}`} onClose={closeEditor} className="dialog-sheet-edit">
+          <Sheet title={t("table.editTitle", { name: editing.name })} onClose={closeEditor} className="dialog-sheet-edit">
             <div className="sheet-fields" onKeyDown={saveOnEnter(editing)}>
               <label className="field">
-                <span className="field-label">Service</span>
+                <span className="field-label">{t("table.field.service")}</span>
                 <input
                   className="input"
                   type="text"
@@ -864,7 +883,7 @@ function SubscriptionTable({
               </label>
               <div className="sheet-row">
                 <label className="field">
-                  <span className="field-label">Cost</span>
+                  <span className="field-label">{columnLabel("cost")}</span>
                   <input
                     className="input tnum"
                     type="text"
@@ -875,48 +894,48 @@ function SubscriptionTable({
                   />
                 </label>
                 <label className="field">
-                  <span className="field-label">Cycle</span>
+                  <span className="field-label">{t("table.field.cycle")}</span>
                   <select
                     className="input"
                     value={draft.billing_cycle}
                     onChange={(e) => setDraft({ ...draft, billing_cycle: e.target.value })}
                   >
-                    <option value="monthly">Monthly</option>
-                    <option value="quarterly">Quarterly</option>
-                    <option value="yearly">Yearly</option>
+                    <option value="monthly">{cycleLabel("monthly")}</option>
+                    <option value="quarterly">{cycleLabel("quarterly")}</option>
+                    <option value="yearly">{cycleLabel("yearly")}</option>
                   </select>
                 </label>
               </div>
               <div className="sheet-row">
                 <label className="field">
-                  <span className="field-label">Category</span>
+                  <span className="field-label">{columnLabel("category")}</span>
                   <select
                     className="input"
                     value={draft.category}
                     onChange={(e) => setDraft({ ...draft, category: e.target.value })}
                   >
-                    <option value="">No category</option>
+                    <option value="">{t("table.noCategory")}</option>
                     {categories.map((category) => (
                       <option key={category.id} value={category.name}>{category.name}</option>
                     ))}
                   </select>
                 </label>
                 <label className="field">
-                  <span className="field-label">Status</span>
+                  <span className="field-label">{columnLabel("status")}</span>
                   <select
                     className="input"
                     value={draft.status}
                     onChange={(e) => setDraft({ ...draft, status: e.target.value })}
                   >
-                    <option value="active">Active</option>
-                    <option value="trial">Trial</option>
-                    <option value="paused">Paused</option>
+                    <option value="active">{statusLabel("active")}</option>
+                    <option value="trial">{statusLabel("trial")}</option>
+                    <option value="paused">{statusLabel("paused")}</option>
                   </select>
                 </label>
               </div>
               <div className="sheet-row">
                 <label className="field">
-                  <span className="field-label">Started</span>
+                  <span className="field-label">{t("table.field.started")}</span>
                   <input
                     className="input tnum"
                     type="date"
@@ -925,7 +944,7 @@ function SubscriptionTable({
                   />
                 </label>
                 <label className="field">
-                  <span className="field-label">Next renewal</span>
+                  <span className="field-label">{columnLabel("renewal")}</span>
                   <input
                     className="input tnum"
                     type="date"
@@ -934,7 +953,7 @@ function SubscriptionTable({
                   />
                 </label>
               </div>
-              <p className="sheet-hint">Per month: {draftPerMonth}</p>
+              <p className="sheet-hint">{t("table.perMonthHint", { amount: draftPerMonth })}</p>
             </div>
             {rowError && (
               <p role="alert" className="dialog-error">
@@ -949,14 +968,14 @@ function SubscriptionTable({
                 disabled={busy}
                 onClick={() => save(editing)}
               >
-                Save changes
+                {t("table.saveChanges")}
               </button>
               <button type="button" className="btn btn-ghost" onClick={closeEditor}>
-                Discard
+                {t("table.discard")}
               </button>
             </div>
             <div className="manage-plan">
-              <span className="field-label">Manage plan</span>
+              <span className="field-label">{t("table.managePlan")}</span>
               <div className="manage-plan-list">
                 {menuKeysFor(editing).map((key) => (
                   <button
@@ -965,8 +984,8 @@ function SubscriptionTable({
                     className={key === "delete" ? "manage-plan-item destructive" : "manage-plan-item"}
                     onClick={() => { closeEditor(); actionHandlers[key](editing); }}
                   >
-                    <span className="manage-plan-label">{MENU_LABELS[key]}</span>
-                    <span className="manage-plan-hint">{MENU_HINTS[key]}</span>
+                    <span className="manage-plan-label">{menuLabel(key)}</span>
+                    <span className="manage-plan-hint">{menuHint(key)}</span>
                   </button>
                 ))}
               </div>
@@ -989,12 +1008,9 @@ function SubscriptionTable({
           <td colSpan={8}>
             <span className="row-stale-inner">
               <TriangleAlert />
-              <span>
-                {subscription.name} no longer exists — it was removed on another device.
-                404 on save.
-              </span>
+              <span>{t("table.stale", { name: subscription.name })}</span>
               <button type="button" className="btn btn-ghost btn-small" onClick={onRefreshStale}>
-                Refresh list
+                {t("table.refresh")}
               </button>
             </span>
           </td>
@@ -1017,7 +1033,7 @@ function SubscriptionTable({
               <input
                 className="input"
                 type="text"
-                aria-label="Service"
+                aria-label={t("table.field.service")}
                 maxLength={NAME_MAX}
                 autoComplete="off"
                 value={draft.name}
@@ -1028,11 +1044,11 @@ function SubscriptionTable({
           <td>
             <select
               className="input"
-              aria-label="Category"
+              aria-label={columnLabel("category")}
               value={draft.category}
               onChange={(e) => setDraft({ ...draft, category: e.target.value })}
             >
-              <option value="">No category</option>
+              <option value="">{t("table.noCategory")}</option>
               {categories.map((category) => (
                 <option key={category.id} value={category.name}>{category.name}</option>
               ))}
@@ -1043,13 +1059,13 @@ function SubscriptionTable({
                 dropdown: it archives a record and deserves a confirm. */}
             <select
               className="input"
-              aria-label="Status"
+              aria-label={columnLabel("status")}
               value={draft.status}
               onChange={(e) => setDraft({ ...draft, status: e.target.value })}
             >
-              <option value="active">Active</option>
-              <option value="trial">Trial</option>
-              <option value="paused">Paused</option>
+              <option value="active">{statusLabel("active")}</option>
+              <option value="trial">{statusLabel("trial")}</option>
+              <option value="paused">{statusLabel("paused")}</option>
             </select>
           </td>
           <td>
@@ -1059,19 +1075,19 @@ function SubscriptionTable({
                 type="text"
                 inputMode="decimal"
                 autoComplete="off"
-                aria-label="Cost"
+                aria-label={columnLabel("cost")}
                 value={draft.cost}
                 onChange={(e) => setDraft({ ...draft, cost: e.target.value })}
               />
               <select
                 className="input cycle-select"
-                aria-label="Cycle"
+                aria-label={t("table.field.cycle")}
                 value={draft.billing_cycle}
                 onChange={(e) => setDraft({ ...draft, billing_cycle: e.target.value })}
               >
-                <option value="monthly">Monthly</option>
-                <option value="quarterly">Quarterly</option>
-                <option value="yearly">Yearly</option>
+                <option value="monthly">{cycleLabel("monthly")}</option>
+                <option value="quarterly">{cycleLabel("quarterly")}</option>
+                <option value="yearly">{cycleLabel("yearly")}</option>
               </select>
             </span>
           </td>
@@ -1080,7 +1096,7 @@ function SubscriptionTable({
             <input
               className="input tnum"
               type="date"
-              aria-label="Started"
+              aria-label={t("table.field.started")}
               value={draft.started_date}
               onChange={(e) => setDraft({ ...draft, started_date: e.target.value })}
             />
@@ -1089,7 +1105,7 @@ function SubscriptionTable({
             <input
               className="input tnum"
               type="date"
-              aria-label="Next renewal"
+              aria-label={columnLabel("renewal")}
               value={draft.next_renewal_date}
               onChange={(e) => setDraft({ ...draft, next_renewal_date: e.target.value })}
             />
@@ -1101,12 +1117,12 @@ function SubscriptionTable({
               disabled={busy}
               onClick={() => save(subscription)}
             >
-              Save
+              {t("table.save")}
             </button>
             {/* "Discard", as in the mobile edit sheet -- never "Cancel", which
                 would sit right next to the "Mark as cancelled" action. */}
             <button type="button" className="btn btn-ghost btn-small" onClick={closeEditor}>
-              Discard
+              {t("table.discard")}
             </button>
           </td>
         </tr>
@@ -1130,7 +1146,6 @@ function SubscriptionTable({
     const ended = accessEnded(subscription);
     const archived = Boolean(subscription.archived_date);
     const trial = subscription.status === "trial";
-    const status = STATUS[subscription.status];
     const primary = primaryFor(subscription);
     return (
       <tr
@@ -1158,15 +1173,13 @@ function SubscriptionTable({
           {/* Archived is a flag on top of cancelled, not a status of
               its own (TODO.md item 7), so it rides along as a second
               tag rather than replacing "Cancelled". */}
-          <span className={status.tag}>{isScheduled(subscription) ? "Scheduled" : status.label}</span>
-          {archived && <span className="tag tag-outline">Archived</span>}
+          <span className={STATUS_TAG[subscription.status]}>{shownStatus(subscription)}</span>
+          {archived && <span className="tag tag-outline">{statusLabel("archived")}</span>}
         </td>
         <td className="tnum">
           <span>{trial ? money(0) : money(subscription.cost)}</span>
           <span className="sub-note">
-            {trial
-              ? `then ${money(subscription.cost)}${cycleSuffix(subscription.billing_cycle)}`
-              : subscription.billing_cycle}
+            {trial ? thenNote(subscription) : cycleNote(subscription.billing_cycle)}
           </span>
         </td>
         <td className="tnum">
@@ -1197,12 +1210,12 @@ function SubscriptionTable({
           </span>
           <span className="sub-note">
             {trial
-              ? "trial ends"
+              ? t("table.trialEnds")
               : subscription.status === "paused"
-                ? "resumes when unpaused"
+                ? t("table.resumes")
                 : cancelled
                   ? subscription.cancelled_date
-                    ? ended ? "access ended" : "access ends"
+                    ? t(ended ? "table.accessEnded" : "table.accessEnds")
                     : ""
                   : ""}
           </span>
@@ -1211,7 +1224,7 @@ function SubscriptionTable({
           <button
             type="button"
             className="btn btn-ghost"
-            aria-label={`${primary.label} ${subscription.name}`}
+            aria-label={t("table.primaryAria", { action: primary.label, name: subscription.name })}
             onClick={
               primary.key
                 ? () => actionHandlers[primary.key](subscription)
@@ -1220,7 +1233,7 @@ function SubscriptionTable({
           >
             {primary.label}
           </button>
-          {moreMenu(subscription, menuKeysFor(subscription), MENU_HINTS, `More actions for ${subscription.name}`)}
+          {moreMenu(subscription, menuKeysFor(subscription), menuHint, t("table.moreFor", { name: subscription.name }))}
         </td>
       </tr>
     );
@@ -1237,7 +1250,7 @@ function SubscriptionTable({
         type="button"
         className="disclosure"
         aria-expanded={open}
-        aria-label={`${open ? "Hide" : "Show"} ${runsLabel(n)} of ${group.head.name}`}
+        aria-label={t(open ? "table.hideRunsOf" : "table.showRunsOf", { runs: runsLabel(n), name: group.head.name })}
         onClick={() => toggleGroup(group)}
       >
         <ChevronRight size={16} />
@@ -1259,7 +1272,7 @@ function SubscriptionTable({
           aria-expanded={menuOpen}
           onClick={() => setMenuOpenId(menuOpen ? null : subscription.id)}
         >
-          More ▾
+          {t("table.more")}
         </button>
         {menuOpen && (
           <div className="row-menu" role="menu" aria-label={label}>
@@ -1277,8 +1290,8 @@ function SubscriptionTable({
                   actionHandlers[key](subscription);
                 }}
               >
-                <span className="row-menu-label">{MENU_LABELS[key]}</span>
-                <span className="row-menu-hint">{hints[key]}</span>
+                <span className="row-menu-label">{menuLabel(key)}</span>
+                <span className="row-menu-hint">{hints(key)}</span>
               </button>
             ))}
           </div>
@@ -1314,19 +1327,19 @@ function SubscriptionTable({
             <td>
               <span className="earlier-name">
                 <span className="name-stack">
-                  <span>Earlier run</span>
-                  <span className="sub-note">Run {runNumber(group, run)} of {group.runs.length}</span>
+                  <span>{t("table.earlierRun")}</span>
+                  <span className="sub-note">{t("table.runOf", { n: runNumber(group, run), total: group.runs.length })}</span>
                 </span>
               </span>
             </td>
             <td />
             <td>
-              <span className={STATUS[run.status].tag}>{STATUS[run.status].label}</span>
-              {run.archived_date && <span className="tag tag-outline">Archived</span>}
+              <span className={STATUS_TAG[run.status]}>{statusLabel(run.status)}</span>
+              {run.archived_date && <span className="tag tag-outline">{statusLabel("archived")}</span>}
             </td>
             <td className="tnum">
               <span>{money(run.cost)}</span>
-              <span className="sub-note">{run.billing_cycle}</span>
+              <span className="sub-note">{cycleNote(run.billing_cycle)}</span>
             </td>
             <td className="tnum">—</td>
             <td className="tnum">
@@ -1339,14 +1352,14 @@ function SubscriptionTable({
             </td>
             <td className="tnum">
               <span>{run.cancelled_date ? longDate(run.cancelled_date) : "—"}</span>
-              <span className="sub-note">cancelled</span>
+              <span className="sub-note">{t("table.cancelledNote")}</span>
             </td>
             <td className="row-actions">
               {moreMenu(
                 run,
                 earlierMenuKeys(run),
-                EARLIER_HINTS,
-                `More actions for run ${runNumber(group, run)} of ${group.head.name}`,
+                earlierHint,
+                t("table.moreForRun", { n: runNumber(group, run), name: group.head.name }),
               )}
             </td>
           </tr>
@@ -1355,7 +1368,7 @@ function SubscriptionTable({
         ))}
         <tr className="row-lifetime">
           <td colSpan={8}>
-            <LifetimeLine group={group} prefix={`Lifetime with ${group.head.name}`} />
+            <LifetimeLine group={group} prefix={t("table.lifetimeWith", { name: group.head.name })} />
           </td>
         </tr>
       </>
@@ -1365,7 +1378,7 @@ function SubscriptionTable({
   return (
     <section id="all" className="table-section">
       <div className="section-head">
-        <h2 className="eyebrow">All subscriptions — {listCount}</h2>
+        <h2 className="eyebrow">{t("table.heading", { count: listCount })}</h2>
         <span className="table-actions">
           {searchBox}
           {archivedCount > 0 && (
@@ -1374,7 +1387,7 @@ function SubscriptionTable({
               className="btn btn-ghost btn-small"
               onClick={() => { setShowArchived(!showArchived); closeEditor(); }}
             >
-              {showArchived ? "Hide archived" : `Show archived — ${archivedCount}`}
+              {showArchived ? t("table.hideArchived") : t("table.showArchived", { n: archivedCount })}
             </button>
           )}
           <button
@@ -1382,11 +1395,11 @@ function SubscriptionTable({
             className="btn btn-ghost btn-small"
             onClick={() => { setShowEnded(!showEnded); closeEditor(); }}
           >
-            {showEnded ? "Hide ended" : `Show ended — ${endedCount}`}
+            {showEnded ? t("table.hideEnded") : t("table.showEnded", { n: endedCount })}
           </button>
           {archiveAllButton("btn btn-ghost btn-small")}
-          <button type="button" className="btn btn-primary" onClick={onAdd} title="Add subscription (N)" aria-keyshortcuts="n">
-            Add subscription
+          <button type="button" className="btn btn-primary" onClick={onAdd} title={t("table.addTitle")} aria-keyshortcuts="n">
+            {t("table.add")}
           </button>
         </span>
       </div>
@@ -1396,7 +1409,8 @@ function SubscriptionTable({
       <table className="table">
         <thead>
           <tr>
-            {COLUMNS.map((column) => {
+            {COLUMNS.map((key) => {
+              const column = { key, label: columnLabel(key) };
               const on = sort.key === column.key;
               const asc = sort.dir === "asc";
               return (
@@ -1407,10 +1421,10 @@ function SubscriptionTable({
                     onClick={() => sortBy(column.key)}
                     title={
                       !on
-                        ? `Sort by ${column.label.toLowerCase()}`
+                        ? t("table.sortBy", { label: column.label })
                         : DESC_FIRST.has(column.key)
-                          ? `${asc ? "Least" : "Most"} first — click to reverse`
-                          : `Sorted ${asc ? "A–Z" : "Z–A"} — click to reverse`
+                          ? t(asc ? "table.sortedLeast" : "table.sortedMost")
+                          : t(asc ? "table.sortedAsc" : "table.sortedDesc")
                     }
                   >
                     <span>{column.label}</span>

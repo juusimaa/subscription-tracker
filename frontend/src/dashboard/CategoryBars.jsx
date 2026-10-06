@@ -9,19 +9,20 @@
 // (year, category), so stepping between months of a year costs nothing.
 
 import { money } from "../format";
+import { t } from "../i18n";
 
-function CategoryBars({ rows, idle = [], periodLabel, total, onManage }) {
+function CategoryBars({ rows, idle = [], idleLabel, total, onManage }) {
   return (
     <div className="split-left">
       <div className="section-head">
-        <h2 className="eyebrow">By category</h2>
+        <h2 className="eyebrow">{t("categoryBars.title")}</h2>
         <button type="button" className="btn btn-ghost btn-small" onClick={onManage}>
-          Manage
+          {t("categoryBars.manage")}
         </button>
       </div>
 
       {rows.length === 0 && idle.length === 0 && (
-        <p className="cat-members">Nothing charged in this period.</p>
+        <p className="cat-members">{t("categoryBars.nothing")}</p>
       )}
 
       {rows.map((row, index) => {
@@ -50,7 +51,7 @@ function CategoryBars({ rows, idle = [], periodLabel, total, onManage }) {
           category count. */}
       {idle.length > 0 && (
         <p className={rows.length > 0 ? "cat-idle" : "cat-idle first"}>
-          <span className="cat-idle-label">Nothing billed in {periodLabel}</span>
+          <span className="cat-idle-label">{idleLabel}</span>
           <span className="cat-idle-names">{idle.join(" · ")}</span>
         </p>
       )}

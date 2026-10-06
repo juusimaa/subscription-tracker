@@ -2,6 +2,8 @@
 // replaced -- no zeroed-out charts, no empty table with a "no rows" line.
 // A dashboard of dashes is worse than an invitation.
 
+import { money } from "../format";
+import { t } from "../i18n";
 import MonoTile from "../MonoTile";
 import { QUICK_ADD } from "../services";
 import { useIsMobile } from "../useMediaQuery";
@@ -19,21 +21,19 @@ function EmptyState({ categories, onSubmit, prefill, onQuickAdd, actions, onOpen
   return (
     <>
       <section className="empty-hero">
-        <h1 className="eyebrow">Nothing tracked yet</h1>
-        <p className="empty-total">€0.00 a month.</p>
+        <h1 className="eyebrow">{t("empty.title")}</h1>
+        <p className="empty-total">{t("empty.total", { amount: money(0) })}</p>
         <p className="empty-body">
-          Add the first subscription and this page fills in — monthly and yearly totals, spend by
-          category, and every renewal date in order. Start with one you know off the top of your head.
+          {t("empty.body")}
         </p>
       </section>
 
-      <section aria-label="Common subscriptions" className="quick-add-section">
-        <h2 className="eyebrow">Start from a common one</h2>
+      <section aria-label={t("empty.commonLabel")} className="quick-add-section">
+        <h2 className="eyebrow">{t("empty.commonTitle")}</h2>
         {/* A tile only fills in the form, so it says so -- someone who
             expected it to save would otherwise not know a step is left. */}
         <p id="quick-add-note" className="quick-add-note">
-          A tile fills in the {isMobile ? "add form" : "form below"} with a typical price. Check the
-          price, then press Add.
+          {t("empty.tileNote", { mobile: isMobile })}
         </p>
         <div className="quick-add">
           {QUICK_ADD.map((service) => (
@@ -51,11 +51,11 @@ function EmptyState({ categories, onSubmit, prefill, onQuickAdd, actions, onOpen
         </div>
       </section>
 
-      <section aria-label="Add a subscription manually" className="manual-add-section">
-        <h2 className="eyebrow">Or add it yourself</h2>
+      <section aria-label={t("empty.manualLabel")} className="manual-add-section">
+        <h2 className="eyebrow">{t("empty.manualTitle")}</h2>
         {isMobile ? (
           <button type="button" className="btn btn-secondary btn-block" onClick={onOpenAddSheet}>
-            Add it yourself
+            {t("empty.manualButton")}
           </button>
         ) : (
           // A tile pre-fills this form with the service's name and typical

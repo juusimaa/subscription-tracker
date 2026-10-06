@@ -7,6 +7,7 @@
 // into bottom sheets without any component change. This one exists so these
 // three get the same treatment despite never being mounted on desktop.
 
+import { t } from "../i18n";
 import { useModal } from "../useModal";
 
 function Sheet({ title, header, onClose, children, className = "" }) {
@@ -28,7 +29,7 @@ function Sheet({ title, header, onClose, children, className = "" }) {
               dialog's aria-label either way. */}
           {header || <p className="dialog-title">{title}</p>}
           <button type="button" className="btn btn-ghost btn-small" onClick={onClose}>
-            Close
+            {t("sheet.close")}
           </button>
         </div>
         {children}

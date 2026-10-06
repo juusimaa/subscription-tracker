@@ -9,6 +9,8 @@
 // docker-compose.yml) -- only env vars prefixed with VITE_ are exposed to
 // client-side code, which is also why the JWT signing key is never one of
 // them: anything prefixed that way is readable by anyone who opens the page.
+import { t, translateOr } from "./i18n";
+
 const API_URL = window.__API_URL__ || import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 // The static UI mock has its own token slot so opening it in local Vite dev
@@ -77,17 +79,17 @@ async function send(path, options = {}) {
     });
   } catch (err) {
     if (err?.name === "TimeoutError") {
-      throw new ApiError("The server took too long to answer.", 0);
+      throw new ApiError(t("api.timeout"), 0);
     }
     // A network failure has no status at all. 0 stands in for "never reached
     // the server", which the banner reports the same way as a 5xx: something
     // the user cannot fix, with the last good data left on screen.
-    throw new ApiError("The server could not be reached.", 0);
+    throw new ApiError(t("api.unreachable"), 0);
   }
   if (res.status === 401) {
     clearToken();
     window.dispatchEvent(new Event(AUTH_EXPIRED));
-    throw new ApiError("Your session expired.", 401);
+    throw new ApiError(t("api.sessionExpired"), 401);
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -112,23 +114,30 @@ async function request(path, options = {}) {
 // non-positive cost). This flattens both into one displayable string.
 function formatError(detail) {
   if (!detail) return null;
-  if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) return detail.map((d) => d.msg).join(", ");
+  if (typeof detail === "string") return serverMessage(detail);
+  if (Array.isArray(detail)) return detail.map((d) => serverMessage(d.msg)).join(", ");
   return null;
 }
+
+// The server answers in English. The lines a user can actually meet -- a
+// wrong password, a taken email, a duplicate category -- have a translation
+// under "server.<the English text>" in locales/common.js; anything else (a
+// schema validator's wording, a message added to the backend later) is shown
+// as the server wrote it, which beats showing nothing.
+const serverMessage = (text) => translateOr(`server.${text}`, text);
 
 // What to say when the server gave no reason of its own -- a crash returns
 // "Internal Server Error" as plain text, and a gateway in front of a cold app
 // returns an HTML page, so neither has a detail to show. Each line names the
 // cause in the user's terms; describeWriteError adds what to do about it.
 function plainCause(status) {
-  if (status === 403) return "You don't have permission to do that.";
-  if (status === 404) return "That item no longer exists.";
-  if (status === 409) return "That clashes with something already saved.";
-  if (status === 413) return "That is too large to send.";
-  if (status === 429) return "Too many requests in a short time.";
-  if (status >= 500) return "The server ran into a problem.";
-  return "The server turned the request down.";
+  if (status === 403) return t("api.forbidden");
+  if (status === 404) return t("api.notFound");
+  if (status === 409) return t("api.conflict");
+  if (status === 413) return t("api.tooLarge");
+  if (status === 429) return t("api.tooMany");
+  if (status >= 500) return t("api.serverError");
+  return t("api.refused");
 }
 
 // Whether waiting and trying the same thing again can work: the request never
@@ -171,7 +180,7 @@ export async function login(email, password) {
     });
   } catch {
     // Without this the screen shows the browser's own "Failed to fetch".
-    throw new ApiError("The server could not be reached. Check your connection and try again.", 0);
+    throw new ApiError(t("api.unreachableLogin"), 0);
   }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -179,7 +188,7 @@ export async function login(email, password) {
     // message here rather than going through describeWriteError.
     const said = formatError(body.detail) || plainCause(res.status);
     const retry = res.status === 429 || res.status >= 500;
-    throw new ApiError(retry ? `${said} Try again in a moment.` : said, res.status);
+    throw new ApiError(retry ? `${said} ${t("api.tryAgainSoon")}` : said, res.status);
   }
   setToken(body.access_token);
   return body.access_token;
@@ -315,10 +324,10 @@ export const importBackup = (backup, mode = "merge") =>
 // which for every write here is that nothing changed -- then what to do, when
 // there is something to do beyond reading the first sentence. `outcome` names
 // the write when "saved" is the wrong verb (an import, an export).
-export function describeWriteError(err, outcome = "Nothing was saved") {
-  const said = (err?.message || "Something went wrong.").replace(/[.\s]*$/, ".");
+export function describeWriteError(err, outcome = t("api.nothingSaved")) {
+  const said = (err?.message || t("api.somethingWrong")).replace(/[.\s]*$/, ".");
   if (!(err instanceof ApiError)) return said;
-  if (err.status === 0) return `${said} ${outcome} — check your connection and try again.`;
-  if (isTransient(err)) return `${said} ${outcome} — try again in a moment.`;
-  return `${said} ${outcome}.`;
+  if (err.status === 0) return t("api.checkConnection", { said, outcome });
+  if (isTransient(err)) return t("api.retryLater", { said, outcome });
+  return t("api.plain", { said, outcome });
 }

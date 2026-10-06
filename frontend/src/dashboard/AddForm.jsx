@@ -10,7 +10,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, describeWriteError } from "../api";
 import { TriangleAlert } from "../icons";
-import { MONTHS, costProblem, parseAmount, todayISO } from "../format";
+import { costProblem, cycleLabel, monthName, parseAmount, todayISO } from "../format";
+import { t } from "../i18n";
 import { nextRenewalFrom } from "../renewals";
 
 // The server's own limits (schemas.SubscriptionName), so a too-long name is
@@ -55,23 +56,30 @@ function withSuggestion(form) {
   return { ...form, next_renewal_date: suggested };
 }
 
-// "September 2024" for a start date in the past, null otherwise -- the month
-// the plan starts counting toward totals from.
+// The month and year (zero-based month index) of a start date in the past,
+// null otherwise -- the month the plan starts counting toward totals from.
+// The message builds "September 2024" (or "syyskuusta 2024") from it.
 function countsFrom(startedIso) {
   if (!startedIso || startedIso >= todayISO()) return null;
   const [y, m] = startedIso.split("-");
-  return `${MONTHS[Number(m) - 1]} ${y}`;
+  return { month: Number(m) - 1, year: y };
 }
 
-const PLAN_LABELS = {
-  paid: { cost: "Cost", started: "Started", renewal: "Next renewal", submit: "Add" },
-  trial: {
-    cost: "Price after trial",
-    started: "Trial started",
-    renewal: "Trial ends",
-    submit: "Add trial",
-  },
-};
+// A function rather than a constant so the labels follow the language.
+const planLabels = (trial) =>
+  trial
+    ? {
+        cost: t("addForm.trial.cost"),
+        started: t("addForm.trial.started"),
+        renewal: t("addForm.trial.renewal"),
+        submit: t("addForm.trial.submit"),
+      }
+    : {
+        cost: t("addForm.paid.cost"),
+        started: t("addForm.paid.started"),
+        renewal: t("addForm.paid.renewal"),
+        submit: t("addForm.paid.submit"),
+      };
 
 function AddForm({
   categories,
@@ -132,13 +140,13 @@ function AddForm({
   async function handleSubmit(event) {
     event.preventDefault();
     const found = {};
-    if (!form.name.trim()) found.name = "Required — pick a service or type a name.";
+    if (!form.name.trim()) found.name = t("addForm.nameRequired");
     const costError = costProblem(form.cost);
     if (costError) found.cost = costError;
     if (!form.next_renewal_date) {
       found.next_renewal_date = form.is_trial
-        ? "Required — the day the trial ends."
-        : "Required — the date of the next charge.";
+        ? t("addForm.trialEndRequired")
+        : t("addForm.renewalRequired");
     }
     setErrors(found);
     setFormError(null);
@@ -202,7 +210,7 @@ function AddForm({
   }
 
   const field = (key) => (errors[key] ? "field invalid" : "field");
-  const labels = form.is_trial ? PLAN_LABELS.trial : PLAN_LABELS.paid;
+  const labels = planLabels(form.is_trial);
   const startMonth = countsFrom(form.started_date);
   // Only while the date is still the suggestion. A plan started today
   // charges today, which looks like a mistake unless it says so.
@@ -210,23 +218,23 @@ function AddForm({
   const renewalHint = !suggested
     ? null
     : form.next_renewal_date === form.started_date
-      ? "The first charge, on the day it starts."
+      ? t("addForm.firstChargeHint")
       : startMonth
-        ? "Worked out from Started and Cycle."
+        ? t("addForm.workedOutHint")
         : null;
 
   return (
     <form onSubmit={handleSubmit} noValidate>
       <div className="plan-type-field">
-        <span className="field-label">Plan type</span>
-        <div className="seg plan-type-seg" role="group" aria-label="Plan type">
+        <span className="field-label">{t("addForm.planType")}</span>
+        <div className="seg plan-type-seg" role="group" aria-label={t("addForm.planType")}>
           <button
             type="button"
             className="seg-opt"
             aria-pressed={!form.is_trial}
             onClick={() => setForm({ ...form, is_trial: false })}
           >
-            Paid plan
+            {t("addForm.paidPlan")}
           </button>
           <button
             type="button"
@@ -234,23 +242,23 @@ function AddForm({
             aria-pressed={form.is_trial}
             onClick={() => setForm({ ...form, is_trial: true })}
           >
-            Free trial
+            {t("addForm.freeTrial")}
           </button>
         </div>
         <p className="plan-type-hint">
           {form.is_trial
-            ? "It stays out of your totals while it is a trial. If you keep it, it charges the price above from the day the trial ends."
-            : "It starts charging on the renewal date and counts toward your totals straight away."}
+            ? t("addForm.trialHint")
+            : t("addForm.paidHint")}
         </p>
       </div>
 
       <div className={endAligned ? "add-grid baseline" : "add-grid"}>
         <label className={field("name")}>
-          <span className="field-label">Service</span>
+          <span className="field-label">{t("addForm.service")}</span>
           <input
             className="input"
             type="text"
-            placeholder="Netflix, Spotify, …"
+            placeholder={t("addForm.servicePlaceholder")}
             maxLength={NAME_MAX}
             autoComplete="off"
             value={form.name}
@@ -262,9 +270,9 @@ function AddForm({
           )}
           {!errors.name && duplicate && (
             <span className="field-warning">
-              You already track {duplicate.name}.{" "}
+              {t("addForm.duplicate", { name: duplicate.name })}{" "}
               <button type="button" className="link-button" onClick={() => onOpenExisting(duplicate)}>
-                Edit that subscription instead
+                {t("addForm.editExisting")}
               </button>
               .
             </span>
@@ -283,7 +291,7 @@ function AddForm({
             type="text"
             inputMode="decimal"
             autoComplete="off"
-            placeholder="0.00"
+            placeholder={t("addForm.costPlaceholder")}
             value={form.cost}
             aria-invalid={errors.cost ? "true" : undefined}
             onChange={set("cost")}
@@ -292,11 +300,11 @@ function AddForm({
         </label>
 
         <label className="field">
-          <span className="field-label">Cycle</span>
+          <span className="field-label">{t("addForm.cycle")}</span>
           <select className="input" value={form.billing_cycle} onChange={set("billing_cycle")}>
-            <option value="monthly">Monthly</option>
-            <option value="quarterly">Quarterly</option>
-            <option value="yearly">Yearly</option>
+            <option value="monthly">{cycleLabel("monthly")}</option>
+            <option value="quarterly">{cycleLabel("quarterly")}</option>
+            <option value="yearly">{cycleLabel("yearly")}</option>
           </select>
         </label>
 
@@ -316,7 +324,7 @@ function AddForm({
               totals, and today's date needs no explaining. A trial counts
               from when it converts, not from here, so it gets no hint. */}
           {startMonth && !form.is_trial && (
-            <span className="field-hint">Counts from {startMonth}.</span>
+            <span className="field-hint">{t("addForm.countsFrom", { month: monthName(startMonth.month), year: startMonth.year })}</span>
           )}
         </label>
 
@@ -338,9 +346,9 @@ function AddForm({
         </label>
 
         <label className="field">
-          <span className="field-label">Category</span>
+          <span className="field-label">{t("addForm.category")}</span>
           <select className="input" value={form.category} onChange={set("category")}>
-            <option value="">No category</option>
+            <option value="">{t("addForm.noCategory")}</option>
             {categories.map((category) => (
               <option key={category.id} value={category.name}>{category.name}</option>
             ))}
