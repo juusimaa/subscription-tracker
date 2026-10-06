@@ -28,7 +28,10 @@ test("an open group shows its earlier runs and lifetime", async ({ page }) => {
   await expect(list(page).getByText("Run 2 of 3")).toBeVisible();
   // The archived run stays hidden until Show archived is on.
   await expect(list(page).getByText("Run 1 of 3")).toHaveCount(0);
-  await expect(list(page).getByText("€895.35")).toBeVisible();
+  // The lifetime line splits the head row's Paid to date into its runs.
+  const lifetime = list(page).locator(".row-lifetime, .mobile-lifetime");
+  await expect(lifetime).toContainText("€895.35");
+  await expect(lifetime).toContainText("This run €527.67, earlier runs €367.68.");
   await expect(list(page)).toHaveScreenshot("grouped-runs-open.png");
 
   await page.getByRole("button", { name: /Show archived — 1/ }).click();

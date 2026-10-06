@@ -69,3 +69,11 @@ export function groupSince(group) {
   const starts = group.runs.map((s) => s.started_date).filter(Boolean).sort();
   return starts[0] || null;
 }
+
+// The day a cancelled or paused run stopped costing money, or null while it
+// still bills (models.Subscription.stopped_date).
+export function stoppedDate(subscription) {
+  if (subscription.status === "cancelled") return subscription.cancelled_date;
+  if (subscription.status === "paused") return subscription.paused_date;
+  return null;
+}
