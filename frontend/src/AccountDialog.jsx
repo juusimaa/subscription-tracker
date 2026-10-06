@@ -19,6 +19,8 @@
 
 import { useState } from "react";
 import { describeWriteError } from "./api";
+import { t } from "./i18n";
+import { LanguagePicker } from "./Language";
 import { TriangleAlert } from "./icons";
 import { useModal } from "./useModal";
 
@@ -72,17 +74,17 @@ function AccountDialog({
     // (PasswordChange.new_password, min 8 -- matching what /register already
     // asks for, not the mock's unrelated "10").
     if (!currentPassword) {
-      setPwError("Enter your current password.");
+      setPwError(t("account.needCurrent"));
       setPwDone(false);
       return;
     }
     if (newPassword !== repeatPassword) {
-      setPwError("The two new passwords don't match. 400 — nothing was changed.");
+      setPwError(t("account.mismatch"));
       setPwDone(false);
       return;
     }
     if (newPassword.length < 8) {
-      setPwError("New password must be at least 8 characters.");
+      setPwError(t("account.tooShort"));
       setPwDone(false);
       return;
     }
@@ -96,14 +98,16 @@ function AccountDialog({
       setRepeatPassword("");
     } catch (err) {
       setPwDone(false);
-      setPwError(describeWriteError(err, "Nothing was changed"));
+      setPwError(describeWriteError(err, t("api.nothingChanged")));
     } finally {
       setPwSaving(false);
     }
   }
 
+  // "DELETE" in English, "POISTA" in Finnish: the word is the reader's own.
+  const confirmWord = t("account.confirmWord");
   const deleteBlocked =
-    deleteSaving || !deletePassword || confirmText.trim().toUpperCase() !== "DELETE";
+    deleteSaving || !deletePassword || confirmText.trim().toUpperCase() !== confirmWord;
 
   async function submitDelete() {
     if (deleteBlocked) return;
@@ -114,7 +118,7 @@ function AccountDialog({
       // No further state to reset: onDeleteAccount succeeding means the App
       // shell is about to unmount this dialog by logging the user out.
     } catch (err) {
-      setDeleteError(describeWriteError(err, "Nothing was changed"));
+      setDeleteError(describeWriteError(err, t("api.nothingChanged")));
     } finally {
       setDeleteSaving(false);
     }
@@ -131,26 +135,29 @@ function AccountDialog({
         onClick={stop}
       >
         <div className="dialog-head">
-          <p className="dialog-title" id="account-title">Account</p>
+          <p className="dialog-title" id="account-title">{t("account.title")}</p>
           <button type="button" className="btn btn-ghost btn-small" onClick={onClose}>
-            Close
+            {t("account.close")}
           </button>
         </div>
 
         <div className="account-identity">
-          <span className="field-label">Signed in as</span>
+          <span className="field-label">{t("account.signedInAs")}</span>
           <span className="account-email">{email}</span>
         </div>
 
+        <div className="account-section account-language">
+          <h3 className="account-heading">{t("language.label")}</h3>
+          <p className="account-explainer">{t("account.languageNote")}</p>
+          <LanguagePicker />
+        </div>
+
         <div className="account-section">
-          <h3 className="account-heading">Change password</h3>
-          <p className="account-explainer">
-            At least 8 characters. Changing it signs you out on other devices — your
-            subscriptions are untouched.
-          </p>
+          <h3 className="account-heading">{t("account.changePassword")}</h3>
+          <p className="account-explainer">{t("account.passwordNote")}</p>
           <div className="account-pw-grid">
             <label className="field account-pw-current">
-              <span className="field-label">Current password</span>
+              <span className="field-label">{t("account.currentPassword")}</span>
               <input
                 className="input"
                 type="password"
@@ -160,7 +167,7 @@ function AccountDialog({
               />
             </label>
             <label className="field">
-              <span className="field-label">New password</span>
+              <span className="field-label">{t("account.newPassword")}</span>
               <input
                 className="input"
                 type="password"
@@ -170,7 +177,7 @@ function AccountDialog({
               />
             </label>
             <label className="field">
-              <span className="field-label">Repeat new password</span>
+              <span className="field-label">{t("account.repeatPassword")}</span>
               <input
                 className="input"
                 type="password"
@@ -193,27 +200,22 @@ function AccountDialog({
               disabled={pwSaving}
               onClick={submitPassword}
             >
-              Update password
+              {t("account.updatePassword")}
             </button>
             {pwDone && (
               <span role="status" className="account-pw-done">
-                Password updated — other devices signed out.
+                {t("account.passwordDone")}
               </span>
             )}
           </div>
         </div>
 
         <div className="account-section account-danger">
-          <h3 className="account-heading">Delete account</h3>
-          <p className="account-explainer">
-            Removes your login and all {subscriptionCount} subscription
-            {subscriptionCount === 1 ? "" : "s"}, including cancelled and archived ones, with
-            their charge history. This cannot be undone — export your data first if you want a
-            copy.
-          </p>
+          <h3 className="account-heading">{t("account.deleteHeading")}</h3>
+          <p className="account-explainer">{t("account.deleteNote", { n: subscriptionCount })}</p>
           <div className="account-danger-actions">
             <button type="button" className="btn btn-secondary" onClick={onExportFirst}>
-              Export first
+              {t("account.exportFirst")}
             </button>
             {/* Destructive on purpose as a ghost button: reachable, never the
                 visual default. */}
@@ -222,7 +224,7 @@ function AccountDialog({
               className="btn btn-ghost account-delete-trigger"
               onClick={() => setDeleteOpen(true)}
             >
-              Delete my account
+              {t("account.deleteMine")}
             </button>
           </div>
         </div>
@@ -238,14 +240,14 @@ function AccountDialog({
             aria-labelledby="account-delete-title"
             onClick={stop}
           >
-            <p className="dialog-title" id="account-delete-title">Delete {email}?</p>
+            <p className="dialog-title" id="account-delete-title">
+              {t("account.deleteTitle", { email })}
+            </p>
             <p className="dialog-body">
-              {subscriptionCount} subscription{subscriptionCount === 1 ? "" : "s"},{" "}
-              {categoryCount} categor{categoryCount === 1 ? "y" : "ies"} and your login are
-              removed. Everything goes at once and nothing can be restored afterwards.
+              {t("account.deleteBody", { subscriptions: subscriptionCount, categories: categoryCount })}
             </p>
             <label className="field account-delete-field">
-              <span className="field-label">Password</span>
+              <span className="field-label">{t("login.password")}</span>
               <input
                 className="input"
                 type="password"
@@ -255,11 +257,11 @@ function AccountDialog({
               />
             </label>
             <label className="field account-delete-field">
-              <span className="field-label">Type DELETE to confirm</span>
+              <span className="field-label">{t("account.confirmLabel", { word: confirmWord })}</span>
               <input
                 className="input"
                 type="text"
-                placeholder="DELETE"
+                placeholder={confirmWord}
                 value={confirmText}
                 onChange={(event) => setConfirmText(event.target.value)}
               />
@@ -277,10 +279,10 @@ function AccountDialog({
                 disabled={deleteBlocked}
                 onClick={submitDelete}
               >
-                Delete account
+                {t("account.deleteConfirm")}
               </button>
               <button type="button" className="btn btn-secondary" onClick={closeDelete}>
-                Keep my account
+                {t("account.keep")}
               </button>
             </div>
           </DeletePanel>

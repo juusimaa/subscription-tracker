@@ -80,6 +80,12 @@ jobs:
         if: needs.changes.outputs.frontend == 'true'
         run: npm ci
 
+      # Cheap and first: a message added in one language only (issue #89)
+      # fails here rather than showing its key on screen.
+      - name: Check every message exists in English and Finnish
+        if: needs.changes.outputs.frontend == 'true'
+        run: npm run check:locales
+
       - name: Run visual regression tests
         if: needs.changes.outputs.frontend == 'true'
         run: npx playwright test

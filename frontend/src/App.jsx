@@ -36,6 +36,7 @@ import AccountDialog from "./AccountDialog";
 import Dashboard from "./dashboard/Dashboard";
 import Login from "./Login";
 import { MAX_YEAR, MIN_YEAR, ageInWords } from "./format";
+import { t } from "./i18n";
 import { GitHub, TriangleAlert } from "./icons";
 import { useModal } from "./useModal";
 import { readPeriod } from "./viewUrl";
@@ -54,7 +55,7 @@ function ReauthDialog({ email, onLogin, onClose }) {
         className="dialog dialog-confirm"
         role="dialog"
         aria-modal="true"
-        aria-label="Sign in again"
+        aria-label={t("app.reauthLabel")}
         onClick={(event) => event.stopPropagation()}
       >
         <Login onLogin={onLogin} email={email} compact />
@@ -293,22 +294,22 @@ function App() {
     <>
       <nav className="nav app-nav">
         <span className="nav-brand">
-          Subscriptions <span className="tag tag-outline nav-beta-tag">Beta</span>
+          {t("app.brand")} <span className="tag tag-outline nav-beta-tag">{t("app.beta")}</span>
         </span>
-        <a className="nav-link" href="#overview" aria-current="location">Overview</a>
-        <a className="nav-link" href="#all">All subscriptions</a>
+        <a className="nav-link" href="#overview" aria-current="location">{t("app.navOverview")}</a>
+        <a className="nav-link" href="#all">{t("app.navAll")}</a>
         {email && (
           <button
             type="button"
             className="btn btn-ghost nav-account"
-            aria-label={`Account — ${email}`}
+            aria-label={t("app.accountLabel", { email })}
             onClick={() => setAccountOpen(true)}
           >
             <span className="nav-email">{email}</span>
             <span className="nav-avatar" aria-hidden="true">{email[0]?.toUpperCase()}</span>
           </button>
         )}
-        <button type="button" className="btn btn-secondary" onClick={handleLogout}>Log out</button>
+        <button type="button" className="btn btn-secondary" onClick={handleLogout}>{t("app.logout")}</button>
       </nav>
 
       {/* The banner and the strip stack, banner first: a dead server and a
@@ -318,25 +319,25 @@ function App() {
           <div className="server-banner-inner">
             <TriangleAlert size={20} />
             <div>
-              <p className="server-banner-title">Couldn&apos;t load your subscriptions</p>
+              <p className="server-banner-title">{t("app.bannerTitle")}</p>
               <p className="server-banner-detail">
                 {loadError.message.replace(/[.\s]*$/, ".")}{" "}
                 {data
-                  ? `Figures below were last updated ${ageInWords(loadedAt)}.`
-                  : "Nothing has loaded yet."}
+                  ? t("app.bannerStale", { age: ageInWords(loadedAt) })
+                  : t("app.bannerNothing")}
               </p>
             </div>
             <button type="button" className="btn btn-secondary" style={{ marginRight: 8 }} onClick={load}>
-              Try again
+              {t("app.tryAgain")}
             </button>
             <button
               type="button"
               className="btn btn-ghost"
               style={{ color: "var(--color-accent-900)" }}
-              aria-label="Dismiss"
+              aria-label={t("app.dismiss")}
               onClick={() => setDismissed(true)}
             >
-              Dismiss
+              {t("app.dismiss")}
             </button>
           </div>
         </div>
@@ -345,11 +346,11 @@ function App() {
       {sessionExpired && (
         <div role="status" className="session-strip">
           <p>
-            Your session expired —{" "}
+            {t("app.sessionBefore")}{" "}
             <button type="button" className="link-button" onClick={() => setReauthOpen(true)}>
-              sign in again
+              {t("app.sessionLink")}
             </button>{" "}
-            to keep editing. 401 from the server.
+            {t("app.sessionAfter")}
           </p>
         </div>
       )}
@@ -397,7 +398,7 @@ function App() {
           rel="noreferrer"
         >
           <GitHub size={16} />
-          View on GitHub
+          {t("app.github")}
         </a>
       </footer>
     </>

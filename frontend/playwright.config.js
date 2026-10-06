@@ -17,6 +17,9 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:5173",
     trace: "retain-on-failure",
+    // The interface language follows the browser (src/i18n.js), so the
+    // baselines pin it: English, whatever the machine running them prefers.
+    locale: "en-US",
   },
   // No {platform} component: baselines are generated inside the same Linux
   // container CI uses (see README), so the OS is constant and doesn't need
@@ -30,6 +33,9 @@ export default defineConfig({
     {
       name: "mobile",
       use: { ...devices["iPhone 13"] },
+      // Language is behaviour, not layout, and its assertions read the nav
+      // links, which the mobile nav folds away.
+      testIgnore: /language\.spec\.js/,
     },
     {
       name: "desktop",
@@ -40,7 +46,7 @@ export default defineConfig({
       // inline section, not a dialog). The account dialog is the one
       // exception: AccountDialog.jsx is a real dialog on both, re-chromed to
       // a bottom sheet by CSS alone at 760px, so it's worth both baselines.
-      testMatch: /(dashboard|account-dialog|ui-mock|grouped-runs|save-notice|quick-add|add-form-dates|shortcuts|cancelled-access|list-guide|paid-to-date)\.spec\.js/,
+      testMatch: /(dashboard|account-dialog|ui-mock|grouped-runs|save-notice|quick-add|add-form-dates|shortcuts|cancelled-access|list-guide|paid-to-date|language)\.spec\.js/,
     },
   ],
   webServer: {

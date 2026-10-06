@@ -1379,6 +1379,11 @@ body { text-wrap: pretty; }
   color: var(--color-accent-900);
 }
 .login-toggle { margin-top: 28px; font-size: 13px; }
+/* The language choice (issue #89). Under the sign-up toggle on its own
+   line, so it is findable before signing in by someone who cannot read the
+   current language; in the Account dialog it sits under its explainer. */
+.login-language { display: flex; width: max-content; margin-top: 20px; }
+.account-language .language-picker { margin-top: 16px; }
 /* The dialog supplies its own padding and title, so the form does not need
    the full-page rhythm above it. */
 .dialog .login-form { margin-top: 20px; padding-top: 20px; }

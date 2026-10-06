@@ -12,6 +12,7 @@
 
 import { Fragment } from "react";
 import { money, shortDate } from "../format";
+import { t } from "../i18n";
 
 function ChargeGrid({ charges, past = false }) {
   // A three-column grid rather than three stacked lists, so date, name and
@@ -25,13 +26,13 @@ function ChargeGrid({ charges, past = false }) {
             <span className={`date${first}`}>{shortDate(charge.iso)}</span>
             <span className={`name${first}`}>
               {charge.subscription.name}
-              {charge.isTrialConversion && <>{" "}<span className="trial-note">{past ? "trial converted" : "trial converts"}</span></>}
+              {charge.isTrialConversion && <>{" "}<span className="trial-note">{past ? t("comingUp.trialConverted") : t("comingUp.trialConverts")}</span></>}
             </span>
             <span className={`amount${first}`}>
               {charge.isTrialConversion ? (
                 <>
                   {money(charge.subscription.cost)}{" "}
-                  <span className="if-kept">if kept</span>
+                  <span className="if-kept">{t("trial.ifKept")}</span>
                 </>
               ) : (
                 money(charge.cost)
@@ -45,18 +46,18 @@ function ChargeGrid({ charges, past = false }) {
 }
 
 const HEADINGS = {
-  current: () => "Coming up",
-  future: (month) => `Coming up · ${month}`,
-  past: (month) => `Charged · ${month}`,
+  current: () => t("comingUp.current"),
+  future: (month) => t("comingUp.future", { month }),
+  past: (month) => t("comingUp.past", { month }),
 };
 
 function ComingUp({ kind, monthLabel, charges, charged, note }) {
   const empty =
     kind === "current"
       ? charged.length > 0
-        ? "Nothing else charges this month."
-        : "No charges left this month."
-      : "No charges in this period.";
+        ? t("comingUp.nothingElse")
+        : t("comingUp.noneLeft")
+      : t("comingUp.none");
   return (
     <div className="split-right">
       <h2 className="eyebrow" style={{ margin: "0 0 28px" }}>{HEADINGS[kind](monthLabel)}</h2>
@@ -64,7 +65,7 @@ function ComingUp({ kind, monthLabel, charges, charged, note }) {
       {charges.length === 0 && <p className="cat-members">{empty}</p>}
       {charged.length > 0 && (
         <>
-          <h3 className="coming-up-label">Already charged this month</h3>
+          <h3 className="coming-up-label">{t("comingUp.alreadyCharged")}</h3>
           <ChargeGrid charges={charged} past />
         </>
       )}

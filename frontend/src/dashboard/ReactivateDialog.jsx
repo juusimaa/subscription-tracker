@@ -3,7 +3,8 @@
 
 import { useState } from "react";
 import { describeWriteError } from "../api";
-import { costProblem, longDate, parseAmount, todayISO } from "../format";
+import { costProblem, cycleLabel, longDate, parseAmount, todayISO } from "../format";
+import { t } from "../i18n";
 import { TriangleAlert } from "../icons";
 import { useModal } from "../useModal";
 
@@ -24,11 +25,11 @@ function ReactivateDialog({ subscription, onConfirm, onClose }) {
   async function confirm() {
     const costError = costProblem(cost);
     if (costError) {
-      setError(`Cost: ${costError}`);
+      setError(t("reactivate.costError", { error: costError }));
       return;
     }
     if (!firstChargeDate) {
-      setError("Choose the first charge date.");
+      setError(t("reactivate.dateRequired"));
       return;
     }
     setError(null);
@@ -54,16 +55,14 @@ function ReactivateDialog({ subscription, onConfirm, onClose }) {
         className="dialog dialog-confirm"
         role="dialog"
         aria-modal="true"
-        aria-label={`Reactivate ${subscription.name}`}
+        aria-label={t("reactivate.title", { name: subscription.name })}
         onClick={(event) => event.stopPropagation()}
       >
-        <p className="dialog-title">Reactivate {subscription.name}</p>
-        <p className="dialog-body">
-          The previous run and its charges stay in your history. Set the terms for the new run.
-        </p>
+        <p className="dialog-title">{t("reactivate.title", { name: subscription.name })}</p>
+        <p className="dialog-body">{t("reactivate.body")}</p>
         <div className="reactivation-fields">
           <label className="field">
-            <span className="field-label">Cost</span>
+            <span className="field-label">{t("reactivate.cost")}</span>
             <input
               className="input tnum"
               type="text"
@@ -74,17 +73,17 @@ function ReactivateDialog({ subscription, onConfirm, onClose }) {
             />
           </label>
           <label className="field">
-            <span className="field-label">Cycle</span>
+            <span className="field-label">{t("reactivate.cycle")}</span>
             <select className="input" value={cycle} onChange={(event) => setCycle(event.target.value)}>
-              <option value="monthly">Monthly</option>
-              <option value="quarterly">Quarterly</option>
-              <option value="yearly">Yearly</option>
+              <option value="monthly">{cycleLabel("monthly")}</option>
+              <option value="quarterly">{cycleLabel("quarterly")}</option>
+              <option value="yearly">{cycleLabel("yearly")}</option>
             </select>
           </label>
         </div>
         <div className="reactivation-fields">
           <label className="field">
-            <span className="field-label">First charge date</span>
+            <span className="field-label">{t("reactivate.firstCharge")}</span>
             <input
               className="input tnum"
               type="date"
@@ -94,15 +93,15 @@ function ReactivateDialog({ subscription, onConfirm, onClose }) {
           </label>
         </div>
         {paidThrough && paidThrough > todayISO() && (
-          <p className="reactivation-note">Previously paid through {longDate(paidThrough)}.</p>
+          <p className="reactivation-note">{t("reactivate.paidThrough", { date: longDate(paidThrough) })}</p>
         )}
         {error && <p role="alert" className="form-error"><TriangleAlert /><span>{error}</span></p>}
         <div className="dialog-actions">
           <button type="button" className="btn btn-primary" disabled={busy} onClick={confirm}>
-            Reactivate
+            {t("reactivate.confirm")}
           </button>
           <button type="button" className="btn btn-secondary" disabled={busy} onClick={onClose}>
-            Cancel
+            {t("reactivate.dismiss")}
           </button>
         </div>
       </div>

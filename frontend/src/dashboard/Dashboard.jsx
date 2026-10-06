@@ -9,7 +9,18 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { ApiError, describeWriteError } from "../api";
-import { MAX_YEAR, MIN_YEAR, MONTHS, SHORT_MONTHS, longDate, money, signed, toISO, todayISO } from "../format";
+import {
+  MAX_YEAR,
+  MIN_YEAR,
+  longDate,
+  money,
+  monthName,
+  shortMonthName,
+  signed,
+  toISO,
+  todayISO,
+} from "../format";
+import { t } from "../i18n";
 import { chargeCountInYear, chargesInMonth } from "../renewals";
 import { useIsMobile } from "../useMediaQuery";
 import { readListView, writeView } from "../viewUrl";
@@ -206,7 +217,7 @@ function Dashboard({
   if (uncategorised > 0.005 && subscriptions.some((s) => !s.category)) {
     const chargedIds = spendByYear[year] ? chargedIn(spendByYear[year]) : new Set();
     billedRows.push({
-      name: "Uncategorised",
+      name: t("categoryBars.uncategorised"),
       amount: uncategorised,
       members: subscriptions.filter((s) => !s.category && chargedIds.has(s.id)).map((s) => s.name),
     });
@@ -229,15 +240,19 @@ function Dashboard({
     .filter((s) => s.billing_cycle === "yearly")
     .sort((a, b) => a.next_renewal_date.localeCompare(b.next_renewal_date))[0];
   const comingUpNote = nextYearly
-    ? `Next annual charge: ${nextYearly.name}, ${money(nextYearly.cost)} on ${longDate(nextYearly.next_renewal_date)}.`
-    : "No annual charges on record.";
+    ? t("comingUp.nextAnnual", {
+        name: nextYearly.name,
+        amount: money(nextYearly.cost),
+        date: longDate(nextYearly.next_renewal_date),
+      })
+    : t("comingUp.noAnnual");
 
   // --- trend ---
 
   const bars = monthly
-    ? SHORT_MONTHS.map((tick, index) => ({
+    ? Array.from({ length: 12 }, (_, index) => shortMonthName(index)).map((tick, index) => ({
         tick,
-        label: `${MONTHS[index]} ${year}`,
+        label: t("period.monthYear", { month: monthName(index), year }),
         // Mobile's 12-column tick row has no room for three letters (see
         // TrendStrip.jsx) -- a year has only three columns and keeps its
         // full label there too, so this is monthly-only.
@@ -271,8 +286,8 @@ function Dashboard({
     trialsSoon.length === 0
       ? null
       : trialsSoon.length === 1
-        ? `Not counting the ${trialsSoon[0].name} trial: ${money(trialsSoonCost)} more if kept`
-        : `Not counting ${trialsSoon.length} trials: ${money(trialsSoonCost)} more if kept`;
+        ? t("kpi.trialNoteOne", { name: trialsSoon[0].name, amount: money(trialsSoonCost) })
+        : t("kpi.trialNoteMany", { n: trialsSoon.length, amount: money(trialsSoonCost) });
 
   const kpis = [
     {
@@ -280,25 +295,28 @@ function Dashboard({
       // selected period: "the next 30 days" is a question about today, and it
       // does not change when the period picker moves.
       figure: monthly ? money(upcomingTotal ?? 0) : money(total / 12),
-      label: monthly ? "Charging in the next 30 days" : "Average per month",
+      label: monthly ? t("kpi.next30") : t("kpi.averagePerMonth"),
       note: monthly ? trialsSoonNote : null,
     },
     {
       figure: String(monthly ? monthCharges.length : chargeCountInYear(subscriptions, year)),
-      label: monthly ? "Renewals this month" : "Renewals this year",
+      label: monthly ? t("kpi.renewalsMonth") : t("kpi.renewalsYear"),
     },
     {
       figure: largest ? money(largest.cost) : "—",
-      label: `Largest single charge — ${largest ? largest.name : "none"}`,
+      label: t("kpi.largest", { name: largest ? largest.name : t("kpi.largestNone") }),
     },
     {
       figure: change == null ? "—" : signed(change),
       label:
         change == null
-          ? "No earlier data"
+          ? t("kpi.noEarlier")
           : monthly
-            ? `Change since ${SHORT_MONTHS[(month + 11) % 12]}`
-            : `Change since ${year - 1}`,
+            ? t("kpi.changeSinceMonth", {
+                month: monthName((month + 11) % 12),
+                shortMonth: shortMonthName((month + 11) % 12),
+              })
+            : t("kpi.changeSinceYear", { year: year - 1 }),
     },
   ];
 
@@ -314,11 +332,14 @@ function Dashboard({
   async function handleCreate(payload, where = "list") {
     await actions.create(payload);
     setPrefill(null);
-    say(`${payload.name} added.`, { where });
+    say(() => t("saveNotice.added", { name: payload.name }), { where });
   }
 
   // --- saying that a write went through ---
 
+  // `message` (and an action's label) is a function that returns the text,
+  // called when the notice renders, so a notice still on screen follows a
+  // switch of language.
   function say(message, { where = "list", action = null } = {}) {
     setNotice({ seq: Date.now(), where, message, action });
   }
@@ -328,14 +349,14 @@ function Dashboard({
   // not let a cancelled run go back (reactivating starts a new run instead).
   function undoable(write) {
     return {
-      label: "Undo",
+      label: () => t("saveNotice.undo"),
       run: async () => {
         try {
           await write();
         } catch (err) {
           // A 404 already turned the row into "removed on another device".
           if (err instanceof ApiError && err.status === 404) { setNotice(null); return; }
-          say(`Couldn't undo. ${describeWriteError(err)}`);
+          say(() => t("saveNotice.undoFailed", { error: describeWriteError(err) }));
         }
       },
     };
@@ -343,7 +364,7 @@ function Dashboard({
 
   async function saveRow(id, patch) {
     await actions.update(id, patch);
-    say(`${patch.name} saved.`);
+    say(() => t("saveNotice.saved", { name: patch.name }));
   }
 
   async function archive(subscription) {
@@ -351,11 +372,11 @@ function Dashboard({
     // Archived rows stay out of the list until "Show archived" is on, so the
     // row has just vanished -- say where it went.
     say(
-      showArchived ? `${subscription.name} archived.` : `${subscription.name} archived and hidden from the list.`,
+      () => t(showArchived ? "saveNotice.archived" : "saveNotice.archivedHidden", { name: subscription.name }),
       {
         action: undoable(async () => {
           await actions.unarchive(subscription.id);
-          say(`${subscription.name} is back in the list.`);
+          say(() => t("saveNotice.backInList", { name: subscription.name }));
         }),
       },
     );
@@ -375,25 +396,28 @@ function Dashboard({
       await actions.archiveMany(ids);
     } catch (err) {
       // Some may have gone through; the reload already shows which.
-      say(`Couldn't archive every ended plan. ${describeWriteError(err)}`);
+      say(() => t("saveNotice.archiveAllFailed", { error: describeWriteError(err) }));
       return;
     }
     const one = targets.length === 1;
-    const what = one ? targets[0].name : `${targets.length} ended plans`;
-    say(showArchived ? `${what} archived.` : `${what} archived and hidden from the list.`, {
+    const vars = { name: targets[0].name, n: targets.length };
+    const archived = one
+      ? showArchived ? "saveNotice.archived" : "saveNotice.archivedHidden"
+      : showArchived ? "saveNotice.archivedMany" : "saveNotice.archivedManyHidden";
+    say(() => t(archived, vars), {
       action: undoable(async () => {
         await actions.unarchiveMany(ids);
-        say(`${what} ${one ? "is" : "are"} back in the list.`);
+        say(() => t(one ? "saveNotice.backInList" : "saveNotice.backInListMany", vars));
       }),
     });
   }
 
   async function unarchive(subscription) {
     await actions.unarchive(subscription.id);
-    say(`${subscription.name} restored to the list.`, {
+    say(() => t("saveNotice.restored", { name: subscription.name }), {
       action: undoable(async () => {
         await actions.archive(subscription.id);
-        say(`${subscription.name} archived again.`);
+        say(() => t("saveNotice.archivedAgain", { name: subscription.name }));
       }),
     });
   }
@@ -407,14 +431,14 @@ function Dashboard({
     // worth offering.
     const row = { ...subscription, ...payload, ...updated, status: "cancelled" };
     if (!accessEnded(row)) {
-      say(`${subscription.name} marked as cancelled. It stays in the list until access ends ${longDate(row.next_renewal_date)}.`);
+      say(() => t("saveNotice.cancelledStays", { name: subscription.name, date: longDate(row.next_renewal_date) }));
       return;
     }
     say(
-      `${subscription.name} marked as cancelled.`,
+      () => t("saveNotice.cancelled", { name: subscription.name }),
       showEnded
         ? {}
-        : { action: { label: "Show ended", run: () => { setShowEnded(true); setNotice(null); } } },
+        : { action: { label: () => t("saveNotice.showEnded"), run: () => { setShowEnded(true); setNotice(null); } } },
     );
   }
 
@@ -433,7 +457,7 @@ function Dashboard({
         started_date: subscription.next_renewal_date,
         next_renewal_date: subscription.next_renewal_date,
       });
-      say(`${subscription.name} converted to paid.`, {
+      say(() => t("saveNotice.converted", { name: subscription.name }), {
         // Back to the trial exactly as it was: its own start and end dates.
         action: undoable(async () => {
           await actions.update(subscription.id, {
@@ -441,7 +465,7 @@ function Dashboard({
             started_date: subscription.started_date,
             next_renewal_date: subscription.next_renewal_date,
           });
-          say(`${subscription.name} is a trial again.`);
+          say(() => t("saveNotice.trialAgain", { name: subscription.name }));
         }),
       });
     }, () => {});
@@ -462,7 +486,7 @@ function Dashboard({
 
   async function remove(subscription) {
     await actions.remove(subscription.id);
-    say(`${subscription.name} deleted.`);
+    say(() => t("saveNotice.deleted", { name: subscription.name }));
   }
 
   function quickAdd(service) {
@@ -510,7 +534,7 @@ function Dashboard({
           onOpenAddSheet={() => setAddSheetOpen(true)}
         />
         {addSheetOpen && (
-          <Sheet title="Add a subscription" onClose={() => setAddSheetOpen(false)}>
+          <Sheet title={t("dashboard.addTitle")} onClose={() => setAddSheetOpen(false)}>
             <AddForm
               categories={categories}
               existing={subscriptions}
@@ -545,7 +569,7 @@ function Dashboard({
         <hr className="rule" />
 
         <TrendStrip
-          label={monthly ? `Per month · ${year}` : "Per year"}
+          label={monthly ? t("trend.perMonth", { year }) : t("trend.perYear")}
           bars={bars}
           onSelect={(bar) => bar.go()}
         />
@@ -558,13 +582,17 @@ function Dashboard({
           <CategoryBars
             rows={billedRows}
             idle={idleCategories}
-            periodLabel={monthly ? MONTHS[month] : String(year)}
+            idleLabel={
+              monthly
+                ? t("categoryBars.idleMonth", { month: monthName(month) })
+                : t("categoryBars.idleYear", { year })
+            }
             total={total}
             onManage={() => setCatPanelOpen(true)}
           />
           <ComingUp
             kind={monthKind}
-            monthLabel={`${MONTHS[month]} ${year}`}
+            monthLabel={t("period.monthYear", { month: monthName(month), year })}
             charges={chargesToCome}
             charged={chargesTaken}
             note={comingUpNote}
@@ -617,9 +645,9 @@ function Dashboard({
 
         <ListGuide />
 
-        <section id="add" aria-label="Add a subscription" className={addOpen ? "add-section" : "add-section folded"}>
+        <section id="add" aria-label={t("dashboard.addTitle")} className={addOpen ? "add-section" : "add-section folded"}>
           <SectionToggle
-            title="Add a subscription"
+            title={t("dashboard.addTitle")}
             open={addOpen}
             onToggle={() => setAddOpen((open) => !open)}
             controls="add-body"
@@ -659,12 +687,12 @@ function Dashboard({
           just supplies the handler. */}
       <div className="mobile-action-bar">
         <button type="button" className="btn btn-primary" onClick={focusAddForm}>
-          Add subscription
+          {t("dashboard.addButton")}
         </button>
       </div>
 
       {addSheetOpen && (
-        <Sheet title="Add a subscription" onClose={() => setAddSheetOpen(false)}>
+        <Sheet title={t("dashboard.addTitle")} onClose={() => setAddSheetOpen(false)}>
           <AddForm
             categories={categories}
             existing={subscriptions}
@@ -706,7 +734,7 @@ function Dashboard({
           onConfirm={(payload) =>
             thenClose(async () => {
               await actions.restore(reactivationTarget.id, payload);
-              say(`${reactivationTarget.name} reactivated.`);
+              say(() => t("saveNotice.reactivated", { name: reactivationTarget.name }));
             }, () => setReactivationTarget(null))
           }
           onClose={() => setReactivationTarget(null)}
@@ -715,9 +743,9 @@ function Dashboard({
 
       {deleteTarget && (
         <ConfirmDialog
-          title={`Delete ${deleteTarget.name} permanently?`}
-          body="This removes the subscription and its past charges for good. There is no undoing this from here."
-          confirmLabel="Delete permanently"
+          title={t("dashboard.deleteTitle", { name: deleteTarget.name })}
+          body={t("dashboard.deleteBody")}
+          confirmLabel={t("dashboard.deleteConfirm")}
           onConfirm={() => thenClose(() => remove(deleteTarget), () => setDeleteTarget(null))}
           onClose={() => setDeleteTarget(null)}
         />

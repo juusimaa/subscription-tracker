@@ -15,6 +15,7 @@
 import { useRef, useState } from "react";
 import { ApiError, describeWriteError } from "../api";
 import { BackupFileError, diffBackup, exportFilename, parseBackup } from "../backup";
+import { t } from "../i18n";
 import { TriangleAlert } from "../icons";
 import ImportSummary from "./ImportSummary";
 import SectionToggle from "./SectionToggle";
@@ -65,20 +66,24 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
     } catch (err) {
       setError(
         err instanceof ApiError
-          ? describeWriteError(err, "Nothing was exported")
-          : "The export could not be built.",
+          ? describeWriteError(err, t("importExport.nothingExported"))
+          : t("importExport.exportFailed"),
       );
     }
   }
 
   // --- import ---
 
-  function read(text, filename) {
+  // `pasted` picks the wording for data that came from the paste box rather
+  // than from a named file.
+  function read(text, filename, pasted = false) {
     setWriteError(null);
     try {
       const backup = parseBackup(text, filename);
       if (backup.subscriptions.length === 0) {
-        throw new BackupFileError(`${filename} has no subscriptions in it.`);
+        throw new BackupFileError(
+          pasted ? t("importExport.pastedEmpty") : t("importExport.fileEmpty", { filename }),
+        );
       }
       setError(null);
       setCandidate({
@@ -89,7 +94,7 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
     } catch (err) {
       if (!(err instanceof BackupFileError)) throw err;
       // Nothing was sent, so the file's own problem is the whole message.
-      setError(`${err.message} Nothing was imported.`);
+      setError(t("importExport.fileProblem", { message: err.message }));
       setCandidate(null);
     }
   }
@@ -103,7 +108,7 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
     if (fileInput.current) fileInput.current.value = "";
     if (!file) return;
     if (file.size > MAX_BYTES) {
-      setError(`${file.name} is larger than 1 MB. Nothing was imported.`);
+      setError(t("importExport.tooLarge", { filename: file.name }));
       setCandidate(null);
       return;
     }
@@ -121,8 +126,8 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
     } catch (err) {
       setWriteError(
         err instanceof ApiError
-          ? describeWriteError(err, "Nothing was imported")
-          : "The import could not be sent. Nothing was imported.",
+          ? describeWriteError(err, t("importExport.nothingImported"))
+          : t("importExport.sendFailed"),
       );
     } finally {
       setBusy(false);
@@ -175,12 +180,10 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
   // Export is left out because there is nothing to export yet.
   if (variant === "entry") {
     return (
-      <section id="io" className="io-entry" aria-label="Import a file">
-        <p>
-          Already have a list somewhere? Bring in a JSON or CSV export instead of typing it out.
-        </p>
+      <section id="io" className="io-entry" aria-label={t("importExport.importFile")}>
+        <p>{t("importExport.entryText")}</p>
         <button type="button" className="btn btn-secondary" onClick={() => fileInput.current?.click()}>
-          Import a file
+          {t("importExport.importFile")}
         </button>
         {chooseFile}
         {errorLine}
@@ -190,28 +193,25 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
   }
 
   return (
-    <section id="io" className={open ? "io-section" : "io-section folded"} aria-label="Import and export">
+    <section id="io" className={open ? "io-section" : "io-section folded"} aria-label={t("importExport.sectionLabel")}>
       <div className="section-head">
         <SectionToggle
-          title="Import & export"
+          title={t("importExport.sectionTitle")}
           open={open}
           onToggle={() => setOpen((current) => !current)}
           controls="io-body"
         />
-        <span className="hint">Back up your list to a file, or read one back</span>
+        <span className="hint">{t("importExport.sectionHint")}</span>
       </div>
 
       <div id="io-body" className="io-cols" hidden={!open}>
         <div className="io-col io-export">
-          <h3>Export</h3>
-          <p className="io-body">
-            Everything on this page in one file — subscriptions, categories, cycles, statuses and
-            renewal dates. Re-import it later to get exactly this state back.
-          </p>
+          <h3>{t("importExport.exportHeading")}</h3>
+          <p className="io-body">{t("importExport.exportBody")}</p>
           <div className="io-export-controls">
             <div>
-              <span className="field-label">Format</span>
-              <div className="seg" role="group" aria-label="Export format">
+              <span className="field-label">{t("importExport.format")}</span>
+              <div className="seg" role="group" aria-label={t("importExport.formatLabel")}>
                 {["json", "csv"].map((option) => (
                   <button
                     key={option}
@@ -226,42 +226,41 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
               </div>
             </div>
             <button type="button" className="btn btn-secondary" onClick={download}>
-              Download export
+              {t("importExport.download")}
             </button>
           </div>
           {/* Derived from the rows on screen, never written down: a stale
               count here would be the one number on the page nobody checks. */}
           <p className="io-meta tnum">
-            {exportFilename(format)} · {subscriptions.length} subscription
-            {subscriptions.length === 1 ? "" : "s"} ({live} live, {cancelled} cancelled) ·{" "}
-            {categories.length} categor{categories.length === 1 ? "y" : "ies"}
+            {t("importExport.meta", {
+              filename: exportFilename(format),
+              subscriptions: subscriptions.length,
+              live,
+              cancelled,
+              categories: categories.length,
+            })}
           </p>
           {/* CSV is the spreadsheet format and cannot hold a category nothing
               is using; saying so here beats letting someone discover it from
               a restore that came back short. */}
           {format === "csv" && (
-            <p className="io-meta">
-              CSV carries one row per subscription, so categories nothing uses are left out. JSON
-              restores exactly.
-            </p>
+            <p className="io-meta">{t("importExport.csvNote")}</p>
           )}
         </div>
 
         <div className="io-col io-import">
-          <h3>Import</h3>
-          <p className="io-body">
-            Reads a file exported here. Nothing is written until you confirm the summary.
-          </p>
+          <h3>{t("importExport.importHeading")}</h3>
+          <p className="io-body">{t("importExport.importBody")}</p>
 
-          <span className="field-label">On conflict</span>
-          <div className="seg" role="group" aria-label="Conflict handling">
+          <span className="field-label">{t("importExport.onConflict")}</span>
+          <div className="seg" role="group" aria-label={t("importExport.conflictLabel")}>
             <button
               type="button"
               className="seg-opt"
               aria-pressed={mode === "merge"}
               onClick={() => changeMode("merge")}
             >
-              Merge
+              {t("importExport.merge")}
             </button>
             <button
               type="button"
@@ -269,13 +268,13 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
               aria-pressed={mode === "replace"}
               onClick={() => changeMode("replace")}
             >
-              Replace all
+              {t("importExport.replaceAll")}
             </button>
           </div>
           <p className="io-hint">
             {mode === "merge"
-              ? "Adds what's missing and updates matching names. Nothing you have is removed."
-              : "Clears the current list first, so the file becomes the whole list."}
+              ? t("importExport.mergeHint")
+              : t("importExport.replaceHint")}
           </p>
 
           {/* A real drop target as well as a picker. onDragOver has to call
@@ -292,15 +291,15 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
             }}
           >
             <div>
-              <p className="io-drop-title">Drop a .json or .csv file here</p>
-              <p className="io-drop-note">Up to 1 MB · columns must match the export</p>
+              <p className="io-drop-title">{t("importExport.dropTitle")}</p>
+              <p className="io-drop-note">{t("importExport.dropNote")}</p>
             </div>
             <button
               type="button"
               className="btn btn-secondary"
               onClick={() => fileInput.current?.click()}
             >
-              Choose file
+              {t("importExport.chooseFile")}
             </button>
           </div>
           {chooseFile}
@@ -310,14 +309,14 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
             className="btn btn-ghost btn-small io-paste-toggle"
             onClick={() => setPasteOpen((open) => !open)}
           >
-            {pasteOpen ? "Hide the paste box" : "Paste JSON instead"}
+            {pasteOpen ? t("importExport.hidePaste") : t("importExport.showPaste")}
           </button>
           {pasteOpen && (
             <div className="io-paste">
               <textarea
                 className="input"
                 rows={5}
-                aria-label="Paste an export"
+                aria-label={t("importExport.pasteLabel")}
                 value={pasted}
                 onChange={(event) => setPasted(event.target.value)}
               />
@@ -325,9 +324,9 @@ function ImportExport({ subscriptions, categories, onImport, onExport, variant =
                 type="button"
                 className="btn btn-secondary"
                 disabled={!pasted.trim()}
-                onClick={() => read(pasted, "the pasted data")}
+                onClick={() => read(pasted, t("importExport.pastedData"), true)}
               >
-                Read pasted data
+                {t("importExport.readPasted")}
               </button>
             </div>
           )}

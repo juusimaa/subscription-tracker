@@ -13,6 +13,7 @@
 // the account's first one rather than one of them winning arbitrarily.
 
 import { todayISO } from "./format";
+import { t } from "./i18n";
 
 const STATUSES = ["active", "trial", "paused", "cancelled"];
 const CYCLES = ["monthly", "quarterly", "yearly"];
@@ -100,12 +101,12 @@ function readDate(value, where, field) {
   const text = (value ?? "").toString().trim();
   if (!text) return null;
   if (!ISO_DATE.test(text)) {
-    throw new BackupFileError(`${where} has ${field} "${text}", which is not a YYYY-MM-DD date.`);
+    throw new BackupFileError(t("backup.dateShape", { where, field, text }));
   }
   const [y, m, d] = text.split("-").map(Number);
   const date = new Date(Date.UTC(y, m - 1, d));
   if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) {
-    throw new BackupFileError(`${where} has ${field} "${text}", which is not a real date.`);
+    throw new BackupFileError(t("backup.dateReal", { where, field, text }));
   }
   return text;
 }
@@ -115,22 +116,22 @@ function readDate(value, where, field) {
 // `where` is already phrased for the reader ("Row 4 of x.csv").
 function readRow(raw, where) {
   const name = (raw.name ?? "").toString().trim();
-  if (!name) throw new BackupFileError(`${where} has no name.`);
+  if (!name) throw new BackupFileError(t("backup.noName", { where }));
 
   const rawCost = (raw.cost ?? "").toString().trim();
-  if (!rawCost) throw new BackupFileError(`${where} has no cost.`);
+  if (!rawCost) throw new BackupFileError(t("backup.noCost", { where }));
   const cost = Number(rawCost);
   if (!Number.isFinite(cost)) {
-    throw new BackupFileError(`${where} has cost "${rawCost}", which is not a number.`);
+    throw new BackupFileError(t("backup.costNaN", { where, cost: rawCost }));
   }
   if (cost <= 0) {
-    throw new BackupFileError(`${where} has cost ${rawCost}; a cost has to be more than zero.`);
+    throw new BackupFileError(t("backup.costPositive", { where, cost: rawCost }));
   }
 
   const cycle = ((raw.billing_cycle ?? "monthly").toString().trim() || "monthly").toLowerCase();
   if (!CYCLES.includes(cycle)) {
     throw new BackupFileError(
-      `${where} has cycle "${cycle}". It has to be one of ${CYCLES.join(", ")}.`,
+      t("backup.badCycle", { where, value: cycle, allowed: CYCLES.join(", ") }),
     );
   }
 
@@ -144,12 +145,12 @@ function readRow(raw, where) {
   }
   if (!STATUSES.includes(status)) {
     throw new BackupFileError(
-      `${where} has status "${status}". It has to be one of ${STATUSES.join(", ")}.`,
+      t("backup.badStatus", { where, value: status, allowed: STATUSES.join(", ") }),
     );
   }
 
   const next = readDate(raw.next_renewal_date, where, "next_renewal");
-  if (!next) throw new BackupFileError(`${where} has no next_renewal date.`);
+  if (!next) throw new BackupFileError(t("backup.noRenewal", { where }));
 
   const category = (raw.category ?? "").toString().trim();
   return {
@@ -189,25 +190,21 @@ function readRows(source, describe) {
   // unreadable at exactly the moment it has to be read.
   const others = problems.length - 1;
   throw new BackupFileError(
-    others === 0
-      ? problems[0]
-      : `${problems[0]} ${others} other row${others === 1 ? " has" : "s have"} problems too.`,
+    others === 0 ? problems[0] : t("backup.others", { first: problems[0], n: others }),
   );
 }
 
 
 function parseCsv(text, filename) {
   const rows = csvRows(text).filter((row) => row.some((cell) => cell.trim() !== ""));
-  if (rows.length === 0) throw new BackupFileError(`${filename} is empty.`);
+  if (rows.length === 0) throw new BackupFileError(t("backup.empty", { file: filename }));
 
   const header = rows[0].map((cell) => cell.trim().toLowerCase());
   const columns = header.map((cell) => CSV_FIELDS[cell] ?? null);
   if (!columns.includes("name") || !columns.includes("cost")) {
-    throw new BackupFileError(
-      `${filename} has no name and cost columns. The columns have to match the export.`,
-    );
+    throw new BackupFileError(t("backup.noColumns", { file: filename }));
   }
-  if (rows.length === 1) throw new BackupFileError(`${filename} has a header row and nothing else.`);
+  if (rows.length === 1) throw new BackupFileError(t("backup.headerOnly", { file: filename }));
 
   const subscriptions = readRows(rows.slice(1), (cells, index) => {
     const raw = {};
@@ -216,7 +213,7 @@ function parseCsv(text, filename) {
     });
     // Counted the way an editor counts, header included, because that is
     // where the user has to go to fix it.
-    return [raw, `Row ${index + 2} of ${filename}`];
+    return [raw, t("backup.whereRow", { row: index + 2, file: filename })];
   });
 
   // A CSV has one row per subscription and so nowhere to keep a category
@@ -235,13 +232,13 @@ function parseJson(text, filename) {
   try {
     document = JSON.parse(text);
   } catch (err) {
-    throw new BackupFileError(`${filename} is not valid JSON — ${err.message}.`);
+    throw new BackupFileError(t("backup.badJson", { file: filename, detail: err.message }));
   }
   if (!document || typeof document !== "object" || Array.isArray(document)) {
-    throw new BackupFileError(`${filename} is not an export file: the top level is not an object.`);
+    throw new BackupFileError(t("backup.notObject", { file: filename }));
   }
   if (!Array.isArray(document.subscriptions)) {
-    throw new BackupFileError(`${filename} has no "subscriptions" list in it.`);
+    throw new BackupFileError(t("backup.noList", { file: filename }));
   }
   const categories = Array.isArray(document.categories)
     ? document.categories.map((name) => (name ?? "").toString().trim()).filter(Boolean)
@@ -250,7 +247,7 @@ function parseJson(text, filename) {
     raw ?? {},
     // A JSON path rather than a row number: it is what the user's editor can
     // actually be pointed at.
-    `subscriptions[${index}] of ${filename}`,
+    t("backup.wherePath", { index, file: filename }),
   ]);
   return {
     // Passed through so an unreadable version is refused by the server rather

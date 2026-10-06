@@ -8,6 +8,7 @@
 // has the arithmetic on the server and should use it.
 
 import { money } from "../format";
+import { t } from "../i18n";
 
 function TrendStrip({ label, bars, onSelect }) {
   // Guard the empty and all-zero cases: dividing by a zero peak would make
@@ -17,14 +18,14 @@ function TrendStrip({ label, bars, onSelect }) {
   const active = bars.find((bar) => bar.on);
 
   return (
-    <section aria-label="Spending over time" className="trend">
+    <section aria-label={t("trend.label")} className="trend">
       <div className="section-head">
         <h2 className="eyebrow">{label}</h2>
         {/* Desktop: a hint beside the eyebrow. Mobile drops the per-bar value
             label (no room for twelve of them at 4px gaps) and moves the
             selected one up here instead -- see the media query at the bottom
             of dashboard.css for which of the two is actually shown. */}
-        <span className="hint">Click a bar to jump to it</span>
+        <span className="hint">{t("trend.hint")}</span>
         <span className="trend-active">{active ? money(active.value) : ""}</span>
       </div>
       <div className="trend-bars">
