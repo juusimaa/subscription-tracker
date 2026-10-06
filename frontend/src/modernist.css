@@ -224,7 +224,14 @@ figcaption {
 /* Browsers default placeholders to a light grey of their own that tracks
    neither theme nor contrast; this is the hint step of the ink ramp. */
 ::placeholder { color: color-mix(in srgb, var(--color-text) 68%, transparent); opacity: 1; }
-.input:focus-visible { border-color: var(--color-accent); outline-offset: 0; }
+/* A field's focus is Ink, not Signal Red: a red frame on a field is how an
+   error is drawn (.field.invalid), and focusing a valid field should never
+   look like one. An invalid field keeps its red border while focused, with
+   this ink line around it. */
+.input:focus-visible {
+  border-color: var(--color-text);
+  outline: 1px solid var(--color-text); outline-offset: 0;
+}
 textarea.input { min-height: 90px; resize: vertical; }
 /* WebKit's native menulist rendering ignores an author's padding and
    min-height on <select> outright, so a select styled with .input alone

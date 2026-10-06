@@ -79,7 +79,7 @@ function NextCharge({ subscriptions, onConvert, onCancel }) {
               {isTrial && (
                 <button
                   type="button"
-                  className="btn btn-ghost btn-small"
+                  className="btn btn-secondary btn-small"
                   disabled={convertingId != null}
                   onClick={() => convert(s)}
                 >
@@ -88,7 +88,7 @@ function NextCharge({ subscriptions, onConvert, onCancel }) {
               )}
               <button
                 type="button"
-                className="btn btn-ghost btn-small"
+                className="btn btn-secondary btn-small"
                 disabled={convertingId === s.id}
                 onClick={() => onCancel(s)}
               >

@@ -281,7 +281,10 @@ body { text-wrap: pretty; }
 .next-charge-when {
   color: color-mix(in srgb, var(--color-text) 70%, transparent);
 }
-.next-charge-actions { display: flex; gap: 12px; justify-content: flex-end; }
+/* The same bordered Secondary pair as the trial section's rows, so keep and
+   cancel look alike wherever a trial is shown, and neither looks like the
+   default. */
+.next-charge-actions { display: flex; gap: 8px; justify-content: flex-end; }
 /* The strip is the hero's last band, and the 2px section rule after the hero
    closes it. Its last row drops its own hairline, and the hero gives up its
    bottom padding, so the two rules do not stack 42px apart. */
@@ -1799,7 +1802,10 @@ kbd {
   .next-charge-row { grid-template-columns: minmax(0, 1fr) auto; padding: 12px 0; }
   .next-charge-label { grid-column: 1 / -1; }
   .next-charge-when { display: block; margin-left: 0; font-size: 13px; line-height: 18px; }
-  .next-charge-actions { flex-direction: column; align-items: flex-end; gap: 0; }
+  /* Stacked beside the charge at one width, like the trial section's pair.
+     Not on a line of their own under it: that costs a row's height, and the
+     strip has to end above the action bar on a short phone. */
+  .next-charge-actions { flex-direction: column; align-items: stretch; gap: 8px; }
   /* Desktop's align-items: flex-start (base rule) lets .period sit in the
      hero grid's auto-sized column without stretching to fill it. On mobile
      .hero is block, so .period is already full width -- but flex-start would
