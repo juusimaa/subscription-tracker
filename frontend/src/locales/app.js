@@ -24,6 +24,7 @@ export default {
     "app.sessionLink": "sign in again",
     "app.sessionAfter": "to keep editing. 401 from the server.",
     "app.github": "View on GitHub",
+    "app.buyMeACoffee": "Buy me a coffee",
 
     "login.eyebrowExpired": "Session expired",
     "login.eyebrowRegister": "Create an account",
@@ -147,6 +148,7 @@ export default {
     "app.sessionLink": "kirjaudu uudelleen",
     "app.sessionAfter": "jatkaaksesi muokkaamista. Palvelin vastasi 401.",
     "app.github": "Näytä GitHubissa",
+    "app.buyMeACoffee": "Tarjoa minulle kahvi",
 
     "login.eyebrowExpired": "Istunto vanheni",
     "login.eyebrowRegister": "Luo tili",

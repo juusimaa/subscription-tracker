@@ -549,6 +549,14 @@ function App() {
           <GitHub size={16} />
           {t("app.github")}
         </a>
+        <a
+          className="app-footer-link"
+          href="https://buymeacoffee.com/jouni"
+          target="_blank"
+          rel="noreferrer"
+        >
+          {t("app.buyMeACoffee")} ↗
+        </a>
       </footer>
     </>
   );
