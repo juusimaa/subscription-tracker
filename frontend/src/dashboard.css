@@ -23,6 +23,11 @@ body { text-wrap: pretty; }
 .nav-beta-tag { vertical-align: middle; }
 
 .app-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 24px;
   padding: 24px 32px calc(24px + env(safe-area-inset-bottom));
   border-top: 2px solid var(--color-divider);
   text-align: center;
