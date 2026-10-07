@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="frontend/public/favicon.svg" alt="Subscription Tracker renewal icon" width="160" height="160" />
+</p>
+
 # Subscription Tracker
 
 [![Tests](https://github.com/juusimaa/subscription-tracker/actions/workflows/test.yml/badge.svg?branch=main&event=push)](https://github.com/juusimaa/subscription-tracker/actions/workflows/test.yml)
