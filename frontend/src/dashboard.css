@@ -898,6 +898,11 @@ body { text-wrap: pretty; }
 .row-actions { position: relative; text-align: right; white-space: nowrap; }
 .row-actions .btn + .btn { margin-left: 8px; }
 .tag { white-space: nowrap; }
+/* Status and Archived side by side, or stacked flush left when the column is
+   too narrow for both (Finnish "Lopetettu Arkistoitu", issue #110). A sibling
+   margin would indent the wrapped tag, so the spacing is a gap instead. */
+.status-tags { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; }
+.status-tags .tag + .tag { margin-left: 0; }
 
 /* — grouped runs (issue #49) —
    A group's earlier runs fold away under its head row. An open group reads

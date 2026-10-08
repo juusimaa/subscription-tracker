@@ -1270,8 +1270,10 @@ function SubscriptionTable({
           {/* Archived is a flag on top of cancelled, not a status of
               its own (TODO.md item 7), so it rides along as a second
               tag rather than replacing "Cancelled". */}
-          <span className={STATUS_TAG[subscription.status]}>{shownStatus(subscription)}</span>
-          {archived && <span className="tag tag-outline">{statusLabel("archived")}</span>}
+          <span className="status-tags">
+            <span className={STATUS_TAG[subscription.status]}>{shownStatus(subscription)}</span>
+            {archived && <span className="tag tag-outline">{statusLabel("archived")}</span>}
+          </span>
         </td>
         <td className="tnum">
           <span>{money(trial ? 0 : subscription.cost, subscription.currency)}</span>
@@ -1441,8 +1443,10 @@ function SubscriptionTable({
             </td>
             <td />
             <td>
-              <span className={STATUS_TAG[run.status]}>{statusLabel(run.status)}</span>
-              {run.archived_date && <span className="tag tag-outline">{statusLabel("archived")}</span>}
+              <span className="status-tags">
+                <span className={STATUS_TAG[run.status]}>{statusLabel(run.status)}</span>
+                {run.archived_date && <span className="tag tag-outline">{statusLabel("archived")}</span>}
+              </span>
             </td>
             <td className="tnum">
               <span>{money(run.cost, run.currency)}</span>

@@ -35,6 +35,41 @@ test.describe("browser prefers Finnish", () => {
     await expect(page.getByRole("link", { name: "All subscriptions" })).toBeVisible();
   });
 
+  // Issue #110: "Lopetettu" and "Arkistoitu" are too wide for one line of the
+  // Status column, and the wrapped tag used to sit indented under the first.
+  test("a wrapped Archived tag lines up under the status tag", async ({ page }) => {
+    const row = (fields) => ({
+      group_id: null, cost: "22.59", billing_cycle: "monthly", category: "Work",
+      started_date: "2025-01-01", paused_date: null, archived_date: null, paid_total: "0.00",
+      ...fields,
+    });
+    // Narrow enough for the Status column to wrap, wide enough to stay a table.
+    await page.setViewportSize({ width: 900, height: 900 });
+    await openDashboard(page, "/", {
+      routes: (page) =>
+        page.route("**/subscriptions", (route) =>
+          route.fulfill({
+            json: [
+              row({ id: 1, name: "Netflix", status: "active", next_renewal_date: "2026-09-20", cancelled_date: null }),
+              row({
+                id: 2, name: "Claude Pro", status: "cancelled", next_renewal_date: "2026-07-01",
+                cancelled_date: "2026-06-10", archived_date: "2026-07-15",
+              }),
+            ],
+          }),
+        ),
+    });
+    // An archived plan whose access has ended waits behind both toggles.
+    await page.getByRole("button", { name: /^Näytä päättyneet/ }).click();
+    await page.getByRole("button", { name: "Näytä arkistoidut — 1" }).click();
+
+    const tags = page.getByRole("row", { name: /Claude Pro/ }).locator(".tag");
+    await expect(tags).toHaveText(["Lopetettu", "Arkistoitu"]);
+    const [status, archived] = [await tags.nth(0).boundingBox(), await tags.nth(1).boundingBox()];
+    expect(archived.y).toBeGreaterThanOrEqual(status.y + status.height);
+    expect(archived.x).toBe(status.x);
+  });
+
   test("the sign-in screen offers the choice before signing in", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("button", { name: "Kirjaudu sisään" })).toBeVisible();
