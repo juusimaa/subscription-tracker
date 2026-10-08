@@ -17,7 +17,12 @@ function EmailStrip({ email, confirmedEmail, message, onDismissMessage }) {
   if (!message) return null;
 
   let text;
-  if (message === "verified") text = t("verify.done", { email: confirmedEmail || email });
+  // A link opens in whichever browser the mail app picks, which may be
+  // signed in as someone else; then say whose address it was and how to get
+  // to it, so it doesn't read as news about the signed-in account.
+  if (message === "verified" && confirmedEmail && confirmedEmail.toLowerCase() !== email.toLowerCase()) {
+    text = t("verify.doneOther", { email: confirmedEmail, current: email });
+  } else if (message === "verified") text = t("verify.done", { email: confirmedEmail || email });
   else if (message === "verifyExpired") text = t("verify.expired");
   else if (message === "verifyInvalid") text = t("verify.invalid");
   else text = t("reset.done");

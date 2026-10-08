@@ -109,6 +109,25 @@ test.describe("confirmation link, signed in", () => {
     await expect(strip).toContainText("demo@example.com is confirmed.");
     await expect(strip).toHaveScreenshot("verify-signed-in.png");
   });
+
+  // #117: the link was for an account someone else just made, opened in a
+  // browser signed in as demo@example.com.
+  test("a confirmation link for another account", async ({ page }) => {
+    await openDashboard(page, "/?verify=visual-verify-token", {
+      routes: async (p) => {
+        await p.route("**/verify-email", (route) =>
+          route.fulfill({ json: { email: "other@example.com" } }),
+        );
+        await p.route("**/me", (route) =>
+          route.fulfill({ json: { email: "demo@example.com", email_verified: true } }),
+        );
+      },
+    });
+
+    await expect(page.locator(".email-strip")).toContainText(
+      "other@example.com is confirmed. You're signed in as demo@example.com; log out to log in as other@example.com.",
+    );
+  });
 });
 
 test.describe("signing up and confirming", () => {
