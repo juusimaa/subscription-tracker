@@ -72,6 +72,9 @@ export default {
     "verify.sent": ({ email }) => `Sent. Check ${email}; the link works for 48 hours.`,
     "verify.nothingSent": "Nothing was sent.",
     "verify.done": ({ email }) => `${email} is confirmed.`,
+    // The link was for another account than the one signed in here (#117).
+    "verify.doneOther": ({ email, current }) =>
+      `${email} is confirmed. You're signed in as ${current}; log out to log in as ${email}.`,
     "verify.expired": "That confirmation link has expired.",
     "verify.invalid": "That confirmation link doesn't work.",
 
@@ -191,6 +194,8 @@ export default {
     "verify.sent": ({ email }) => `Lähetetty. Katso osoitteen ${email} saapuneet viestit; linkki toimii 48 tuntia.`,
     "verify.nothingSent": "Mitään ei lähetetty.",
     "verify.done": ({ email }) => `${email} on vahvistettu.`,
+    "verify.doneOther": ({ email, current }) =>
+      `${email} on vahvistettu. Olet kirjautuneena tunnuksella ${current}; kirjaudu ulos kirjautuaksesi tunnuksella ${email}.`,
     "verify.expired": "Vahvistuslinkki on vanhentunut.",
     "verify.invalid": "Vahvistuslinkki ei toimi.",
 
