@@ -12,6 +12,10 @@
 // Dialogs can stack, so only the topmost one answers Escape and traps Tab --
 // a confirm opened over the categories dialog closes on its own, leaving the
 // one underneath where it was.
+//
+// While any dialog is open the page underneath does not scroll (issue #114):
+// on a phone a swipe on a sheet too short to scroll, or on the dimmed
+// backdrop above it, otherwise moved the dashboard instead.
 
 import { useEffect, useLayoutEffect, useRef } from "react";
 
@@ -19,6 +23,24 @@ const stack = [];
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+// overflow: hidden on <html> rather than the position: fixed body trick: it
+// keeps the sticky nav where it is behind the backdrop and needs no scroll
+// position restoring, and Safari has honoured it since iOS 16. When the page
+// has a classic scrollbar its gutter stays reserved, so desktop layout does
+// not shift as the scrollbar goes; a page without one is left alone.
+let unlock = null;
+
+function lockPageScroll() {
+  const root = document.documentElement;
+  const { overflow, scrollbarGutter } = root.style;
+  if (window.innerWidth > root.clientWidth) root.style.scrollbarGutter = "stable";
+  root.style.overflow = "hidden";
+  return () => {
+    root.style.overflow = overflow;
+    root.style.scrollbarGutter = scrollbarGutter;
+  };
+}
 
 function focusables(root) {
   return [...root.querySelectorAll(FOCUSABLE)].filter(
@@ -41,6 +63,7 @@ export function useModal(onClose) {
     const dialog = ref.current;
     if (!dialog) return undefined;
     const opener = document.activeElement;
+    if (stack.length === 0) unlock = lockPageScroll();
     stack.push(dialog);
 
     // The dialog itself takes focus rather than its first control. Its label
@@ -85,6 +108,10 @@ export function useModal(onClose) {
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       stack.splice(stack.indexOf(dialog), 1);
+      if (stack.length === 0 && unlock) {
+        unlock();
+        unlock = null;
+      }
       // The opener can be gone by now (a row menu item unmounts with its
       // menu); there is nothing sensible to return to then, so focus is left
       // where the browser puts it.
