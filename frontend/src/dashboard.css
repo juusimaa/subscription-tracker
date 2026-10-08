@@ -1202,7 +1202,12 @@ body { text-wrap: pretty; }
 
 /* — dialogs — */
 
-.dialog-backdrop { z-index: 40; }
+/* A swipe that reaches the end of a scrolling dialog, or lands on the dimmed
+   backdrop, must not carry on to the page underneath (issue #114). This
+   covers the scroll-chaining half; useModal locks the page itself for the
+   cases overscroll-behavior cannot reach (a sheet too short to scroll). */
+.dialog-backdrop { z-index: 40; overscroll-behavior: contain; }
+.dialog { overscroll-behavior: contain; }
 .dialog-backdrop.confirm { z-index: 50; }
 .dialog { padding: 32px; }
 .dialog-wide {
@@ -1758,7 +1763,11 @@ kbd {
   .dialog {
     width: 100%;
     max-width: 100%;
+    /* dvh, not vh: on iOS 100vh is the height with the toolbar collapsed, so
+       a tall sheet's bottom edge used to sit under the browser toolbar. The
+       vh line is the fallback for browsers without dynamic units. */
     max-height: 92vh;
+    max-height: 92dvh;
     overflow: auto;
     border-top: 2px solid var(--color-accent);
     border-radius: 0;
