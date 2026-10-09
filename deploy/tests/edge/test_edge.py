@@ -97,6 +97,17 @@ class Stack:
             return response.status, response.headers, text
         raise last_error
 
+    def wait_for_status(self, host, status):
+        """Polls `GET /` until it answers `status`, for up to 5 s. The flag is
+        a host file seen through a bind mount; on Docker Desktop (macOS) a
+        change can take a moment to reach the container. Still no reload or
+        restart is involved, which is what the tests check."""
+        for _ in range(50):
+            if self.request(host, "GET", "/")[0] == status:
+                return
+            time.sleep(0.1)
+        raise AssertionError(f"{host} never answered {status}")
+
     def inspect(self, service, template):
         cid = self.compose("ps", "-q", service).stdout.strip()
         return subprocess.run(
@@ -133,6 +144,7 @@ def stack(tmp_path_factory):
 def maintenance(stack):
     flag = stack.flags_dir / "maintenance"
     flag.touch()
+    stack.wait_for_status(APP_HOST, 503)
     try:
         yield flag
     finally:
@@ -185,8 +197,9 @@ def test_removing_the_flag_restores_service_without_reload(stack):
     caddy_started = stack.started_at("caddy")
     flag = stack.flags_dir / "maintenance"
     flag.touch()
-    assert stack.request(APP_HOST, "GET", "/")[0] == 503
+    stack.wait_for_status(APP_HOST, 503)
     flag.unlink()
+    stack.wait_for_status(APP_HOST, 200)
 
     status, _, body = stack.request(APP_HOST, "GET", "/")
     assert status == 200
