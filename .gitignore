@@ -45,7 +45,14 @@ _site/
 .codex/hooks.json
 # Spec Kit scaffolding: templates, scripts and workflow state written by
 # `specify init` (its skills land in .claude/skills/, ignored above).
-.specify/
+# Except the constitution: it is the project's own governing document, not
+# scaffolding, so it is versioned. Git cannot re-include a file inside an
+# ignored directory, hence ignoring the contents (`/*`) and re-opening each
+# level down to the one file, rather than ignoring `.specify/` itself.
+.specify/*
+!.specify/memory/
+.specify/memory/*
+!.specify/memory/constitution.md
 
 # OS
 .DS_Store
