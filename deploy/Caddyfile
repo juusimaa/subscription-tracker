@@ -1,0 +1,91 @@
+# The public edge: TLS for both hostnames, the reverse proxy to the two app
+# containers, and the maintenance switch. Mounted into the caddy service of
+# compose.prod.yml; the behavior it promises is contracts/edge-http.md, and
+# deploy/tests/edge/test_edge.py checks it.
+#
+# {$VAR} values come from the caddy container's environment, which
+# compose.prod.yml fills from the server's env file.
+
+{
+	# Let's Encrypt's account email: where expiry warnings go if renewal
+	# ever stops working.
+	email {$ACME_EMAIL}
+
+	# Empty in production. The edge tests set it to `local_certs`, so
+	# certificates come from Caddy's internal CA and nothing reaches Let's
+	# Encrypt from CI.
+	{$CADDY_TEST_GLOBALS}
+}
+
+# One access-log line per request on stdout, which Docker's json-file driver
+# captures and caps (daemon.json in cloud-init.yaml).
+(access_log) {
+	log {
+		output stdout
+	}
+}
+
+# While /srv/flags/maintenance exists, everything not already handled above
+# the import answers 503 with the EN/FI maintenance page. The `file` matcher
+# is evaluated per request, so `touch` and `rm` on the host take effect
+# immediately, with no reload.
+(maintenance) {
+	@maintenance file {
+		root /srv/flags
+		try_files /maintenance
+	}
+	handle @maintenance {
+		# Tells browsers and crawlers this is temporary, and when to retry.
+		header Retry-After 600
+		# The page must disappear the moment maintenance ends, so nothing in
+		# between may cache it.
+		header Cache-Control no-store
+		root * /srv/maintenance
+		rewrite * /index.html
+		file_server {
+			status 503
+		}
+	}
+}
+
+# No `trusted_proxies` anywhere, on purpose. With no trusted proxies, Caddy
+# *replaces* any X-Forwarded-For the client sent with the TCP peer's address
+# (research R5: addForwardedHeaders in Caddy v2.11.7). The backend runs with
+# TRUST_FORWARDED_FOR=true and keys its rate limits on the last entry, which
+# is therefore always the real client. That is what makes trusting the header
+# safe (FR-009).
+#
+# If Cloudflare's proxy (orange cloud) is ever turned on, every request
+# arrives from a Cloudflare address and all users would share one rate-limit
+# key. Cloudflare's ranges must then be listed in `trusted_proxies`, and
+# contracts/edge-http.md and its edge test changed in the same PR.
+
+{$APP_HOST} {
+	import access_log
+	import maintenance
+
+	handle {
+		reverse_proxy frontend:80
+	}
+}
+
+{$API_HOST} {
+	import access_log
+
+	# Passed through even in maintenance, so smoke tests and UptimeRobot can
+	# tell "maintenance" from "broken". Before the maintenance import:
+	# handle blocks with named matchers are tried in the order they appear.
+	@health {
+		method GET
+		path /health
+	}
+	handle @health {
+		reverse_proxy backend:8000
+	}
+
+	import maintenance
+
+	handle {
+		reverse_proxy backend:8000
+	}
+}

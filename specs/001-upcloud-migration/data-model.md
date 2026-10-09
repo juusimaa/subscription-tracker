@@ -15,7 +15,7 @@ state changes.
 | Interfaces | public IPv4 (DNS A records point here), plus SDN private (reaches the database) |
 | Firewall | inbound 22/tcp, 80/tcp and 443/tcp; everything else dropped. Stateless rules, so return traffic is allowed explicitly. |
 | Users | `admin` (maintainer, key only, sudo); `deploy` (forced-command key only, in the `docker` group) |
-| Files | `/opt/subscription-tracker/` (Compose file, Caddyfile, `bin/`, `maintenance/`); `/etc/subscription-tracker/.env` (secrets, `root:deploy 0640`); `/var/lib/subscription-tracker/` (`previous-tag`, `ops-state.json`) |
+| Files | `/opt/subscription-tracker/` (Compose file, Caddyfile, `bin/`, `maintenance/`, `systemd/`); `/etc/subscription-tracker/.env` (secrets, `root:deploy 0640`); `/var/lib/subscription-tracker/` (`image-tag.env`, `previous-tag`, `deploy.lock`, `ops-state.json`, `flags/`) |
 | Volumes | `caddy_data` (certificates, must persist), `caddy_config` |
 
 ## Managed database
@@ -30,11 +30,17 @@ state changes.
 
 ## Alert state (`ops-state.json`)
 
-One entry per check id (`memory`, `disk`, `db_size`, `cert:<host>`):
+One entry per check id (`memory`, `disk`, `db_size`, `cert:<host>`,
+`check_error`), plus one consecutive-failure counter per check group
+(`errors:memory`, `errors:disk`, `errors:db_size`, `errors:cert`) that
+drives `check_error`:
 
 ```text
-{ "<check>": { "firing": bool, "since": ISO-8601 UTC, "detail": str } }
+{ "<check>":        { "firing": bool, "since": ISO-8601 UTC | null, "detail": str },
+  "errors:<group>": { "consecutive": int } }
 ```
+
+A counter resets to 0 when its check runs; at 3, `check_error` fires.
 
 Transitions for each check:
 
@@ -77,6 +83,6 @@ are deleted along with the database.
 
 | Field | Rule |
 |---|---|
-| `IMAGE_TAG` | in the server env file; always `sha-<7 hex>`, never `latest` |
+| `IMAGE_TAG` | in `/var/lib/subscription-tracker/image-tag.env` (deploy-owned), not the secrets file, so `deploy.sh` can write it without write access to secrets; always `sha-<7 hex>`, never `latest` |
 | `previous-tag` | the tag running before the last deploy, used by the automatic rollback and for a manual one |
 | Lock | `flock /var/lib/subscription-tracker/deploy.lock`; a second deploy waits and never runs in parallel |

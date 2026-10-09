@@ -1,0 +1,16 @@
+# Runs `ops-check.py daily`: how long both hosts' TLS certificates have left, emailing ALERT_EMAIL once when a
+# check starts firing and once when it recovers (contracts/ops-alerts.md).
+# Started daily by ops-check-daily.timer.
+
+[Unit]
+Description=Operational checks (daily)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# deploy, not root: it needs only the docker group (for psql in a
+# postgres:16 container) and read access to the root:deploy env file.
+User=deploy
+Group=deploy
+ExecStart=/usr/bin/python3 /opt/subscription-tracker/bin/ops-check.py daily

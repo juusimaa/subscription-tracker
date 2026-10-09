@@ -56,9 +56,9 @@ directly to `main`.
 
 **Purpose**: Create the `deploy/` tree and its separate test root.
 
-- [ ] T001 Create branch `001-upcloud-deploy-assets` from `main`, then create the directories `deploy/bin/`, `deploy/systemd/`, `deploy/maintenance/` and `deploy/tests/edge/`, and a `deploy/README.md` that opens with a purpose paragraph ("everything production needs that isn't an image; not yet live") and empty headed sections, in this order: Environment, Provision, Deploys, Manual rollback, Migrations (expand then contract), Alerts, Restore, Cutover, Rollback, Pause, Resume, Decommission
-- [ ] T002 [P] Create `deploy/tests/pytest.ini` (with a header comment saying why this is a separate root: the backend's bare `pytest` must stay unchanged, Principle II) that registers an `edge` marker for tests needing Docker, and `deploy/tests/requirements.txt` with only `pytest`, pinned to the version in `backend/requirements-dev.txt`. Tests use stdlib `urllib`, `ssl` and `subprocess`, so nothing else is added (Principle V)
-- [ ] T003 [P] Create `deploy/tests/sample.env` with every variable listed in `specs/001-upcloud-migration/contracts/server-env.md` (app, edge and operations tables), filled with obvious dummy values (`SECRET_KEY=not-a-secret`, `IMAGE_TAG=sha-0000000`, `APP_HOST=app.localhost`, `API_HOST=api.localhost`, `DB_STORAGE_GIB=10`, `REDIS_URL` left out on purpose), plus a header comment saying it exists only so `docker compose config` and the edge test can run offline and that it must never hold a real value
+- [x] T001 Create branch `001-upcloud-deploy-assets` from `main`, then create the directories `deploy/bin/`, `deploy/systemd/`, `deploy/maintenance/` and `deploy/tests/edge/`, and a `deploy/README.md` that opens with a purpose paragraph ("everything production needs that isn't an image; not yet live") and empty headed sections, in this order: Environment, Provision, Deploys, Manual rollback, Migrations (expand then contract), Alerts, Restore, Cutover, Rollback, Pause, Resume, Decommission
+- [x] T002 [P] Create `deploy/tests/pytest.ini` (with a header comment saying why this is a separate root: the backend's bare `pytest` must stay unchanged, Principle II) that registers an `edge` marker for tests needing Docker, and `deploy/tests/requirements.txt` with only `pytest`, pinned to the version in `backend/requirements-dev.txt`. Tests use stdlib `urllib`, `ssl` and `subprocess`, so nothing else is added (Principle V)
+- [x] T003 [P] Create `deploy/tests/sample.env` with every variable listed in `specs/001-upcloud-migration/contracts/server-env.md` (app, edge and operations tables), filled with obvious dummy values (`SECRET_KEY=not-a-secret`, `IMAGE_TAG=sha-0000000`, `APP_HOST=app.localhost`, `API_HOST=api.localhost`, `DB_STORAGE_GIB=10`, `REDIS_URL` left out on purpose), plus a header comment saying it exists only so `docker compose config` and the edge test can run offline and that it must never hold a real value
 
 ---
 
@@ -71,7 +71,7 @@ server answering on the staging hostnames. Every story needs this.
 
 ### Stack definition (PR 1)
 
-- [ ] T004 Create `deploy/compose.prod.yml` with a header comment and a reason on every non-default setting (Principle I):
+- [x] T004 Create `deploy/compose.prod.yml` with a header comment and a reason on every non-default setting (Principle I):
   - services `caddy` (`caddy:2.11.7`, the version research R5 pins), `backend` (`ghcr.io/<owner>/subscription-tracker-backend:${IMAGE_TAG:?}`) and `frontend` (`ghcr.io/<owner>/subscription-tracker-frontend:${IMAGE_TAG:?}`), never `latest`;
   - `env_file: /etc/subscription-tracker/.env` for backend and frontend;
   - **no** `ports:` on backend or frontend (only Caddy can reach them, contracts/edge-http.md § Client address); Caddy publishes `80:80`, `443:443` and `443:443/udp`;
@@ -79,14 +79,14 @@ server answering on the staging hostnames. Every story needs this.
   - backend healthcheck copied from `docker-compose.yml` (Python `urllib` hitting `/health`); a **new** frontend healthcheck (`wget -qO- http://127.0.0.1/` or equivalent available in the nginx image) because `docker compose up --wait` needs one for the frontend (contracts/deploy-interface.md § Behavior step 3);
   - Caddy volumes: named `caddy_data:/data` (certificates, must persist) and `caddy_config:/config`; bind mounts `./Caddyfile:/etc/caddy/Caddyfile:ro`, `./maintenance:/srv/maintenance:ro`, `/var/lib/subscription-tracker/flags:/srv/flags:ro`;
   - no Redis service, with the comment "FR-014: no cache in production, there is no current need and the app fails open (Principle V)"
-- [ ] T005 Create `deploy/Caddyfile` with a header comment and reasons:
+- [x] T005 Create `deploy/Caddyfile` with a header comment and reasons:
   - a global block containing `{$CADDY_TEST_GLOBALS}` (empty in production; the edge test sets it to `local_certs` so nothing reaches Let's Encrypt), and the ACME email from `{$ACME_EMAIL}`;
   - site `{$APP_HOST}` → `reverse_proxy frontend:80`; site `{$API_HOST}` → `reverse_proxy backend:8000`;
   - **no `trusted_proxies`**, with a comment explaining that Caddy then replaces any client-sent `X-Forwarded-For` with the peer IP (research R5, Caddy v2.11.7 `addForwardedHeaders`), which is what makes `TRUST_FORWARDED_FOR=true` safe (FR-009), and the caveat that turning on Cloudflare's orange cloud requires listing Cloudflare's ranges in `trusted_proxies` and changing `contracts/edge-http.md` and its test in the same PR;
   - a shared snippet for maintenance mode: `file /srv/flags/maintenance` matcher; when matched, every request except `GET /health` on the API host answers `503` with headers `Retry-After: 600` and `Cache-Control: no-store` and body `/srv/maintenance/index.html`; `GET /health` on the API host is passed to the backend (contracts/edge-http.md § Maintenance mode);
   - access logs to stdout (captured and capped by Docker's json-file driver, T007)
-- [ ] T006 [P] Create `deploy/maintenance/index.html`: a self-contained static page (inline CSS, **no JavaScript**, no external requests) showing the maintenance notice in English and Finnish side by side, with a header comment; reuse the app's palette from `DESIGN.md` so it looks like the product
-- [ ] T007 [P] Create `deploy/cloud-init.yaml` with a header comment and a reason per setting:
+- [x] T006 [P] Create `deploy/maintenance/index.html`: a self-contained static page (inline CSS, **no JavaScript**, no external requests) showing the maintenance notice in English and Finnish side by side, with a header comment; reuse the app's palette from `DESIGN.md` so it looks like the product
+- [x] T007 [P] Create `deploy/cloud-init.yaml` with a header comment and a reason per setting:
   - packages `docker-ce`, `docker-compose-plugin` (Docker's apt repo), `unattended-upgrades`;
   - users `admin` (SSH key only, sudo) and `deploy` (in group `docker`, no password, `authorized_keys` line `restrict,command="/opt/subscription-tracker/bin/deploy.sh" ssh-ed25519 <DEPLOY_PUBKEY> gha-deploy` as a placeholder the provisioning runbook fills in);
   - `sshd`: `PasswordAuthentication no`, `PermitRootLogin no` (FR-011);
@@ -94,14 +94,14 @@ server answering on the staging hostnames. Every story needs this.
   - `/etc/docker/daemon.json` with `"log-driver": "json-file"`, `"log-opts": {"max-size": "10m", "max-file": "3"}` (edge case "disk full", research R7);
   - `/etc/apt/apt.conf.d/52subscription-tracker` with `Unattended-Upgrade::Automatic-Reboot "true";` and `Unattended-Upgrade::Automatic-Reboot-Time "04:30";`, timezone `Europe/Helsinki` (FR-012);
   - `systemctl enable docker`
-- [ ] T008 [P] Create `deploy/systemd/image-prune.service` (runs `docker image prune -a -f --filter until=168h`) and `deploy/systemd/image-prune.timer` (weekly), each with a header comment saying the previous tag stays available for rollback because it is under 7 days old, and `deploy.sh` re-pulls it otherwise (research R7). Add the install and `systemctl enable --now image-prune.timer` step to `deploy/cloud-init.yaml` (after T007)
-- [ ] T009 Add a `deploy-config` job to `.github/workflows/test.yml` with a comment explaining why it has **no** `paths:` filter (so it can become a required check, constitution Quality Gates). Steps:
+- [x] T008 [P] Create `deploy/systemd/image-prune.service` (runs `docker image prune -a -f --filter until=168h`) and `deploy/systemd/image-prune.timer` (weekly), each with a header comment saying the previous tag stays available for rollback because it is under 7 days old, and `deploy.sh` re-pulls it otherwise (research R7). Add the install and `systemctl enable --now image-prune.timer` step to `deploy/cloud-init.yaml` (after T007)
+- [x] T009 Add a `deploy-config` job to `.github/workflows/test.yml` with a comment explaining why it has **no** `paths:` filter (so it can become a required check, constitution Quality Gates). Steps:
   1. `docker compose -f deploy/compose.prod.yml --env-file deploy/tests/sample.env config -q` (with `env_file` resolved against `deploy/tests/sample.env` through a CI-only override or `--env-file`; whichever the job uses, comment why);
   2. `docker run --rm -v "$PWD/deploy:/deploy:ro" --env-file deploy/tests/sample.env caddy:2.11.7 caddy validate --config /deploy/Caddyfile --adapter caddyfile`;
   3. `shellcheck deploy/bin/*.sh`;
   4. `pip install -r deploy/tests/requirements.txt && python -m pytest deploy/tests -q` (includes the `edge` tests; Docker is available on `ubuntu-latest`)
-- [ ] T010 Write `deploy/README.md` § Environment: one table per contracts/server-env.md section (app, edge, operations), the file's location, owner and mode (`/etc/subscription-tracker/.env`, `root:deploy`, `0640`), that `IMAGE_TAG` is **not** in that file but in `/var/lib/subscription-tracker/image-tag.env` (deploy-owned, so `deploy.sh` can write it without being able to write secrets; see T031), and the rotation rule (edit the file, then `docker compose up -d`)
-- [ ] T011 Write `deploy/README.md` § Provision, ordered as research R4 requires:
+- [x] T010 Write `deploy/README.md` § Environment: one table per contracts/server-env.md section (app, edge, operations), the file's location, owner and mode (`/etc/subscription-tracker/.env`, `root:deploy`, `0640`), that `IMAGE_TAG` is **not** in that file but in `/var/lib/subscription-tracker/image-tag.env` (deploy-owned, so `deploy.sh` can write it without being able to write secrets; see T031), and the rotation rule (edit the file, then `docker compose up -d`)
+- [x] T011 Write `deploy/README.md` § Provision, ordered as research R4 requires:
   1. create the SDN private network and SDN router in `fi-hel1`;
   2. create Managed PostgreSQL **16**, plan `rdb.development.1CPU-1GB`, **10 GiB**, 1 node, `fi-hel1`, attached to the SDN network **at creation** (attaching later rebuilds the database), `public_access` off, backup hour `02:00 UTC`;
   3. create the Starter `1xCPU-2GB` server, Ubuntu 24.04, `fi-hel1`, with a second interface on the SDN network, user data = `deploy/cloud-init.yaml` with the deploy public key filled in;
@@ -132,8 +132,8 @@ reset works; the 6th rapid `/token` attempt gets `429`.
 
 ### Tests for User Story 1 (PR 1)
 
-- [ ] T015 [P] [US1] Create `deploy/tests/edge/compose.edge.yml`, an override of `deploy/compose.prod.yml` with a header comment: builds `backend` from `./backend` and `frontend` from `./frontend` instead of pulling GHCR images; backend on SQLite with `TRUST_FORWARDED_FOR=true` and rate limits enabled; `APP_HOST=app.localhost`, `API_HOST=api.localhost`, `CADDY_TEST_GLOBALS=local_certs`; the flags directory bind-mounted from a pytest temp dir; Caddy's 443 published on a free local port
-- [ ] T016 [US1] Create `deploy/tests/edge/test_edge.py` (marker `edge`), starting the stack from T015 once per module and tearing it down after. Each test's name and docstring name the rule it protects (Principle II):
+- [x] T015 [P] [US1] Create `deploy/tests/edge/compose.edge.yml`, an override of `deploy/compose.prod.yml` with a header comment: builds `backend` from `./backend` and `frontend` from `./frontend` instead of pulling GHCR images; backend on SQLite with `TRUST_FORWARDED_FOR=true` and rate limits enabled; `APP_HOST=app.localhost`, `API_HOST=api.localhost`, `CADDY_TEST_GLOBALS=local_certs`; the flags directory bind-mounted from a pytest temp dir; Caddy's 443 published on a free local port
+- [x] T016 [US1] Create `deploy/tests/edge/test_edge.py` (marker `edge`), starting the stack from T015 once per module and tearing it down after. Each test's name and docstring name the rule it protects (Principle II):
   - `test_spoofed_forwarded_for_cannot_dodge_the_token_rate_limit`: 6 `POST https://api.localhost/token` requests, each with a different `X-Forwarded-For`; the 6th must be `429` (FR-009, contracts/edge-http.md § Client address);
   - `test_maintenance_flag_answers_503_on_both_hosts`: with `flags/maintenance` present, `GET /` on both hosts is `503` with `Retry-After: 600`, `Cache-Control: no-store` and the maintenance text (FR-005);
   - `test_health_passes_through_during_maintenance`: `GET https://api.localhost/health` is `200` with the flag present;
@@ -143,9 +143,9 @@ reset works; the 6th rapid `/token` attempt gets `429`.
 
 ### Implementation for User Story 1
 
-- [ ] T017 [P] [US1] Create `deploy/bin/verify-copy.sql` with a header comment: one query each for per-table row counts of `users`, `subscription_groups`, `categories`, `subscriptions`, `fx_rates`, `email_sends` and `alembic_version`; the `last_value` of every sequence; and per-user aggregates ordered by user id (subscription count, category count, `sum(cost)` per currency). Output must be stable text so two runs can be diffed (research R11)
-- [ ] T018 [US1] Create `deploy/bin/verify-copy.sh` (POSIX `sh`, header comment, passes `shellcheck`): reads `OLD_DATABASE_URL` and `NEW_DATABASE_URL` from the environment (never as arguments, so they don't show in `ps`), runs `verify-copy.sql` against each through `docker run --rm postgres:16 psql`, writes both outputs to a temp dir, prints `diff -u`, exits `0` on a match and `1` otherwise, and never prints either URL. Note in the PR that it has no automated test because it needs two live Postgres servers; T021 and T044 prove it (Principle II)
-- [ ] T019 [US1] Write `deploy/README.md` § Cutover as the timed checklist from research R12, with exact commands:
+- [x] T017 [P] [US1] Create `deploy/bin/verify-copy.sql` with a header comment: one query each for per-table row counts of `users`, `subscription_groups`, `categories`, `subscriptions`, `fx_rates`, `email_sends` and `alembic_version`; the `last_value` of every sequence; and per-user aggregates ordered by user id (subscription count, category count, `sum(cost)` per currency). Output must be stable text so two runs can be diffed (research R11)
+- [x] T018 [US1] Create `deploy/bin/verify-copy.sh` (POSIX `sh`, header comment, passes `shellcheck`): reads `OLD_DATABASE_URL` and `NEW_DATABASE_URL` from the environment (never as arguments, so they don't show in `ps`), runs `verify-copy.sql` against each through `docker run --rm postgres:16 psql`, writes both outputs to a temp dir, prints `diff -u`, exits `0` on a match and `1` otherwise, and never prints either URL. Note in the PR that it has no automated test because it needs two live Postgres servers; T021 and T044 prove it (Principle II)
+- [x] T019 [US1] Write `deploy/README.md` § Cutover as the timed checklist from research R12, with exact commands:
   - T−24 h: lower both DNS records' TTL to 60 s; announce the window (optional email);
   - T−0: `touch /var/lib/subscription-tracker/flags/maintenance` on the new server; pause the UptimeRobot monitors; switch `APP_HOST`/`API_HOST` and `CORS_ORIGINS` to the production names, `docker compose up -d`; point both A records at the server; confirm Caddy obtained production certificates;
   - T+5 min: freeze writes: `az containerapp ingress disable` on the backend Container App, then on Neon `ALTER DATABASE <db> SET default_transaction_read_only = on;` and `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '<db>' AND pid <> pg_backend_pid();`;
@@ -153,7 +153,7 @@ reset works; the 6th rapid `/token` attempt gets `429`.
   - T+10: smoke test with the hostnames forced to the new IP (`curl --resolve`, browser hosts entry): test account signs in and totals match the T−0 record; a reset link requested before T−0 still works; signup → verify → sign in → reset with a fresh address;
   - T+15: `rm` the maintenance flag; resume UptimeRobot; merge PR 3.
   State the 30-minute ceiling (FR-005, SC-003) and the point after which the Rollback section applies
-- [ ] T020 [US1] Write `deploy/README.md` § Rollback with both cases from research R12:
+- [x] T020 [US1] Write `deploy/README.md` § Rollback with both cases from research R12:
   - **before the maintenance flag is removed**: DNS back to Azure, `az containerapp ingress enable`, Neon `ALTER DATABASE … SET default_transaction_read_only = off`; nothing is lost;
   - **after, within the soak period**: maintenance on, dump UpCloud and restore it into Neon (replacing Neon's contents) so writes since cutover are **copied back, not lost**, run `verify-copy.sh` in the reverse direction, Neon read-write, Azure ingress on, DNS back
 
@@ -182,7 +182,7 @@ downtime alert.
 
 ### Tests for User Story 3 (PR 1, written first; they must fail before T030/T031)
 
-- [ ] T025 [P] [US3] Create `deploy/tests/test_deploy_guard.py`, running `deploy/bin/deploy.sh` as a subprocess with `SSH_ORIGINAL_COMMAND` set and a fake `docker` (and fake `curl`) on `PATH` that append their argv to a log file and exit with codes the test chooses. Test names and docstrings state the rule (contracts/deploy-interface.md § Tests):
+- [x] T025 [P] [US3] Create `deploy/tests/test_deploy_guard.py`, running `deploy/bin/deploy.sh` as a subprocess with `SSH_ORIGINAL_COMMAND` set and a fake `docker` (and fake `curl`) on `PATH` that append their argv to a log file and exit with codes the test chooses. Test names and docstrings state the rule (contracts/deploy-interface.md § Tests):
   - each of `""`, `"latest"`, `"sha-ABCDEFG"`, `"sha-1234567; rm -rf /"`, `"sha-1234567 extra"`, `"$(id)"` exits **64** and the fake records **no** calls;
   - `sha-1234567` reaches `docker compose pull`;
   - a failing `up --wait` restores `previous-tag`, runs `up -d --wait` again and exits **1**;
@@ -190,7 +190,7 @@ downtime alert.
   - a failing `pull` exits **75** with the running tag unchanged;
   - a failing `https://$API_HOST/health` check after a successful `up` rolls back and exits **1**;
   - stdout and stderr never contain a value from the env file (seed it with a sentinel string)
-- [ ] T026 [P] [US3] Create `deploy/tests/test_ops_check.py`, importing `deploy/bin/ops-check.py` via `importlib` and injecting fakes for `/proc/meminfo` content, `statvfs`, the `psql` runner, the TLS probe, the Resend sender and the clock (never the wall clock, Principle II). Tests (contracts/ops-alerts.md § Tests):
+- [x] T026 [P] [US3] Create `deploy/tests/test_ops_check.py`, importing `deploy/bin/ops-check.py` via `importlib` and injecting fakes for `/proc/meminfo` content, `statvfs`, the `psql` runner, the TLS probe, the Resend sender and the clock (never the wall clock, Principle II). Tests (contracts/ops-alerts.md § Tests):
   - memory, disk and `db_size` at exactly 80% do **not** fire; just over 80% does;
   - firing then still firing sends exactly one email in total;
   - firing then back under sends exactly one `RECOVERED` email;
@@ -202,7 +202,7 @@ downtime alert.
 
 ### Implementation for User Story 3 (PR 1)
 
-- [ ] T027 [US3] Create `deploy/bin/deploy.sh` (bash, header comment, reasons inline, passes `shellcheck`) implementing contracts/deploy-interface.md exactly:
+- [x] T027 [US3] Create `deploy/bin/deploy.sh` (bash, header comment, reasons inline, passes `shellcheck`) implementing contracts/deploy-interface.md exactly:
   1. validate `$SSH_ORIGINAL_COMMAND` against `^sha-[0-9a-f]{7}$` **before any other command**, else exit 64;
   2. `flock /var/lib/subscription-tracker/deploy.lock`;
   3. read the running tag from `/var/lib/subscription-tracker/image-tag.env` and write it to `/var/lib/subscription-tracker/previous-tag`;
@@ -211,7 +211,7 @@ downtime alert.
   6. `curl -fsS https://$API_HOST/health` through Caddy;
   7. on failure in 5 or 6, restore `previous-tag`, `up -d --wait`, exit 1; if that fails, exit 2.
   Paths (`STATE_DIR`, `ENV_FILE`, `COMPOSE_FILE`) default to the production paths and may be overridden by environment for the tests; comment why that is safe (`restrict` and sshd's default `PermitUserEnvironment no` mean an SSH client cannot set them). Never `cat` or echo the env file
-- [ ] T028 [US3] Create `deploy/bin/ops-check.py` (stdlib-only Python 3, header comment) implementing contracts/ops-alerts.md:
+- [x] T028 [US3] Create `deploy/bin/ops-check.py` (stdlib-only Python 3, header comment) implementing contracts/ops-alerts.md:
   - subcommands `frequent` (memory, disk; 5 min), `hourly` (`db_size` via `docker run --rm postgres:16 psql "$DATABASE_URL" -tAc 'SELECT pg_database_size(current_database())'` against `DB_STORAGE_GIB`) and `daily` (`cert:<APP_HOST>`, `cert:<API_HOST>` via an `ssl` handshake reading `notAfter`);
   - reads `/etc/subscription-tracker/.env` itself (no third-party dotenv);
   - state in `/var/lib/subscription-tracker/ops-state.json` as `{ "<check>": { "firing": bool, "since": ISO-8601 UTC, "detail": str } }` (data-model.md § Alert state), written atomically (temp file + rename);
@@ -220,9 +220,9 @@ downtime alert.
   - emails via `urllib` POST to `https://api.resend.com/emails` with `RESEND_API_KEY` and `EMAIL_FROM` to `ALERT_EMAIL`; body has measured value, threshold, UTC time and the `deploy/README.md` section to follow;
   - optional GET to `UPTIMEROBOT_HEARTBEAT_URL` on every `frequent` run;
   - every collaborator (clock, file paths, psql runner, TLS probe, sender) injectable for T026
-- [ ] T029 [P] [US3] Create `deploy/systemd/ops-check-frequent.service` + `.timer` (every 5 min), `ops-check-hourly.service` + `.timer` and `ops-check-daily.service` + `.timer`, each `User=deploy` (needs the `docker` group for `psql` and read access to the `root:deploy` env file), with header comments; add their install and `systemctl enable --now` to `deploy/cloud-init.yaml`
-- [ ] T030 [US3] Write `deploy/README.md` § Deploys (how CI calls the forced command, the exit-code table from contracts/deploy-interface.md), § Manual rollback (for exit 2: SSH as `admin`, write the last good tag to `image-tag.env`, `docker compose up -d --wait`), § Migrations (keep migrations additive, expand then contract, because a rollback does not downgrade the schema, research R6) and § Alerts (the table from contracts/ops-alerts.md, including UptimeRobot and what each alert's runbook step is)
-- [ ] T031 [US3] Write `deploy/README.md` § Restore: create a **new** database service from UpCloud's backups (point-in-time within the last 3 days, FR-017), attached to the same SDN network; point a scratch backend at it (`docker run` of the backend image with an overridden `DATABASE_URL`, no Caddy) and compare `verify-copy.sh` output with production; to make it production, update `DATABASE_URL` in the env file, `docker compose up -d --wait`, then delete the old service. State the SC-005 target of under 1 hour and the accepted risk (no copy outside UpCloud, plan.md § Spec changes)
+- [x] T029 [P] [US3] Create `deploy/systemd/ops-check-frequent.service` + `.timer` (every 5 min), `ops-check-hourly.service` + `.timer` and `ops-check-daily.service` + `.timer`, each `User=deploy` (needs the `docker` group for `psql` and read access to the `root:deploy` env file), with header comments; add their install and `systemctl enable --now` to `deploy/cloud-init.yaml`
+- [x] T030 [US3] Write `deploy/README.md` § Deploys (how CI calls the forced command, the exit-code table from contracts/deploy-interface.md), § Manual rollback (for exit 2: SSH as `admin`, write the last good tag to `image-tag.env`, `docker compose up -d --wait`), § Migrations (keep migrations additive, expand then contract, because a rollback does not downgrade the schema, research R6) and § Alerts (the table from contracts/ops-alerts.md, including UptimeRobot and what each alert's runbook step is)
+- [x] T031 [US3] Write `deploy/README.md` § Restore: create a **new** database service from UpCloud's backups (point-in-time within the last 3 days, FR-017), attached to the same SDN network; point a scratch backend at it (`docker run` of the backend image with an overridden `DATABASE_URL`, no Caddy) and compare `verify-copy.sh` output with production; to make it production, update `DATABASE_URL` in the env file, `docker compose up -d --wait`, then delete the old service. State the SC-005 target of under 1 hour and the accepted risk (no copy outside UpCloud, plan.md § Spec changes)
 
 ### Deploy job (PR 2, after T012 merged and staging is up)
 

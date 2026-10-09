@@ -1,0 +1,17 @@
+# Deletes Docker images older than 7 days that no container uses, so old
+# releases don't fill the 20 GB disk (edge case "disk full", research R7).
+# Started weekly by image-prune.timer.
+#
+# The rollback target is safe: deploys happen far more often than weekly, so
+# the previous tag is normally under 7 days old and kept. If it has been
+# pruned anyway, deploy.sh's rollback `up` pulls it again from GHCR.
+
+[Unit]
+Description=Prune Docker images older than 7 days
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+# 168h = 7 days, matching the reasoning above.
+ExecStart=/usr/bin/docker image prune -a -f --filter until=168h

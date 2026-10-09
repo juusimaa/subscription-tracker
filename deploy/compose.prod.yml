@@ -1,0 +1,124 @@
+# The production stack on the UpCloud server: Caddy in front of the two
+# images CI publishes to GHCR. The database is UpCloud's managed PostgreSQL,
+# reached over the private network, so it is not a service here.
+#
+# Lives at /opt/subscription-tracker/compose.prod.yml on the server, and is
+# always run with two env files (deploy/README.md § Environment):
+#
+#   docker compose -f compose.prod.yml \
+#     --env-file /etc/subscription-tracker/.env \
+#     --env-file /var/lib/subscription-tracker/image-tag.env  up -d --wait
+#
+# The admin user's login shell sets COMPOSE_FILE and COMPOSE_ENV_FILES (see
+# cloud-init.yaml), so a plain `docker compose up -d` there means the same.
+# The local-development stack is ../docker-compose.yml; nothing here is used
+# by it.
+
+# Fixed rather than taken from the directory name, so the containers and
+# volumes keep their names if the files are ever copied somewhere else.
+name: subscription-tracker
+
+services:
+  caddy:
+    # Pinned to the exact version whose X-Forwarded-For handling research R5
+    # checked (it replaces the header for untrusted peers). The rate limits
+    # depend on that, so an upgrade is a deliberate change with the edge
+    # tests run against it, never a silent `latest`.
+    image: caddy:2.11.7
+    # Back after a crash or a reboot without anyone logging in (FR-012), but
+    # not after a deliberate `docker compose stop`.
+    restart: unless-stopped
+    # No depends_on on the backend or frontend, on purpose: Caddy must come
+    # up even when the app is broken, so the maintenance page and the
+    # certificates keep working while it is being fixed.
+    ports:
+      - "80:80"
+      - "443:443"
+      # HTTP/3 runs over UDP. Caddy enables it by default; publishing the
+      # port is what lets browsers use it.
+      - "443:443/udp"
+    # Only the variables the Caddyfile reads, interpolated from the env files
+    # at `up` time. Not env_file: Caddy has no business holding the app's
+    # secrets.
+    environment:
+      APP_HOST: ${APP_HOST:?APP_HOST must be set in the env file}
+      API_HOST: ${API_HOST:?API_HOST must be set in the env file}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL must be set in the env file}
+      # Empty in production. The edge tests set it to `local_certs` so no
+      # request ever reaches Let's Encrypt (see the Caddyfile).
+      CADDY_TEST_GLOBALS: ${CADDY_TEST_GLOBALS:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Issued certificates and the ACME account. Named, so they survive the
+      # container being recreated; losing them would mean re-issuing on every
+      # deploy and running into Let's Encrypt's rate limits.
+      - caddy_data:/data
+      # Caddy's autosaved config. Not precious, but the official image
+      # declares it as a volume, and naming it keeps it from piling up as
+      # anonymous volumes.
+      - caddy_config:/config
+      - ./maintenance:/srv/maintenance:ro
+      # The maintenance switch: `touch`/`rm` flags/maintenance on the host
+      # and the Caddyfile's `file` matcher sees it on the next request. A
+      # directory, not the single file, so creating and deleting the file
+      # works without restarting the container.
+      - /var/lib/subscription-tracker/flags:/srv/flags:ro
+
+  backend:
+    # The exact commit CI built, from image-tag.env. `:?` makes a missing tag
+    # an error at `up` instead of a silent pull of `latest`.
+    image: ghcr.io/juusimaa/subscription-tracker-backend:${IMAGE_TAG:?IMAGE_TAG must be set (image-tag.env)}
+    restart: unless-stopped
+    # Every app variable (contracts/server-env.md). The path is a variable
+    # only so CI and the edge tests can point it at deploy/tests/sample.env;
+    # on the server it is always the default.
+    env_file:
+      - ${ENV_FILE:-/etc/subscription-tracker/.env}
+    environment:
+      # Set here rather than in the env file because it is only true of this
+      # stack: Caddy replaces X-Forwarded-For with the real peer address, so
+      # the last entry is the client (contracts/edge-http.md, FR-009). Copied
+      # into any setup without Caddy in front, it would let clients choose
+      # their own rate-limit key.
+      TRUST_FORWARDED_FOR: "true"
+    # No `ports:`. Only Caddy, on this Compose network, can reach port 8000;
+    # a published port would let a client skip Caddy and send its own
+    # X-Forwarded-For (contracts/edge-http.md § Client address).
+    healthcheck:
+      # Same check as docker-compose.yml: /health runs a SELECT 1, so
+      # "healthy" means the backend can reach the database. `up --wait` in
+      # deploy.sh relies on it to decide whether a deploy worked.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      # The entrypoint runs `alembic upgrade head` before uvicorn starts;
+      # failures during that window don't count against the retries.
+      start_period: 30s
+
+  frontend:
+    image: ghcr.io/juusimaa/subscription-tracker-frontend:${IMAGE_TAG:?IMAGE_TAG must be set (image-tag.env)}
+    restart: unless-stopped
+    # Not env_file: nginx needs two values and none of the secrets.
+    environment:
+      # Derived from API_HOST, so switching hostnames at cutover is one edit
+      # instead of two that must agree.
+      API_URL: https://${API_HOST:?API_HOST must be set in the env file}
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+    # No `ports:`, for the same reason as the backend.
+    healthcheck:
+      # Added for production: `up --wait` only waits for services that have a
+      # healthcheck, and a frontend that crashed on start (a bad template,
+      # say) should fail the deploy too. nginx:alpine has busybox wget.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+# No redis service. FR-014: production runs with no cache. There is no current
+# need for one, and app/cache.py fails open without it (Principle V).
+
+volumes:
+  caddy_data:
+  caddy_config:
