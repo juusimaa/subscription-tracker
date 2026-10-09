@@ -83,8 +83,9 @@ first page load and the first sign-in and compare them with a warm request.
 
 The maintainer merges a PR and the change goes live automatically, as it does
 today. If the database is damaged or data is deleted by mistake, they can
-restore the previous day's backup with a written procedure. They get warned
-before costs go over budget, and they get alerted if the site goes down.
+restore a backup from the last 3 days with a written procedure. They get
+alerted if the site goes down. Cost stays within budget because every resource
+is fixed-price, so no cost alert is needed.
 
 **Why this priority**: there is one maintainer. Hosting that needs manual
 deploys, or that cannot be restored, costs more than it saves.
@@ -102,9 +103,9 @@ and check that the downtime alert arrives.
 2. **Given** a deploy whose new version fails its health check, **When** the
    rollout runs, **Then** the previous version keeps serving traffic and the
    deploy is reported as failed.
-3. **Given** a daily backup exists, **When** the maintainer follows the restore
-   runbook, **Then** they get a working database with the data as of that
-   backup.
+3. **Given** a daily backup from the last 3 days exists, **When** the
+   maintainer follows the restore runbook, **Then** they get a working database
+   with the data as of that backup.
 4. **Given** the site stops answering its health check, **When** it has been
    down for 5 minutes, **Then** the maintainer receives an alert.
 
@@ -267,12 +268,15 @@ archive.
 - **FR-016**: Deploy credentials MUST be limited to deploying this app. They
   MUST NOT give control of the provider account or of other resources.
 - **FR-017**: The database MUST be backed up at least daily by the provider,
-  and backups MUST be kept for at least 7 days.
+  and backups MUST be kept for at least 3 days. This is the retention of the
+  provider's affordable plans, and it was chosen to stay within budget
+  (decided 2026-10-09).
 - **FR-018**: A restore procedure MUST be documented. It MUST be rehearsed once
   before cutover by restoring a backup into a separate database.
 - **FR-019**: The maintainer MUST be alerted when the site has been unreachable
-  for 5 minutes or longer, and when monthly hosting cost passes 80% of the
-  budget.
+  for 5 minutes or longer. There is no cost alert: the resources are
+  fixed-price, so the monthly cost follows from the plan (decided
+  2026-10-09).
 - **FR-028**: The maintainer MUST be alerted when the managed database passes
   80% of its plan's storage, and when the server passes 80% of its memory or
   disk. Users fill the plan before they raise the flat monthly bill, so this
@@ -280,8 +284,7 @@ archive.
   growth within the plan is specified separately in
   `specs/002-signup-account-cap`.
 - **FR-020**: The total monthly cost of the new hosting (server, database,
-  backups and outbound traffic) MUST stay within €25. The cost alert in FR-019
-  fires at €20.
+  backups and outbound traffic) MUST stay within €25.
 
 **Decommissioning and documentation**
 
@@ -383,6 +386,10 @@ archive.
   listings say the same for the Developer and General Purpose server
   families. So pausing means deleting the resources, not stopping them. The
   plan should confirm both points with UpCloud before relying on them.
+- **Backup retention trade-off**: 3 days of backups means a mistake noticed
+  later than that, such as data deleted by accident, cannot be undone from a
+  backup. Each user can still keep their own JSON export. The maintainer
+  accepted this to keep cost low (2026-10-09).
 - **Budget fit**: €25 a month must cover the 2 GB server and the smallest
   managed PostgreSQL plan. A 1-node 2 GB database plan alone is listed at about
   €30 a month, so the plan has to pick the smallest database tier that is

@@ -41,3 +41,7 @@
   maintainer's request. Stopping alone does not stop UpCloud billing, so a
   pause archives the data and deletes the resources.
 - Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`
+- 2026-10-09, during planning: FR-017 was lowered to 3 days of
+  provider-only backups, and the cost alert was removed from FR-019. Both were
+  the maintainer's choice, to keep cost and surface low; the reasoning is in
+  plan.md "Spec changes".
