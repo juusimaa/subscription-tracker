@@ -1,0 +1,42 @@
+# Override for deploy/compose.prod.yml that runs the real production stack
+# (same Caddyfile, same services, same healthchecks) on a CI runner or a
+# laptop, for deploy/tests/edge/test_edge.py:
+#
+#   - both images are built from this checkout instead of pulled from GHCR,
+#     so a PR's own code is what gets tested;
+#   - the backend runs on SQLite, so no database server is needed;
+#   - Caddy gets certificates from its internal CA (CADDY_TEST_GLOBALS=
+#     local_certs, set by the test), never from Let's Encrypt;
+#   - only Caddy's 443 is published, on a free loopback port the test picks.
+#
+# Relative paths resolve against deploy/, the first file's directory.
+
+services:
+  caddy:
+    # !override replaces production's list instead of appending to it:
+    # binding 80 and 443 on the runner would collide with anything else
+    # there, and the test needs only HTTPS.
+    ports: !override
+      - "127.0.0.1:${EDGE_HTTPS_PORT:?set by test_edge.py}:443"
+    volumes:
+      # Same container path as production's flags mount, so this replaces
+      # it: a temp dir the test can touch and rm the flag in.
+      - ${EDGE_FLAGS_DIR:?set by test_edge.py}:/srv/flags:ro
+
+  backend:
+    build: ../backend
+    # A local name, so the build doesn't tag something that looks like a
+    # GHCR release.
+    image: subscription-tracker-backend:edge
+    environment:
+      # The entrypoint's `alembic upgrade head` creates the schema here.
+      DATABASE_URL: sqlite:////tmp/edge.db
+      # Spelled out although they are the defaults: these two are what
+      # test_spoofed_forwarded_for_cannot_dodge_the_token_rate_limit checks.
+      RATE_LIMIT_ENABLED: "true"
+      TRUST_FORWARDED_FOR: "true"
+      EMAIL_BACKEND: console
+
+  frontend:
+    build: ../frontend
+    image: subscription-tracker-frontend:edge

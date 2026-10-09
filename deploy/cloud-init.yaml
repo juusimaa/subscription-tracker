@@ -1,0 +1,120 @@
+#cloud-config
+# First-boot setup for the production server: Docker, the two users, SSH
+# hardening, the directories the stack expects, log caps and automatic
+# security updates. Pasted as the server's user data when it is created
+# (deploy/README.md § Provision, step 3), after replacing <ADMIN_PUBKEY> and
+# <DEPLOY_PUBKEY>.
+#
+# It prepares the host only. The stack's own files (compose.prod.yml, the
+# Caddyfile, bin/, systemd/) are copied in by the Provision runbook after
+# first boot, so the timers in systemd/ are installed and enabled there,
+# not here: at the time this runs, those files do not exist on the server.
+
+# Applied after the first boot finishes, so cron jobs and log timestamps
+# agree with the 04:30 reboot window below.
+timezone: Europe/Helsinki
+
+# Created before the users that join it. The docker-ce package would create
+# it too, but packages are installed after users, and `deploy` must be in it.
+groups:
+  - docker
+
+users:
+  # The maintainer. Key only (FR-011); sudo for provisioning and the
+  # runbooks. In docker and deploy so `docker compose` works without sudo and
+  # can read the root:deploy env file.
+  - name: admin
+    groups: [sudo, docker, deploy]
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+    ssh_authorized_keys:
+      - <ADMIN_PUBKEY>
+  # CI's identity. The key can run deploy.sh and nothing else: `command=`
+  # forces it whatever the client asks for, and `restrict` turns off port,
+  # agent and X11 forwarding, the PTY and ~/.ssh/rc
+  # (contracts/deploy-interface.md, FR-016). In docker because deploy.sh runs
+  # `docker compose`.
+  - name: deploy
+    groups: [docker]
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - restrict,command="/opt/subscription-tracker/bin/deploy.sh" ssh-ed25519 <DEPLOY_PUBKEY> gha-deploy
+
+# Also written as an sshd drop-in below. This makes cloud-init itself agree,
+# so it doesn't write a 50-cloud-init.conf that turns passwords back on.
+ssh_pwauth: false
+disable_root: true
+
+apt:
+  sources:
+    # Docker's own repository: Ubuntu's docker.io package lags behind and
+    # lacks the compose plugin version `up --wait` needs.
+    docker.list:
+      source: deb [signed-by=$KEY_FILE] https://download.docker.com/linux/ubuntu $RELEASE stable
+      keyid: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+
+package_update: true
+packages:
+  - docker-ce
+  - docker-compose-plugin
+  # Installed by default on Ubuntu 24.04; listed so the config below is
+  # never written for a package that isn't there.
+  - unattended-upgrades
+
+write_files:
+  # 10- so it sorts before any 50-*.conf: sshd keeps the first value it reads
+  # for each setting. FR-011: no passwords and no root login, ever.
+  - path: /etc/ssh/sshd_config.d/10-subscription-tracker.conf
+    permissions: "0644"
+    content: |
+      # From deploy/cloud-init.yaml. FR-011: keys only, no root.
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin no
+
+  # Written before Docker is installed, so the daemon starts with it.
+  # Without caps, json-file logs grow until the disk is full (edge case
+  # "disk full", research R7): 3 files of 10 MB per container at most.
+  - path: /etc/docker/daemon.json
+    permissions: "0644"
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": { "max-size": "10m", "max-file": "3" }
+      }
+
+  # Security updates are on by default; this adds the reboot that kernel and
+  # libc updates need, at a quiet hour. The containers come back on their
+  # own (restart: unless-stopped, docker.service enabled), FR-012.
+  - path: /etc/apt/apt.conf.d/52subscription-tracker
+    permissions: "0644"
+    content: |
+      // From deploy/cloud-init.yaml (FR-012, research R7).
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "04:30";
+
+  # So `docker compose ...` in an admin shell means the production stack,
+  # with both env files, exactly as deploy.sh runs it. Runbooks rely on this.
+  - path: /etc/profile.d/subscription-tracker.sh
+    permissions: "0644"
+    content: |
+      # From deploy/cloud-init.yaml: the production Compose project.
+      export COMPOSE_FILE=/opt/subscription-tracker/compose.prod.yml
+      export COMPOSE_ENV_FILES=/etc/subscription-tracker/.env,/var/lib/subscription-tracker/image-tag.env
+
+runcmd:
+  # The stack's files: root-owned and world-readable, so neither the deploy
+  # key nor a compromised container can change what runs.
+  - install -d -o root -g root -m 0755 /opt/subscription-tracker
+  # Secrets: readable by deploy (compose, ops-check), writable only by root.
+  - install -d -o root -g deploy -m 0750 /etc/subscription-tracker
+  # deploy.sh's state (image-tag.env, previous-tag, the lock) and
+  # ops-check's ops-state.json: written by deploy.
+  - install -d -o deploy -g deploy -m 0750 /var/lib/subscription-tracker
+  # The maintenance switch Caddy watches. Toggled with `sudo touch`/`sudo rm`.
+  - install -d -o deploy -g deploy -m 0750 /var/lib/subscription-tracker/flags
+  # So the containers come back after a reboot (FR-012).
+  - systemctl enable --now docker
+  - systemctl restart ssh

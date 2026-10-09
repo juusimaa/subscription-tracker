@@ -1,0 +1,13 @@
+# Runs image-prune.service once a week (see that file for why).
+
+[Unit]
+Description=Weekly Docker image prune
+
+[Timer]
+OnCalendar=weekly
+# A run missed while the server was off happens at the next boot instead of
+# being skipped until the following week.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

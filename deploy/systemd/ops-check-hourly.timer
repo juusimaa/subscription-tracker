@@ -1,0 +1,12 @@
+# Starts ops-check-hourly.service hourly.
+
+[Unit]
+Description=Operational checks (hourly) timer
+
+[Timer]
+OnCalendar=hourly
+# A run missed while the server was off happens at the next boot.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

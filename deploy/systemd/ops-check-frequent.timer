@@ -1,0 +1,12 @@
+# Starts ops-check-frequent.service every 5 minutes.
+
+[Unit]
+Description=Operational checks (frequent) timer
+
+[Timer]
+OnCalendar=*:0/5
+# No Persistent=: a 5-minute check missed while the server was off has
+# nothing to catch up on.
+
+[Install]
+WantedBy=timers.target

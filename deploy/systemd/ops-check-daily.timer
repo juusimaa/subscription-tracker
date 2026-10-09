@@ -1,0 +1,12 @@
+# Starts ops-check-daily.service daily.
+
+[Unit]
+Description=Operational checks (daily) timer
+
+[Timer]
+OnCalendar=daily
+# A run missed while the server was off happens at the next boot.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

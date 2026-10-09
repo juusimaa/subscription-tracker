@@ -1,0 +1,5 @@
+# Only the test runner, pinned to the same version as backend/requirements-dev.txt
+# so both suites behave alike. The tests themselves use the standard library
+# (urllib, ssl, subprocess) for HTTP, TLS and process control, so nothing else
+# is needed (constitution Principle V).
+pytest==8.3.3

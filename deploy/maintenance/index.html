@@ -1,0 +1,101 @@
+<!doctype html>
+<!--
+  The page Caddy serves, with status 503, on both hostnames while
+  /var/lib/subscription-tracker/flags/maintenance exists (deploy/Caddyfile,
+  contracts/edge-http.md § Maintenance mode).
+
+  Self-contained on purpose: inline CSS, no JavaScript, no fonts or images
+  from anywhere else. During maintenance the app and its assets may be gone,
+  and the API host serves this page too, so it cannot depend on either.
+  English and Finnish sit side by side because picking one would need
+  JavaScript or a second request. Colors are the app's palette (DESIGN.md);
+  Archivo is named first in case the visitor has it, with system fonts after.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Under maintenance · Huoltokatko — Subscription Tracker</title>
+<style>
+  :root {
+    --signal-red: #ec3013;
+    /* Small red text uses the deep shade: #ec3013 on paper-raised is under
+       the 4.5:1 contrast WCAG AA asks of 13px text. */
+    --signal-red-deep: #ae1800;
+    --paper: #f3f2f2;
+    --paper-raised: #eae9e9;
+    --ink: #201e1d;
+    --muted: #605d5d;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 17px/1.5 Archivo, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main {
+    width: 100%;
+    max-width: 880px;
+    border-top: 6px solid var(--signal-red);
+    background: var(--paper-raised);
+    padding: 32px 28px;
+  }
+  .brand {
+    margin: 0 0 28px;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .langs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+  }
+  h1 {
+    margin: 0 0 12px;
+    font-size: 34px;
+    font-weight: 800;
+    line-height: 1.1;
+  }
+  p { margin: 0 0 10px; }
+  .lang {
+    margin: 0 0 8px;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--signal-red-deep);
+  }
+  @media (max-width: 640px) {
+    .langs { grid-template-columns: 1fr; gap: 28px; }
+    h1 { font-size: 28px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <p class="brand">Subscription Tracker</p>
+  <div class="langs">
+    <section lang="en">
+      <p class="lang">English</p>
+      <h1>We'll be right back</h1>
+      <p>Subscription Tracker is down for planned maintenance. Your data is safe.</p>
+      <p>Please try again in a few minutes.</p>
+    </section>
+    <section lang="fi">
+      <p class="lang">Suomi</p>
+      <h1>Palaamme pian</h1>
+      <p>Subscription Tracker on suunnitellussa huoltokatkossa. Tietosi ovat tallessa.</p>
+      <p>Yritä uudelleen muutaman minuutin kuluttua.</p>
+    </section>
+  </div>
+</main>
+</body>
+</html>

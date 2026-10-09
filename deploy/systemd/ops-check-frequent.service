@@ -1,0 +1,18 @@
+# Runs `ops-check.py frequent`: memory and root-disk use, emailing ALERT_EMAIL once when a
+# check starts firing and once when it recovers (contracts/ops-alerts.md).
+# Also pings UPTIMEROBOT_HEARTBEAT_URL, if set, so a server too broken to
+# send its own alerts is still noticed (research R8).
+# Started every 5 minutes by ops-check-frequent.timer.
+
+[Unit]
+Description=Operational checks (frequent)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# deploy, not root: it needs only the docker group (for psql in a
+# postgres:16 container) and read access to the root:deploy env file.
+User=deploy
+Group=deploy
+ExecStart=/usr/bin/python3 /opt/subscription-tracker/bin/ops-check.py frequent
