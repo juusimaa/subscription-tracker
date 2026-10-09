@@ -19,8 +19,7 @@
 <title>Under maintenance · Huoltokatko — Subscription Tracker</title>
 <style>
   :root {
-    --signal-red: #ec3013;
-    /* Small red text uses the deep shade: #ec3013 on paper-raised is under
+    /* The deep red, not signal-red (#ec3013): signal-red on paper-raised is under
        the 4.5:1 contrast WCAG AA asks of 13px text. */
     --signal-red-deep: #ae1800;
     --paper: #f3f2f2;
@@ -43,7 +42,6 @@
   main {
     width: 100%;
     max-width: 880px;
-    border-top: 6px solid var(--signal-red);
     background: var(--paper-raised);
     padding: 32px 28px;
   }
@@ -53,7 +51,7 @@
     font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--muted);
+    color: var(--signal-red-deep);
   }
   .langs {
     display: grid;
