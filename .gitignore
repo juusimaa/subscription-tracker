@@ -43,6 +43,9 @@ _site/
 .agents/skills/
 .codex/agents/impeccable-*.toml
 .codex/hooks.json
+# Spec Kit scaffolding: templates, scripts and workflow state written by
+# `specify init` (its skills land in .claude/skills/, ignored above).
+.specify/
 
 # OS
 .DS_Store
