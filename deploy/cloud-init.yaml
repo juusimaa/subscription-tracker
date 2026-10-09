@@ -14,10 +14,13 @@
 # agree with the 04:30 reboot window below.
 timezone: Europe/Helsinki
 
-# Created before the users that join it. The docker-ce package would create
-# it too, but packages are installed after users, and `deploy` must be in it.
+# Created before the users that join them. The docker-ce package would create
+# docker too, but packages are installed after users, and `deploy` must be in
+# it. `deploy` is listed here because admin joins it before the deploy user
+# exists; the deploy user then takes it as its primary group (below).
 groups:
   - docker
+  - deploy
 
 users:
   # The maintainer. Key only (FR-011); sudo for provisioning and the
@@ -34,8 +37,11 @@ users:
   # forces it whatever the client asks for, and `restrict` turns off port,
   # agent and X11 forwarding, the PTY and ~/.ssh/rc
   # (contracts/deploy-interface.md, FR-016). In docker because deploy.sh runs
-  # `docker compose`.
+  # `docker compose`. `primary_group` makes useradd use the existing deploy
+  # group (`-g`); without it useradd tries to create one and fails because
+  # it already exists, and the user is never made.
   - name: deploy
+    primary_group: deploy
     groups: [docker]
     shell: /bin/bash
     lock_passwd: true
