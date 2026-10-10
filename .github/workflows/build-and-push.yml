@@ -7,7 +7,9 @@
 # Azure Container Apps serving https://subscriptionstrack.com. Rollout is
 # gated behind the AZURE_DEPLOY_ENABLED repo variable (Settings > Secrets and
 # variables > Actions > Variables), currently set to true -- so every push to
-# main is a real, live deploy.
+# main is a real, live deploy. It also rolls them out to the UpCloud server
+# (deploy-upcloud job), gated behind UPCLOUD_DEPLOY_ENABLED; that server
+# replaces Azure at the cutover (specs/001-upcloud-migration).
 
 name: Build and push images
 
@@ -181,3 +183,56 @@ jobs:
             --name subscription-tracker-frontend \
             --resource-group subscription-tracker-rg \
             --image ghcr.io/${{ github.repository }}-frontend:${{ steps.tag.outputs.sha }}
+
+  # Rolls the same images out to the UpCloud server (staging hostnames until
+  # the cutover, then production). Gated behind UPCLOUD_DEPLOY_ENABLED for
+  # the same reason as the Azure job above. CI can't log in to that server:
+  # the deploy key's authorized_keys line forces bin/deploy.sh, so all this
+  # job can do is hand it a tag. deploy.sh pulls, restarts, checks /health
+  # and rolls back on its own (specs/001-upcloud-migration/contracts/
+  # deploy-interface.md); its exit code is this job's result.
+  deploy-upcloud:
+    needs: build
+    if: github.ref == 'refs/heads/main' && vars.UPCLOUD_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+
+    # One deploy at a time, and never cancel one halfway: deploy.sh also
+    # takes a lock on the server, but a cancelled run could leave the job
+    # red while the server finishes the deploy anyway.
+    concurrency:
+      group: upcloud-deploy
+      cancel-in-progress: false
+
+    # Nothing to publish or sign in to with GitHub's token -- the SSH key
+    # below is the only credential this job uses.
+    permissions:
+      contents: read
+
+    steps:
+      # Same tag the build job pushed and the Azure job deploys.
+      - name: Compute image tag
+        id: tag
+        run: echo "sha=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # The host key is pinned from a secret (checked against the UpCloud
+      # console when it was set), and StrictHostKeyChecking=yes refuses any
+      # other key instead of trusting whatever answers on first connect.
+      # Secrets go in through env, never interpolated into the script.
+      - name: Deploy over SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.UPCLOUD_DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.UPCLOUD_DEPLOY_HOST }}
+          KNOWN_HOSTS: ${{ secrets.UPCLOUD_KNOWN_HOSTS }}
+          TAG: ${{ steps.tag.outputs.sha }}
+        run: |
+          umask 077
+          key="$RUNNER_TEMP/deploy_key"
+          known="$RUNNER_TEMP/known_hosts"
+          printf '%s\n' "$DEPLOY_KEY" > "$key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$known"
+          ssh -i "$key" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o UserKnownHostsFile="$known" \
+            -o StrictHostKeyChecking=yes \
+            "deploy@$DEPLOY_HOST" "$TAG"

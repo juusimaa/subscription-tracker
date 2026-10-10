@@ -226,12 +226,12 @@ downtime alert.
 
 ### Deploy job (PR 2, after T012 merged and staging is up)
 
-- [ ] T032 [US3] Add job `deploy-upcloud` to `.github/workflows/build-and-push.yml` next to the existing Azure `deploy` job, with comments in the file's existing style:
+- [x] T032 [US3] Add job `deploy-upcloud` to `.github/workflows/build-and-push.yml` next to the existing Azure `deploy` job, with comments in the file's existing style:
   - `needs: build`, `if: github.ref == 'refs/heads/main' && vars.UPCLOUD_DEPLOY_ENABLED == 'true'`;
   - `concurrency: { group: upcloud-deploy, cancel-in-progress: false }`;
   - `permissions: contents: read` only;
   - steps: compute `sha-${GITHUB_SHA::7}` exactly as the Azure job does; write `secrets.UPCLOUD_DEPLOY_SSH_KEY` to a `0600` temp file and `secrets.UPCLOUD_KNOWN_HOSTS` to a known-hosts file; `ssh -i <key> -o UserKnownHostsFile=<file> -o StrictHostKeyChecking=yes deploy@${{ secrets.UPCLOUD_DEPLOY_HOST }} "$TAG"`; a non-zero exit fails the job
-- [ ] T033 [US3] (manual) Generate the deploy key pair (ed25519, comment `gha-deploy`), install the public key in `deploy`'s `authorized_keys` with the `restrict,command=…` prefix, run `ssh-keyscan` on the server's public IP and check the fingerprint against the console, then set repository secrets `UPCLOUD_DEPLOY_SSH_KEY`, `UPCLOUD_DEPLOY_HOST`, `UPCLOUD_KNOWN_HOSTS` and variable `UPCLOUD_DEPLOY_ENABLED=true` (`GH_TOKEN` for the `juusimaa` account if `gh` needs it)
+- [x] T033 [US3] (manual) Generate the deploy key pair (ed25519, comment `gha-deploy`), install the public key in `deploy`'s `authorized_keys` with the `restrict,command=…` prefix, run `ssh-keyscan` on the server's public IP and check the fingerprint against the console, then set repository secrets `UPCLOUD_DEPLOY_SSH_KEY`, `UPCLOUD_DEPLOY_HOST`, `UPCLOUD_KNOWN_HOSTS` and variable `UPCLOUD_DEPLOY_ENABLED=true` (`GH_TOKEN` for the `juusimaa` account if `gh` needs it)
 - [ ] T034 [US3] Open and merge PR 2 (T032). Expected: the next `main` build's `deploy-upcloud` job is green and staging serves the new tag (FR-015; quickstart §2 step 1)
 
 ### Verification on staging (manual)
