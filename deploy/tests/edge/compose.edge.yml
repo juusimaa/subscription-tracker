@@ -28,6 +28,10 @@ services:
     # A local name, so the build doesn't tag something that looks like a
     # GHCR release.
     image: subscription-tracker-backend:edge
+    # SQLite needs no CA, and the host path doesn't exist on a runner or a
+    # laptop (Docker would create it as a directory, or refuse outside its
+    # shared paths).
+    volumes: !reset []
     environment:
       # The entrypoint's `alembic upgrade head` creates the schema here.
       DATABASE_URL: sqlite:////tmp/edge.db

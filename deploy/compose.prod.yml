@@ -81,6 +81,11 @@ services:
       # into any setup without Caddy in front, it would let clients choose
       # their own rate-limit key.
       TRUST_FORWARDED_FOR: "true"
+    # The database's CA, at the path DATABASE_URL's sslrootcert names
+    # (contracts/server-env.md, research R4). Only this file, not the whole
+    # directory, so the container never sees the secrets file beside it.
+    volumes:
+      - /etc/subscription-tracker/upcloud-ca.pem:/etc/subscription-tracker/upcloud-ca.pem:ro
     # No `ports:`. Only Caddy, on this Compose network, can reach port 8000;
     # a published port would let a client skip Caddy and send its own
     # X-Forwarded-For (contracts/edge-http.md § Client address).

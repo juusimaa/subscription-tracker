@@ -54,6 +54,7 @@ checks each one.
     back on us.
 - **Verify at provisioning**:
   - `max_connections` on the 1 GB plan is comfortably above 15.
+    **Found (T013, 2026-10-10):** `SHOW max_connections` returns 50.
 - **Billing note**: "Billing continues as long as the instance exists, even if
   it is stopped."
 - Sources: https://upcloud.com/docs/products/managed-postgresql/configurations/,
@@ -111,6 +112,14 @@ checks each one.
 - **Verify at provisioning**:
   - Whether TLS is enforced, and whether a CA certificate can be downloaded.
     The docs only show an `sslmode` field.
+    **Found (T013, 2026-10-10):** enforced: `sslmode=disable` gets `no
+    pg_hba.conf entry … no encryption`. The server certificate is signed by
+    a per-project "Project CA" whose certificate the console offers, and
+    `sslmode=verify-full` with it succeeds against the hostname, so
+    production uses `verify-full`. The backend container mounts the CA file
+    at the path `sslrootcert` names (`deploy/compose.prod.yml`). The
+    database listens on a non-default port (11569 here), shown on the
+    console's Connection panel.
   - That a connection from outside the SDN is refused.
 - Sources: https://upcloud.com/docs/guides/connect-managed-databases-sdn-private-networks/,
   https://upcloud.com/docs/products/managed-postgresql/connecting/,
