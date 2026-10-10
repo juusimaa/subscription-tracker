@@ -113,8 +113,8 @@ server answering on the staging hostnames. Every story needs this.
 ### Provisioning (manual, after PR 1 merges)
 
 - [ ] T012 Open PR 1 once T001–T011 and the PR-1 tasks in Phases 3 and 4 are done; confirm `sqlite`, `postgres`, `visual` and the new `deploy-config` checks are green (FR-023), squash-merge
-- [ ] T013 (manual) Provision UpCloud per `deploy/README.md` § Provision with the staging hostnames. Record in `specs/001-upcloud-migration/research.md` under each "verify at provisioning" item: whether TLS is enforced on the database and whether a CA certificate is downloadable (decides `sslmode=verify-full` vs `require`, R4), `SHOW max_connections` (must be comfortably above 15, R2), and the billed prices seen in the console (R10)
-- [ ] T014 (manual) Start the stack on the staging hostnames with the current `main` tag. Confirm `https://staging.subscriptionstrack.com` and `https://api-staging.subscriptionstrack.com/health` answer with valid certificates and that `http://` redirects with `308` (FR-007, contracts/edge-http.md § Hosts and TLS)
+- [x] T013 (manual) Provision UpCloud per `deploy/README.md` § Provision with the staging hostnames. Record in `specs/001-upcloud-migration/research.md` under each "verify at provisioning" item: whether TLS is enforced on the database and whether a CA certificate is downloadable (decides `sslmode=verify-full` vs `require`, R4), `SHOW max_connections` (must be comfortably above 15, R2), and the billed prices seen in the console (R10)
+- [x] T014 (manual) Start the stack on the staging hostnames with the current `main` tag. Confirm `https://staging.subscriptionstrack.com` and `https://api-staging.subscriptionstrack.com/health` answer with valid certificates and that `http://` redirects with `308` (FR-007, contracts/edge-http.md § Hosts and TLS)
 
 **Checkpoint**: an empty-database copy of the app runs on UpCloud behind
 Caddy on the staging hostnames. User story work can start.

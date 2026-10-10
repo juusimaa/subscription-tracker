@@ -87,6 +87,10 @@ Builds the server and database from nothing, for the staging rehearsal, a
 resume after a pause, or a rebuild. The order matters: the database must be
 attached to the private network **when it is created** (research R4).
 
+The account must be out of UpCloud's free trial: the trial only offers
+`fi-hel2` for servers, and the network, database and server must share one
+zone.
+
 1. **Private network.** In the UpCloud console, zone `fi-hel1`, create an
    SDN private network and an SDN router, and attach the router to the
    network.
@@ -98,16 +102,50 @@ attached to the private network **when it is created** (research R4).
    - public access **off**;
    - backup hour `02:00 UTC`.
 
-   Note the private hostname, port, user, password and database name. If a
-   CA certificate is offered, download it.
+   Note the hostname, port, user, password and database name from the
+   **Connection → Private** tab. The hostname is the same one the public tab
+   shows, and it works from the server even with public access off. The port is **not** 5432 (it was 11569). Download
+   the CA certificate: UpCloud signs the database certificate with a
+   per-project CA and enforces TLS, so production uses `verify-full`
+   (research R4).
 3. **Server.** Create a Starter `1xCPU-2GB` server, Ubuntu 24.04,
-   `fi-hel1`, with a second network interface on the SDN network. User
-   data: `deploy/cloud-init.yaml` with `<ADMIN_PUBKEY>` replaced by your
-   SSH public key and `<DEPLOY_PUBKEY>` by the deploy key's public key
-   (`ssh-keygen -t ed25519 -C gha-deploy -f gha-deploy`, no passphrase).
-4. **Firewall.** On the server's firewall: accept inbound `22/tcp`,
-   `80/tcp`, `443/tcp` and `443/udp`; add the explicit rules for return
-   traffic (UpCloud's rules are stateless); default policy drop (FR-011).
+   `fi-hel1`:
+   - storage: the plan's own **20 GB** disk, €6.00 in total. The console
+     may offer a 25 GB MaxIOPS disk instead, which adds €5.58 a month for
+     speed this server doesn't need (research R1, R10). Check the price
+     breakdown before creating;
+   - public IPv4 on, public IPv6 **off** (nothing uses it, and the firewall
+     below would need a second set of rules);
+   - the **existing** SDN network attached, IP by DHCP;
+   - login key: your own public key, never the deploy key;
+   - user data: `deploy/cloud-init.yaml` with `<ADMIN_PUBKEY>` replaced by
+     your whole SSH public key line and `<DEPLOY_PUBKEY>` by only the
+     base64 part of the deploy key's (`ssh-keygen -t ed25519 -C gha-deploy
+     -f gha-deploy -N ''`, then `cut -d' ' -f2 gha-deploy.pub`).
+
+   Wait for `ssh admin@<server-ip> 'cloud-init status --wait'` to print
+   `status: done` before the firewall and files.
+4. **Firewall.** UpCloud's rules are stateless, so replies to the server's
+   own outbound traffic (apt, image pulls, ACME, DNS) need inbound rules
+   too. Add these inbound IPv4 accept rules, set outbound to accept, and set
+   the inbound default to drop **last** (FR-011). Keep an SSH session open
+   and try a new one before closing it.
+
+   | Protocol | Source port | Destination port | For |
+   |---|---|---|---|
+   | TCP | | 22 | SSH |
+   | TCP | | 80 | HTTP → 308, ACME |
+   | TCP | | 443 | HTTPS |
+   | UDP | | 443 | HTTP/3 |
+   | UDP | 53 | | DNS replies |
+   | TCP | 53 | | DNS replies |
+   | UDP | 123 | | NTP replies |
+   | TCP | | 32768–60999 | replies to outbound connections |
+   | UDP | | 32768–60999 | replies to outbound connections |
+   | ICMP | | | ping, path MTU |
+
+   The database needs no rule of its own: its replies arrive on the
+   return-traffic ports.
 5. **Files.** From a checkout of `main`:
 
    ```sh
@@ -138,7 +176,11 @@ attached to the private network **when it is created** (research R4).
 
 6. **DNS and allow-lists.** At Cloudflare, add **grey-cloud** (DNS only) A
    records for `staging` and `api-staging` pointing at the server's public
-   IPv4. Add `https://staging.subscriptionstrack.com` to `CORS_ORIGINS`
+   IPv4. When moving the names from an older server, stop that server's
+   stack first (`docker compose stop`): Let's Encrypt may still resolve the
+   old address, fail validation there and make Caddy back off for minutes.
+   If that happens, `docker compose restart caddy` once DNS has moved
+   (Let's Encrypt allows 5 failed validations per hostname an hour). Add `https://staging.subscriptionstrack.com` to `CORS_ORIGINS`
    and `staging.subscriptionstrack.com` to `TURNSTILE_HOSTNAMES` (Azure's
    too, if Turnstile must pass there) and to the Turnstile widget's
    hostnames in Cloudflare.
