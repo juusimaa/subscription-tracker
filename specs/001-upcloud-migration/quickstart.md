@@ -92,5 +92,5 @@ Follow `deploy/README.md` § Cutover.
 | Cold start | No traffic for at least 2 hours (early morning), then a hard reload of `https://subscriptionstrack.com` and a sign-in, with the DevTools network tab open, from a European connection | page load under 2 s, sign-in under 1 s | SC-002 |
 | Deploy speed | merge a trivial PR | live within 15 minutes, no manual step | SC-004 |
 | Availability | UptimeRobot 30-day report | at least 99.5%, excluding the cutover window | SC-006 |
-| Cost | UpCloud billing after the first full month | €15.40 excl. VAT (€19.33 incl.) or less, under €25 | SC-007 |
+| Cost | UpCloud billing after the first full month | €20.98 excl. VAT (€26.33 incl.) or less, under €27 | SC-007 |
 | Decommission | after the 7-day soak, follow § Decommission; `git grep -i -E 'azurecontainerapps\|neon'` | Azure and Neon gone within 14 days; matches only in historical notes | SC-008, FR-021, FR-022 |

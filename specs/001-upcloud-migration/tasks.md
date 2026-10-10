@@ -113,8 +113,8 @@ server answering on the staging hostnames. Every story needs this.
 ### Provisioning (manual, after PR 1 merges)
 
 - [ ] T012 Open PR 1 once T001–T011 and the PR-1 tasks in Phases 3 and 4 are done; confirm `sqlite`, `postgres`, `visual` and the new `deploy-config` checks are green (FR-023), squash-merge
-- [ ] T013 (manual) Provision UpCloud per `deploy/README.md` § Provision with the staging hostnames. Record in `specs/001-upcloud-migration/research.md` under each "verify at provisioning" item: whether TLS is enforced on the database and whether a CA certificate is downloadable (decides `sslmode=verify-full` vs `require`, R4), `SHOW max_connections` (must be comfortably above 15, R2), and the billed prices seen in the console (R10)
-- [ ] T014 (manual) Start the stack on the staging hostnames with the current `main` tag. Confirm `https://staging.subscriptionstrack.com` and `https://api-staging.subscriptionstrack.com/health` answer with valid certificates and that `http://` redirects with `308` (FR-007, contracts/edge-http.md § Hosts and TLS)
+- [x] T013 (manual) Provision UpCloud per `deploy/README.md` § Provision with the staging hostnames. Record in `specs/001-upcloud-migration/research.md` under each "verify at provisioning" item: whether TLS is enforced on the database and whether a CA certificate is downloadable (decides `sslmode=verify-full` vs `require`, R4), `SHOW max_connections` (must be comfortably above 15, R2), and the billed prices seen in the console (R10)
+- [x] T014 (manual) Start the stack on the staging hostnames with the current `main` tag. Confirm `https://staging.subscriptionstrack.com` and `https://api-staging.subscriptionstrack.com/health` answer with valid certificates and that `http://` redirects with `308` (FR-007, contracts/edge-http.md § Hosts and TLS)
 
 **Checkpoint**: an empty-database copy of the app runs on UpCloud behind
 Caddy on the staging hostnames. User story work can start.
@@ -352,7 +352,7 @@ hostnames.
 **Purpose**: Measurements that need time in production, and final consistency.
 
 - [ ] T060 [P] (manual) Merge a trivial PR and time it from merge to live in production; must be ≤ 15 minutes with no manual step (SC-004). Record in `PLAN.md` Milestone 12
-- [ ] T061 [P] (manual) After 30 days, read UptimeRobot's availability report: ≥ 99.5% excluding the cutover window (SC-006). After the first full billing month, compare the UpCloud invoice with research R10 (€15.40 excl. VAT, under €25 incl. VAT) (SC-007, FR-020). Record both in `PLAN.md` Milestone 12
+- [ ] T061 [P] (manual) After 30 days, read UptimeRobot's availability report: ≥ 99.5% excluding the cutover window (SC-006). After the first full billing month, compare the UpCloud invoice with research R10 (€20.98 excl. VAT, under €27 incl. VAT) (SC-007, FR-020). Record both in `PLAN.md` Milestone 12
 - [ ] T062 Make `deploy-config` a required status check on `main` alongside `sqlite`, `postgres` and `visual` (branch protection), and mention it in `README.md` § 10 CI
 - [ ] T063 Re-read every new file under `deploy/` and the changed workflow jobs against constitution Principle I (header comment, a reason on every non-default setting) and fix gaps; run the whole of `specs/001-upcloud-migration/quickstart.md` §1 locally and confirm it passes
 - [ ] T064 Update `specs/001-upcloud-migration/research.md` "verify at provisioning" items with what was found (T013, T039) and mark `spec.md` **Status** as Implemented

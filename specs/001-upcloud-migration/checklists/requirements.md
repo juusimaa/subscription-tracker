@@ -36,7 +36,9 @@
   scope of the feature, not implementation choices. How the server is set up
   (Compose, reverse proxy, TLS tooling, deploy mechanism) is left to
   `/speckit-plan`.
-- FR-020 is resolved: the ceiling is €25 a month (answered 2026-10-09).
+- FR-020 is resolved: the ceiling is €25 a month (answered 2026-10-09),
+  raised to €27 including VAT after provisioning showed the real server
+  price (2026-10-10, research R10).
 - Pause/resume (User Story 5, FR-024–027, SC-009) was added at the
   maintainer's request. Stopping alone does not stop UpCloud billing, so a
   pause archives the data and deletes the resources.

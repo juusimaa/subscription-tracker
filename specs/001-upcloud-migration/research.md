@@ -8,8 +8,11 @@ checks each one.
 
 ## R1. Server plan
 
-- **Decision**: Starter `1xCPU-2GB`, €6/month (1 vCPU, 2 GB, 20 GB Standard
-  SSD, 0.5 TB fair-transfer egress), zone `fi-hel1`.
+- **Decision**: Starter `1xCPU-2GB`, €11.58/month (1 vCPU, 2 GB, 20 GB
+  Standard SSD, 0.5 TB fair-transfer egress), zone `fi-hel1`. Planned at
+  €6 from the pricing page; the console and the first hours billed showed
+  €11.58 (T013, 2026-10-10). It is the smallest Starter plan offered, so
+  the budget was raised instead (R10, FR-020).
 - **Rationale**:
   - UpCloud replaced its plans in 2026. The Developer and General Purpose
     server plans can no longer be deployed; the current families are
@@ -35,8 +38,8 @@ checks each one.
 - **Decision**: Managed PostgreSQL **16**, plan `rdb.development.1CPU-1GB`
   (€9/month), 10 GiB of storage at €0.04/GiB (€0.40), single node, `fi-hel1`.
 - **Rationale**:
-  - The Developer 1 GB plan is the only database tier that fits the budget
-    with VAT included (see R10).
+  - The Developer 1 GB plan is the smallest database tier and the only one
+    near the budget (see R10).
   - Data is under 0.5 GB, and the app uses one uvicorn process with a pool of
     5 connections plus 10 overflow.
   - Storage grows online in 10 GiB steps.
@@ -44,8 +47,8 @@ checks each one.
     Terraform provider's API schema, 2026-10-08). 16 is pinned at creation to
     match the test suite (constitution Principle III).
 - **Alternatives considered**:
-  - Developer 1CPU-2GB at €14.40 with 10 GiB. The total would be €25.60 with
-    VAT, over the ceiling.
+  - Developer 1CPU-2GB at €14.40 with 10 GiB. With the server's real price
+    the total would be about €32.60 with VAT, over the ceiling.
   - Legacy bundled `1x1xCPU-2GB-25GB`, about €30 according to a third party.
     Over budget.
   - Standard plans from about €60. Over budget.
@@ -305,20 +308,26 @@ checks each one.
 
 | Item | €/month excl. VAT |
 |---|---|
-| Starter 1xCPU-2GB server (includes IPv4, 0.5 TB egress) | 6.00 |
+| Starter 1xCPU-2GB server (includes IPv4, 0.5 TB egress) | 11.58 |
 | `rdb.development.1CPU-1GB` compute | 9.00 |
 | Database storage 10 GiB × €0.04 | 0.40 |
 | SDN network + router, firewall | 0.00 |
 | Egress beyond the allowance (throttled, never billed) | 0.00 |
 | Cloudflare Pages, UptimeRobot Free, Resend Free | 0.00 |
-| **Total** | **15.40** |
-| **Total with 25.5% Finnish VAT** | **19.33** |
+| **Total** | **20.98** |
+| **Total with 25.5% Finnish VAT** | **26.33** |
 
-- The total is under €25 including VAT, with €5.67 of headroom.
+- **Checked at provisioning (T013, 2026-10-10):** the console lists the
+  server at €11.58 and the database at €9.40 a month, and the first hours
+  billed match (server €0.27 for 15 h, database €0.23 for 18 h). The
+  server had been estimated at €6, which put the total at €19.33 with VAT.
+- At the real prices the total is €26.33 with VAT, over the original €25.
+  No smaller Starter plan exists, so the maintainer raised the ceiling to
+  €27 including VAT (2026-10-10, FR-020). Headroom is €0.67.
 - If the account is VAT-registered and reclaims VAT, the effective cost is
-  €15.40.
+  €20.98.
 - Database prices assume a 30-day month, while servers are capped at 28 days.
-  A 31-day month adds about €0.30.
+  A 31-day month adds about €0.30 (€0.39 with VAT), still under €27.
 
 ## R11. Moving the data from Neon
 

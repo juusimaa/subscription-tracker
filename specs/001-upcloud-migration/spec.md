@@ -147,7 +147,7 @@ visitors to `subscriptionstrack.com` see a short notice that the service is
 paused, not an error. Later the maintainer resumes the site and every account
 comes back exactly as it was.
 
-**Why this priority**: the move takes the bill from about €1 to up to €25 a
+**Why this priority**: the move takes the bill from about €1 to up to €27 a
 month. A clean way to stop that bill without losing user data keeps hosting
 cost from being a reason to shut the project down for good. The site must run
 before it can be paused, so this comes after the move itself.
@@ -284,7 +284,9 @@ archive.
   growth within the plan is specified separately in
   `specs/002-signup-account-cap`.
 - **FR-020**: The total monthly cost of the new hosting (server, database,
-  backups and outbound traffic) MUST stay within €25.
+  backups and outbound traffic) MUST stay within €27 including VAT. (Set
+  at €25 on 2026-10-09; raised on 2026-10-10 when provisioning showed the
+  smallest suitable server costs €11.58, not €6. See research R10.)
 
 **Decommissioning and documentation**
 
@@ -390,7 +392,7 @@ archive.
   later than that, such as data deleted by accident, cannot be undone from a
   backup. Each user can still keep their own JSON export. The maintainer
   accepted this to keep cost low (2026-10-09).
-- **Budget fit**: €25 a month must cover the 2 GB server and the smallest
+- **Budget fit**: €27 a month (originally €25) must cover the 2 GB server and the smallest
   managed PostgreSQL plan. A 1-node 2 GB database plan alone is listed at about
   €30 a month, so the plan has to pick the smallest database tier that is
   actually needed (around 1 GB). If that does not fit, the plan must say so

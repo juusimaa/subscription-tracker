@@ -70,7 +70,7 @@ retries.
 
 | State | DNS | Server | Database | Visitors see | Cost |
 |---|---|---|---|---|---|
-| live | A → server | running | running | the app | €15.40 + VAT |
+| live | A → server | running | running | the app | €20.98 + VAT |
 | maintenance | A → server | running, Caddy serves 503 | running | EN/FI maintenance page, `503` + `Retry-After` | same |
 | paused | Cloudflare Pages custom domain | **deleted** | **deleted** | EN/FI "paused" page | €0 |
 

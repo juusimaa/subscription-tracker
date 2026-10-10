@@ -36,8 +36,9 @@ archives the database and **deletes** the UpCloud resources, because UpCloud
 bills both servers and databases while they are stopped. A static Cloudflare
 Pages notice then stands in at no cost.
 
-**Cost:** €15.40/month excluding VAT, or €19.33 including 25.5% Finnish VAT,
-under the €25 ceiling (FR-020). Every other service is on a free tier.
+**Cost:** €20.98/month excluding VAT, or €26.33 including 25.5% Finnish VAT,
+under the €27 ceiling (FR-020, raised from €25 after provisioning; research
+R10). Every other service is on a free tier.
 
 ## Technical Context
 
@@ -82,7 +83,7 @@ under 1 s from Europe (SC-002). Nothing scales to zero, so this is met by
 design and checked in the quickstart.
 
 **Constraints**:
-- At most €25/month including VAT.
+- At most €27/month including VAT (raised from €25, research R10).
 - At most 30 minutes of planned downtime at cutover.
 - The database is never publicly reachable.
 - Inbound traffic only on 22 (key only), 80 and 443.
