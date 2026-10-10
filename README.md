@@ -25,7 +25,7 @@ at all.
 
 - **Backend:** FastAPI + SQLAlchemy (Python 3.13)
 - **Frontend:** React 19 (Vite)
-- **Database:** PostgreSQL 16
+- **Database:** PostgreSQL 18
 - **Auth:** JWT bearer tokens, bcrypt-hashed passwords
 - **Cache:** Redis 7, optional — the backend fails open without it
 - Four containers locally (`db`, `redis`, `backend`, `frontend`), orchestrated
@@ -63,8 +63,11 @@ at all.
    - Backend API docs: http://localhost:8000/docs
      (or the published reference: https://juusimaa.github.io/subscription-tracker)
 
-Data persists across restarts in a named Docker volume (`db_data`). To reset the
-database entirely:
+Data persists across restarts in a named Docker volume (`pg18_data`). Coming
+from a checkout that ran Postgres 16: the new image starts on an empty
+volume, and the old data stays in `db_data` until you remove it with
+`docker volume rm <project>_db_data` (`docker volume ls` shows the name).
+To reset the database entirely:
 
 ```
 docker compose down -v
@@ -124,8 +127,8 @@ Browser (localhost:5173)
    │  cached reads from the redis container (redis:6379)
    ▼
 ┌──────────────────────────────────────────────┐
-│ db container — PostgreSQL 16                 │
-│   volume db_data → survives `compose down`   │
+│ db container — PostgreSQL 18                 │
+│   volume pg18_data → survives `compose down` │
 └──────────────────────────────────────────────┘
 ```
 
@@ -149,12 +152,12 @@ most server applications end up with under different names:
 
 ### 1. PostgreSQL — [docker-compose.yml](docker-compose.yml)
 
-Runs from the official `postgres:16` image, pinned to a major version so a
+Runs from the official `postgres:18` image (what production runs), pinned to a major version so a
 rebuild can't silently land a breaking upgrade.
 
 Two Docker concepts do the real work here:
 
-- **The named volume `db_data`.** Container filesystems are ephemeral: without
+- **The named volume `pg18_data`.** Container filesystems are ephemeral: without
   this, every `docker compose down` would destroy the database. The volume maps
   Postgres's data directory to storage Docker manages outside the container, so
   it outlives the container and is only removed by an explicit `down -v`.
@@ -508,7 +511,7 @@ Four workflows:
 
 | Workflow | Runs on | Does |
 | --- | --- | --- |
-| [`test.yml`](.github/workflows/test.yml) | pushes to `main` and **pull requests** | The backend test suite, twice — against SQLite and against Postgres 16. Skips the work when `backend/` didn't change. |
+| [`test.yml`](.github/workflows/test.yml) | pushes to `main` and **pull requests** | The backend test suite, twice — against SQLite and against Postgres 18. Skips the work when `backend/` didn't change. |
 | [`frontend-visual.yml`](.github/workflows/frontend-visual.yml) | pushes to `main` and **pull requests** | Playwright screenshots of the frontend against fixture data, compared with the committed baselines. Skips the work when `frontend/` didn't change. |
 | [`build-and-push.yml`](.github/workflows/build-and-push.yml) | pushes to `main` | Builds both images, publishes them to GHCR, and deploys them to Azure |
 | [`docs.yml`](.github/workflows/docs.yml) | pushes to `main` touching `backend/**` or `docs/**` | Generates `openapi.json` from the app and publishes the [API reference](https://juusimaa.github.io/subscription-tracker) |

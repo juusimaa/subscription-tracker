@@ -46,10 +46,10 @@ a rule the next change can silently break.
 ### III. Test What Production Runs
 
 - The backend suite MUST pass against both SQLite (the zero-setup default) and
-  PostgreSQL 16 (what production runs). Postgres is the leg that decides
+  PostgreSQL 18 (what production runs). Postgres is the leg that decides
   correctness; SQLite is kept green so the zero-setup path does not rot.
 - Tests MUST run on the interpreter and major versions the app ships with
-  (Python 3.13, Postgres 16) as declared in the Dockerfiles and Compose file.
+  (Python 3.13, Postgres 18) as declared in the Dockerfiles and Compose file.
 - Database-specific behavior (e.g. `Numeric` returned as `Decimal` vs `float`)
   MUST be handled in code and covered by a test, never papered over in a test.
 - User-visible frontend changes MUST be covered by the Playwright visual
@@ -148,4 +148,4 @@ A PR is mergeable only when all of the following hold:
 - Runtime development guidance lives in `README.md` and the comments it points
   to; the constitution states the rules, those explain the mechanics.
 
-**Version**: 1.0.0 | **Ratified**: 2026-10-09 | **Last Amended**: 2026-10-09
+**Version**: 1.0.1 | **Ratified**: 2026-10-09 | **Last Amended**: 2026-10-10

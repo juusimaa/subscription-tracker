@@ -56,12 +56,12 @@ jobs:
     name: ${{ matrix.database }}
 
     # Started for both legs -- a service cannot be declared per matrix leg --
-    # and simply ignored by the SQLite one. postgres:16 matches
-    # docker-compose.yml, so CI is not testing against a different major
-    # version than local development uses.
+    # and simply ignored by the SQLite one. postgres:18 matches
+    # docker-compose.yml and production, so CI tests the major version that
+    # local development and the live database run (Principle III).
     services:
       postgres:
-        image: postgres:16
+        image: postgres:18
         env:
           POSTGRES_PASSWORD: postgres
           # Created by the service itself, so no psql step is needed to make
