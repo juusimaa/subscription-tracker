@@ -220,8 +220,11 @@ archive.
   tokens) MUST be moved to the UpCloud-managed PostgreSQL database with nothing
   lost or altered.
 - **FR-002**: The new database MUST run the same PostgreSQL major version that
-  the test suite runs against (16), as the constitution's Principle III
-  requires.
+  the test suite runs against (18), as the constitution's Principle III
+  requires. (Was 16; changed on 2026-10-10 when the rehearsal found Neon on
+  18.6. Postgres doesn't support restoring into an older major version, so
+  the new database, CI and local development all moved to 18. See research
+  R2.)
 - **FR-003**: The data copy MUST be checked before traffic switches: per-table
   row counts and a sample of per-user totals MUST match between the old and new
   databases.
