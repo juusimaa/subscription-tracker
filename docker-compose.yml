@@ -7,9 +7,10 @@
 
 services:
   db:
-    # Official Postgres image, pinned to major version 16 (not just
+    # Official Postgres image, pinned to major version 18 (not just
     # "latest") so rebuilds don't silently pick up a breaking major upgrade.
-    image: postgres:16
+    # 18 is what production runs (constitution Principle III).
+    image: postgres:18
     # Restarts the container automatically if it crashes or Docker restarts,
     # but not after a manual `docker compose stop`.
     restart: unless-stopped
@@ -21,7 +22,12 @@ services:
       # container's writable layer, in storage Docker manages. Without this,
       # every `docker compose down` would wipe the database, since container
       # filesystems are ephemeral by default.
-      - db_data:/var/lib/postgresql/data
+      #
+      # Mounted at /var/lib/postgresql, not .../data: from 18 the image keeps
+      # its data in a versioned subdirectory (18/docker) and refuses to start
+      # on the old layout. The volume is new for 18 for the same reason; the
+      # old 16 one, `db_data`, is left alone (see the README to remove it).
+      - pg18_data:/var/lib/postgresql
     ports:
       # host_port:container_port. Only needed so tools on your Mac (e.g. a
       # GUI DB client) can reach Postgres directly -- the backend container
@@ -171,4 +177,4 @@ volumes:
   # Declaring the volume here (with no config) lets Docker manage its
   # storage location; it persists until explicitly removed with
   # `docker compose down -v`.
-  db_data:
+  pg18_data:
