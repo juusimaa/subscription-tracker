@@ -51,12 +51,45 @@ DATABASE_URL = os.getenv(
 # SingletonThreadPool instead, which doesn't accept them -- that combination
 # is only used by the docs workflow to import the app without a real
 # database, so skip the QueuePool-only options there.
-url = make_url(DATABASE_URL)
-engine_kwargs = {"pool_pre_ping": True}
-if not (url.get_backend_name() == "sqlite" and not url.database):
-    engine_kwargs.update(pool_size=5, max_overflow=10, pool_timeout=30, pool_recycle=1800)
+#
+# The connect_args bound how long a database that has stopped *answering*
+# can hold a request (found in the UpCloud rehearsal, T024). A refused
+# connection fails at once; a silent one -- packets dropped, a host gone
+# mid-failover -- otherwise waits on the kernel: a new connection on the TCP
+# handshake, and pre_ping on a pooled connection on retransmissions, which
+# Linux keeps up for about 15 minutes. /health then hung instead of
+# answering 503. Neon never showed this because it closes connections
+# cleanly on suspend.
+#   - connect_timeout: seconds allowed for opening a connection (libpq's
+#     minimum is 2).
+#   - tcp_user_timeout: milliseconds sent data may go unacknowledged before
+#     the connection is dropped, so a dead pooled connection fails pre_ping
+#     quickly. Linux-only in libpq; elsewhere it is ignored.
+#   - keepalives_*: probe idle pooled connections, so one to a vanished
+#     server is found dead before a request picks it.
+# 5 seconds matches the backend's healthcheck timeout in compose.prod.yml.
+DB_TIMEOUT_SECONDS = 5
 
-engine = create_engine(DATABASE_URL, **engine_kwargs)
+
+def engine_options(database_url):
+    """Keyword arguments for create_engine, given the database URL."""
+    url = make_url(database_url)
+    options = {"pool_pre_ping": True}
+    if not (url.get_backend_name() == "sqlite" and not url.database):
+        options.update(pool_size=5, max_overflow=10, pool_timeout=30, pool_recycle=1800)
+    if url.get_backend_name() == "postgresql":
+        options["connect_args"] = {
+            "connect_timeout": DB_TIMEOUT_SECONDS,
+            "tcp_user_timeout": DB_TIMEOUT_SECONDS * 1000,
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 3,
+        }
+    return options
+
+
+engine = create_engine(DATABASE_URL, **engine_options(DATABASE_URL))
 # Each call to SessionLocal() gives a new "conversation" with the database.
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # All ORM models (see models.py) inherit from this so SQLAlchemy knows about them.

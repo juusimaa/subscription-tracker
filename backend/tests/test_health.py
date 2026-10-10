@@ -2,11 +2,15 @@
 # the interesting case: a healthcheck that cannot go red is decoration.
 
 import logging
+import socket
+import time
 
 import pytest
+from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import sessionmaker
 
-from app.database import get_db
+from app.database import DB_TIMEOUT_SECONDS, engine_options, get_db
 from app.main import app
 
 
@@ -35,7 +39,55 @@ def unreachable_database():
     app.dependency_overrides.pop(get_db)
 
 
+@pytest.fixture
+def silent_database():
+    """Points the route at a Postgres server that accepts TCP and never speaks.
+
+    The listening socket is never accept()ed: the kernel completes the
+    handshake from the backlog, so libpq connects and then waits for a
+    startup reply that never comes -- a database that has stopped answering
+    rather than one that refuses. Built with the production engine options,
+    so the test proves those options bound the wait.
+    """
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(8)
+    port = listener.getsockname()[1]
+    url = f"postgresql+psycopg://app:pw@127.0.0.1:{port}/app"
+    engine = create_engine(url, **engine_options(url))
+    Session = sessionmaker(bind=engine)
+    app.dependency_overrides[get_db] = lambda: Session()
+    yield
+    app.dependency_overrides.pop(get_db)
+    engine.dispose()
+    listener.close()
+
+
 class TestHealth:
+    def test_a_silent_database_gets_503_within_the_timeout_not_a_hang(
+        self, client, silent_database
+    ):
+        # Regression from the UpCloud rehearsal (T024): with no connect
+        # timeout, /health waited on the network for minutes instead of
+        # answering, so neither Caddy nor a monitor got a 503.
+        started = time.monotonic()
+        response = client.get("/health")
+        elapsed = time.monotonic() - started
+        assert response.status_code == 503
+        assert elapsed < DB_TIMEOUT_SECONDS + 3
+
+    def test_postgres_connections_drop_dead_peers_quickly(self):
+        # The pooled-connection half of the same outage can't be staged
+        # portably (it needs packets dropped mid-connection), so pin the
+        # option that bounds it: unacknowledged data fails the connection in
+        # DB_TIMEOUT_SECONDS rather than after ~15 minutes of retransmits.
+        args = engine_options("postgresql+psycopg://u:p@db/app")["connect_args"]
+        assert args["tcp_user_timeout"] == DB_TIMEOUT_SECONDS * 1000
+        assert args["keepalives"] == 1
+
+    def test_sqlite_gets_no_postgres_only_options(self):
+        assert "connect_args" not in engine_options("sqlite:///./test.db")
+
     def test_reports_ok_when_the_database_answers(self, client):
         response = client.get("/health")
         assert response.status_code == 200
