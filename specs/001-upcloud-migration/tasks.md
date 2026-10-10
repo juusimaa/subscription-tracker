@@ -236,7 +236,7 @@ downtime alert.
 
 ### Verification on staging (manual)
 
-- [ ] T035 [US3] (manual) `nmap -Pn -p 1-10000 <server-ip>` shows only 22, 80 and 443 open; `ssh -i <deploy key> deploy@<ip> id` exits 64 with no shell; password SSH for `admin` is refused (FR-011, FR-016; quickstart §2 step 5)
+- [x] T035 [US3] (manual) `nmap -Pn -p 1-10000 <server-ip>` shows only 22, 80 and 443 open; `ssh -i <deploy key> deploy@<ip> id` exits 64 with no shell; password SSH for `admin` is refused (FR-011, FR-016; quickstart §2 step 5)
 - [ ] T036 [US3] (manual) `sudo reboot`; the site must be back with no manual step within 3 minutes. Then check `/etc/docker/daemon.json` log caps are in effect and `systemctl list-timers` shows `image-prune` and the three `ops-check` timers (FR-012; quickstart §2 step 6)
 - [ ] T037 [US3] (manual) Deploy a deliberately broken tag (a throwaway branch build whose `/health` returns 503, invoked over the deploy key by hand). Expected: exit 1, the previous version keeps serving (FR-015, US3 scenario 2; quickstart §2 step 7)
 - [ ] T038 [US3] (manual) Restore drill per § Restore into a scratch service; time it; row counts must match; delete the scratch service afterwards. Record the duration in the PR or `deploy/README.md` (FR-017, FR-018, SC-005; quickstart §2 step 8). **Precondition for the cutover (T044)**
