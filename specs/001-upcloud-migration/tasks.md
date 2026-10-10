@@ -232,7 +232,7 @@ downtime alert.
   - `permissions: contents: read` only;
   - steps: compute `sha-${GITHUB_SHA::7}` exactly as the Azure job does; write `secrets.UPCLOUD_DEPLOY_SSH_KEY` to a `0600` temp file and `secrets.UPCLOUD_KNOWN_HOSTS` to a known-hosts file; `ssh -i <key> -o UserKnownHostsFile=<file> -o StrictHostKeyChecking=yes deploy@${{ secrets.UPCLOUD_DEPLOY_HOST }} "$TAG"`; a non-zero exit fails the job
 - [x] T033 [US3] (manual) Generate the deploy key pair (ed25519, comment `gha-deploy`), install the public key in `deploy`'s `authorized_keys` with the `restrict,command=…` prefix, run `ssh-keyscan` on the server's public IP and check the fingerprint against the console, then set repository secrets `UPCLOUD_DEPLOY_SSH_KEY`, `UPCLOUD_DEPLOY_HOST`, `UPCLOUD_KNOWN_HOSTS` and variable `UPCLOUD_DEPLOY_ENABLED=true` (`GH_TOKEN` for the `juusimaa` account if `gh` needs it)
-- [ ] T034 [US3] Open and merge PR 2 (T032). Expected: the next `main` build's `deploy-upcloud` job is green and staging serves the new tag (FR-015; quickstart §2 step 1)
+- [x] T034 [US3] Open and merge PR 2 (T032). Expected: the next `main` build's `deploy-upcloud` job is green and staging serves the new tag (FR-015; quickstart §2 step 1)
 
 ### Verification on staging (manual)
 
