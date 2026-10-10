@@ -7,7 +7,7 @@
 ## Summary
 
 Production moves off Azure Container Apps and Neon. It goes to one always-on
-UpCloud **Starter 1xCPU-2GB** server and an UpCloud-managed **PostgreSQL 16**
+UpCloud **Starter 1xCPU-2GB** server and an UpCloud-managed **PostgreSQL 18**
 database on the **Developer 1 CPU / 1 GB** plan with 10 GiB of storage, both in
 `fi-hel1`. The two talk over a private SDN network, and the database has no
 public access.
@@ -51,16 +51,16 @@ frontend unchanged.
 - Caddy `2.11.7`, a new runtime component that replaces Azure's ingress.
 - `age`, on the maintainer's machine only, to encrypt the pause archive's
   second copy.
-- `postgres:16` image for `pg_dump`/`psql`, so the host needs no client
+- `postgres:18` image for `pg_dump`/`psql`, so the host needs no client
   package and the version always matches.
 - External, all free: UptimeRobot and Cloudflare Pages.
 - Unchanged: Resend and Turnstile.
 
-**Storage**: UpCloud Managed PostgreSQL 16, `rdb.development.1CPU-1GB`, 10 GiB,
+**Storage**: UpCloud Managed PostgreSQL 18, `rdb.development.1CPU-1GB`, 10 GiB,
 single node, 3-day PITR. No app schema change.
 
 **Testing**:
-- Existing `pytest` (SQLite and Postgres 16 legs) and the Playwright visual
+- Existing `pytest` (SQLite and Postgres 18 legs) and the Playwright visual
   suite, unchanged.
 - New `deploy-config` CI job:
   - `docker compose config` on the production Compose file;
@@ -103,7 +103,7 @@ design and checked in the quickstart.
 |---|---|---|
 | I. Code is written to be read | Every new file (Compose, Caddyfile, cloud-init, scripts, workflow job) opens with a purpose comment, and every non-default setting carries its reason. The README's deploy, environment and architecture sections move to UpCloud in the PR that makes it production. Stale Neon and Azure comments are fixed, e.g. `backend/app/database.py`'s pool comment and `.env.example`'s `TRUST_FORWARDED_FOR` note. | ✅ planned |
 | II. Every rule has a test | New behavior gets tests: `ops-check` thresholds and dedupe, the deploy argument guard, the edge's XFF overwrite and the maintenance 503. Behavior that can only exist on real infrastructure is verified by the rehearsal and quickstart, and the PR says so. That covers TLS issuance, the private network, UpCloud backups, reboot recovery and DNS cutover. Tests stay offline and deterministic: Resend and UpCloud are replaced by fakes in `deploy/tests`. | ✅ planned |
-| III. Test what production runs | Production stays on Postgres 16 (UpCloud offers 15–18, and 16 is pinned at creation) and Python 3.13 images. The edge test runs the real Caddy version that production pins. | ✅ |
+| III. Test what production runs | Production runs Postgres 18, the same major as Neon and the test suite (UpCloud offers 15–18; moved from 16 on 2026-10-10, research R2) and Python 3.13 images. The edge test runs the real Caddy version that production pins. | ✅ |
 | IV. One source of truth per contract | No schema or API change. The HTTP contract is unchanged, and the XFF guarantee the rate limits depend on is now asserted by a test of the proxy. The production environment variables are documented once, in [contracts/server-env.md](contracts/server-env.md) and the README table. | ✅ |
 | V. Simplicity and a small surface | No Redis in production (FR-014: there is no current need, and the cache fails open). One server, one Compose file and no orchestration layer. Additions are justified in Complexity Tracking: Caddy and the `ops-check` script. No new backend or frontend dependency. | ✅ with justifications below |
 | Quality gates | `sqlite`, `postgres` and `visual` keep reporting on every PR (FR-023). The new `deploy-config` job runs on every push with no `paths:` filter, so it can be made required. | ✅ |

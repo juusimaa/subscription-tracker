@@ -95,7 +95,9 @@ zone.
    SDN private network and an SDN router, and attach the router to the
    network.
 2. **Database.** Create Managed PostgreSQL:
-   - version **16** (what the test suite runs, Principle III);
+   - version **18**: the same major as Neon, so the copy is a supported
+     same-version dump and restore, and what the test suite runs (FR-002,
+     Principle III);
    - plan `rdb.development.1CPU-1GB`, **10 GiB** storage, 1 node, `fi-hel1`;
    - attached to the SDN network **at creation**, since attaching later
      rebuilds the database;
@@ -359,11 +361,11 @@ file in `postgresql://` form):
 ```sh
 export NEON_URL='postgresql://…?sslmode=require' UPCLOUD_URL='postgresql://…'
 cd /tmp
-docker run --rm -e NEON_URL -v "$PWD:/work" postgres:16 \
+docker run --rm -e NEON_URL -v "$PWD:/work" postgres:18 \
   sh -c 'pg_dump -Fc --no-owner --no-privileges -f /work/neon.dump "$NEON_URL"'
-docker run --rm -e UPCLOUD_URL -v /etc/subscription-tracker:/etc/subscription-tracker:ro postgres:16 \
+docker run --rm -e UPCLOUD_URL -v /etc/subscription-tracker:/etc/subscription-tracker:ro postgres:18 \
   sh -c 'psql "$UPCLOUD_URL" -v ON_ERROR_STOP=1 -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"'
-docker run --rm -e UPCLOUD_URL -v "$PWD:/work" -v /etc/subscription-tracker:/etc/subscription-tracker:ro postgres:16 \
+docker run --rm -e UPCLOUD_URL -v "$PWD:/work" -v /etc/subscription-tracker:/etc/subscription-tracker:ro postgres:18 \
   sh -c 'pg_restore --no-owner --no-privileges --exit-on-error -d "$UPCLOUD_URL" /work/neon.dump && psql "$UPCLOUD_URL" -c ANALYZE'
 OLD_DATABASE_URL="$NEON_URL" NEW_DATABASE_URL="$UPCLOUD_URL" /opt/subscription-tracker/bin/verify-copy.sh
 ```

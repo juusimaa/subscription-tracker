@@ -9,7 +9,7 @@
 # show in `ps`, and they are never printed. Either SQLAlchemy's
 # postgresql+psycopg:// form (as in the env file) or plain postgresql://.
 #
-# psql runs from the postgres:16 image, so the server needs no client
+# psql runs from the postgres:18 image, so the server needs no client
 # package and the client matches the server's major version.
 #
 # No automated test: it needs two live PostgreSQL servers. The staging
@@ -33,11 +33,11 @@ fingerprint() {
     PSQL_URL=$(printf '%s' "$1" | sed 's#^postgresql+[a-z0-9]*://#postgresql://#')
     export PSQL_URL
     if [ -d "$config_dir" ]; then
-        docker run --rm -i -e PSQL_URL -v "$config_dir:$config_dir:ro" postgres:16 \
+        docker run --rm -i -e PSQL_URL -v "$config_dir:$config_dir:ro" postgres:18 \
             sh -c 'exec psql "$PSQL_URL" -X -q -A -t -F "|" -v ON_ERROR_STOP=1 -f -' \
             < "$here/verify-copy.sql"
     else
-        docker run --rm -i -e PSQL_URL postgres:16 \
+        docker run --rm -i -e PSQL_URL postgres:18 \
             sh -c 'exec psql "$PSQL_URL" -X -q -A -t -F "|" -v ON_ERROR_STOP=1 -f -' \
             < "$here/verify-copy.sql"
     fi
