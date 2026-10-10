@@ -10,6 +10,11 @@ checks each one.
 
 - **Decision**: Starter `1xCPU-2GB`, €6/month (1 vCPU, 2 GB, 20 GB Standard
   SSD, 0.5 TB fair-transfer egress), zone `fi-hel1`.
+  **Found (T013, 2026-10-10):** the plan is €6.00, but the console may
+  attach a 25 GB MaxIOPS disk (+€5.58, €11.58 in total) instead of the
+  plan's own 20 GB disk. The first server got one; it was rebuilt on the
+  20 GB disk (€6.00). 20 GB holds the stack with room to spare: 3.2 GB used
+  after first start.
 - **Rationale**:
   - UpCloud replaced its plans in 2026. The Developer and General Purpose
     server plans can no longer be deployed; the current families are
@@ -315,6 +320,10 @@ checks each one.
 | **Total with 25.5% Finnish VAT** | **19.33** |
 
 - The total is under €25 including VAT, with €5.67 of headroom.
+- **Checked at provisioning (T013, 2026-10-10):** the console lists the
+  database at €9.40 a month, and the first 18 hours billed €0.23. The
+  server is €6.00 on the plan's own disk (see R1 for the MaxIOPS trap that
+  nearly doubles it).
 - If the account is VAT-registered and reclaims VAT, the effective cost is
   €15.40.
 - Database prices assume a 30-day month, while servers are capped at 28 days.
