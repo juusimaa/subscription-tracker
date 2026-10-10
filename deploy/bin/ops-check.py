@@ -288,7 +288,7 @@ def libpq_url(url):
 
 
 def real_psql(url, sql):
-    # psql from the same postgres:16 image the runbooks use, so the host
+    # psql from the same postgres:18 image the runbooks use, so the host
     # needs no client package. The URL travels as an environment variable,
     # never as an argument, so it doesn't show in `ps`. The config directory
     # is mounted for sslrootcert=/etc/subscription-tracker/upcloud-ca.pem.
@@ -296,7 +296,7 @@ def real_psql(url, sql):
         [
             "docker", "run", "--rm", "-e", "PSQL_URL",
             "-v", "/etc/subscription-tracker:/etc/subscription-tracker:ro",
-            "postgres:16", "sh", "-c", 'exec psql "$PSQL_URL" -tAc "$0"', sql,
+            "postgres:18", "sh", "-c", 'exec psql "$PSQL_URL" -tAc "$0"', sql,
         ],
         env={**os.environ, "PSQL_URL": url},
         capture_output=True, text=True, timeout=60, check=True,

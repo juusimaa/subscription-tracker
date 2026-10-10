@@ -11,7 +11,7 @@ runbooks); this file says **what to run and what you should see**.
 - Cloudflare access for DNS and Pages.
 - An `age` key pair on your machine, used only for the pause archive.
 - An SSH admin key, plus a separately generated deploy key.
-- `docker` locally, for the throwaway Postgres 16 used to check archives.
+- `docker` locally, for the throwaway Postgres 18 used to check archives.
 
 ## 1. CI checks, offline (every PR)
 

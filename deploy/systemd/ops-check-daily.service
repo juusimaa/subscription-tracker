@@ -10,7 +10,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 # deploy, not root: it needs only the docker group (for psql in a
-# postgres:16 container) and read access to the root:deploy env file.
+# postgres:18 container) and read access to the root:deploy env file.
 User=deploy
 Group=deploy
 ExecStart=/usr/bin/python3 /opt/subscription-tracker/bin/ops-check.py daily

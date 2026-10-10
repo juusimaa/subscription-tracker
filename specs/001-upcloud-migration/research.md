@@ -37,7 +37,7 @@ checks each one.
 
 ## R2. Database plan and version
 
-- **Decision**: Managed PostgreSQL **16**, plan `rdb.development.1CPU-1GB`
+- **Decision**: Managed PostgreSQL **18**, plan `rdb.development.1CPU-1GB`
   (€9/month), 10 GiB of storage at €0.04/GiB (€0.40), single node, `fi-hel1`.
 - **Rationale**:
   - The Developer 1 GB plan is the only database tier that fits the budget
@@ -46,8 +46,14 @@ checks each one.
     5 connections plus 10 overflow.
   - Storage grows online in 10 GiB steps.
   - PostgreSQL versions 15, 16, 17 and 18 are offered (from the UpCloud
-    Terraform provider's API schema, 2026-10-08). 16 is pinned at creation to
-    match the test suite (constitution Principle III).
+    Terraform provider's API schema, 2026-10-08).
+  - **Changed from 16 to 18 (T021, 2026-10-10):** the rehearsal found Neon
+    on PostgreSQL 18.6. `pg_dump` 16 can't read an 18 server, and Postgres
+    doesn't support restoring a newer major's dump into an older server
+    (18's dumps carry settings such as `transaction_timeout` that 16
+    rejects). Production had in effect run on 18 all along while CI tested
+    16. The UpCloud database was recreated on 18 while still empty, and CI
+    and local development follow (constitution Principle III).
 - **Alternatives considered**:
   - Developer 1CPU-2GB at €14.40 with 10 GiB. The total would be €25.60 with
     VAT, over the ceiling.
@@ -280,7 +286,7 @@ checks each one.
        machine. A second copy, encrypted with `age`, goes to personal storage
        outside UpCloud (FR-027), e.g. a cloud drive.
     3. Verify the archive's row counts by restoring it into a throwaway local
-       Postgres 16.
+       Postgres 18.
     4. Delete the database, the server, its storage and the SDN
        network/router.
     5. Point both hostnames at a **Cloudflare Pages** project serving
@@ -332,7 +338,7 @@ checks each one.
 ## R11. Moving the data from Neon
 
 - **Decision**: run both `pg_dump` and `pg_restore` from the new server,
-  using the `postgres:16` image.
+  using the `postgres:18` image.
   - **Dump:** custom format with `--no-owner --no-privileges`, over Neon's
     **unpooled** endpoint with `sslmode=require`.
   - **Restore:** over the private network, with
@@ -352,7 +358,7 @@ checks each one.
   - The data is a few MB, so the copy takes seconds.
 - Sources: https://neon.com/docs/import/migrate-from-neon,
   https://neon.com/docs/manage/backup-pg-dump,
-  https://www.postgresql.org/docs/16/app-pgrestore.html
+  https://www.postgresql.org/docs/18/app-pgrestore.html
 
 ## R12. Cutover sequence
 

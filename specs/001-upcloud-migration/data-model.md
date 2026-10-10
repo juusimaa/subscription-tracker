@@ -22,7 +22,7 @@ state changes.
 
 | Field | Value / rule |
 |---|---|
-| Plan | `rdb.development.1CPU-1GB`, 10 GiB, 1 node, PostgreSQL **16** |
+| Plan | `rdb.development.1CPU-1GB`, 10 GiB, 1 node, PostgreSQL **18** |
 | Network | attached to the SDN network at creation; `public_access = false` |
 | Connection | private hostname; `sslmode=verify-full` with UpCloud's CA, or `require` (R4) |
 | Backups | provider only: daily full + WAL every 5 min, 3-day PITR, backup hour 02:00 UTC. A restore creates a new database service (research R3). |
