@@ -298,3 +298,44 @@ def test_psql_url_drops_the_sqlalchemy_driver_suffix():
         ops_check.libpq_url("postgresql+psycopg://u:p@h:5432/d?sslmode=require")
         == "postgresql://u:p@h:5432/d?sslmode=require"
     )
+
+
+def test_resend_request_does_not_use_urllibs_default_user_agent(fakes, monkeypatch):
+    """Cloudflare in front of Resend answers 403 to "Python-urllib/3.x", so the
+    first real alert (T040 drill, 2026-10-11) never left the server."""
+    seen = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def fake_urlopen(request, timeout):
+        seen.append(request)
+        return Response()
+
+    monkeypatch.setattr(ops_check.urllib.request, "urlopen", fake_urlopen)
+    ops_check.make_sender(fakes.config)("subject", "body")
+    agent = seen[0].get_header("User-agent")
+    assert agent and not agent.startswith("Python-urllib")
+
+
+def test_a_rejected_send_reports_resends_status_and_message(fakes, monkeypatch):
+    """A bare "HTTPError" in the journal hid the 403 above; the status and
+    Resend's error text must reach the log, and the key must not."""
+    import io
+    import urllib.error
+
+    def fake_urlopen(request, timeout):
+        raise urllib.error.HTTPError(
+            request.full_url, 403, "Forbidden", {}, io.BytesIO(b'{"message":"domain not verified"}')
+        )
+
+    monkeypatch.setattr(ops_check.urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(RuntimeError) as raised:
+        ops_check.make_sender(fakes.config)("subject", "body")
+    assert "403" in str(raised.value)
+    assert "domain not verified" in str(raised.value)
+    assert fakes.config["RESEND_API_KEY"] not in str(raised.value)

@@ -30,6 +30,7 @@ import ssl
 import subprocess
 import sys
 import tempfile
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -38,6 +39,7 @@ from typing import Callable
 
 ENV_FILE = Path("/etc/subscription-tracker/.env")
 STATE_FILE = Path("/var/lib/subscription-tracker/ops-state.json")
+USER_AGENT = "subscriptionstrack-ops-check/1"
 
 # "Over 80%" in contracts/ops-alerts.md. Compared as integers
 # (used * 100 > total * 80) so float rounding never decides the boundary.
@@ -208,7 +210,7 @@ def transition(result, state, deps):
     try:
         deps.send_email(subject, body)
     except Exception as exc:  # noqa: BLE001 - any failure means "retry next run"
-        print(f"ops-check: could not send {word} {result.check}: {type(exc).__name__}", file=sys.stderr)
+        print(f"ops-check: could not send {word} {result.check}: {type(exc).__name__}: {exc}", file=sys.stderr)
         return False
     entry.update(firing=result.firing, since=now, detail=result.detail)
     return True
@@ -320,12 +322,24 @@ def make_sender(config):
             data=json.dumps(
                 {"from": config["EMAIL_FROM"], "to": [config["ALERT_EMAIL"]], "subject": subject, "text": body}
             ).encode(),
-            headers={"Authorization": f"Bearer {config['RESEND_API_KEY']}", "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {config['RESEND_API_KEY']}",
+                "Content-Type": "application/json",
+                # Cloudflare in front of Resend answers 403 to urllib's default
+                # "Python-urllib/3.x" agent before the key is even checked.
+                "User-Agent": USER_AGENT,
+            },
             method="POST",
         )
         # urlopen raises on any non-2xx, which is what marks the send failed.
-        with urllib.request.urlopen(request, timeout=15):
-            pass
+        # The status and Resend's error message go into the exception so the
+        # journal says why; neither contains the key.
+        try:
+            with urllib.request.urlopen(request, timeout=15):
+                pass
+        except urllib.error.HTTPError as exc:
+            reason = exc.read(300).decode("utf-8", "replace").strip()
+            raise RuntimeError(f"Resend answered {exc.code}: {reason}") from exc
 
     return send
 
