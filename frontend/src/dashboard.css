@@ -19,8 +19,7 @@
 
 body { text-wrap: pretty; }
 
-/* — beta tag & footer — */
-.nav-beta-tag { vertical-align: middle; }
+/* — footer — */
 
 .app-footer {
   display: flex;
@@ -41,6 +40,10 @@ body { text-wrap: pretty; }
   text-decoration: none;
 }
 .app-footer-link:hover { color: var(--color-text); }
+.app-footer-note {
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+  font-size: 13px;
+}
 
 /* Every figure on the page is tabular: columns of money that shift width as
    the digits change read as noise. */

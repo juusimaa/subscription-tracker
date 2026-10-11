@@ -8,7 +8,6 @@ const plural = (n, one, other) => (n === 1 ? one : other);
 export default {
   en: {
     "app.brand": "Subscriptions",
-    "app.beta": "Beta",
     "app.navOverview": "Overview",
     "app.navAll": "All subscriptions",
     "app.accountLabel": ({ email }) => `Account — ${email}`,
@@ -25,6 +24,7 @@ export default {
     "app.sessionAfter": "to keep editing. 401 from the server.",
     "app.github": "View on GitHub",
     "app.buyMeACoffee": "Buy me a coffee",
+    "app.dataInEu": "Your data is stored in the EU (Helsinki, Finland)",
 
     "login.eyebrowExpired": "Session expired",
     "login.eyebrowRegister": "Create an account",
@@ -136,7 +136,6 @@ export default {
 
   fi: {
     "app.brand": "Tilaukset",
-    "app.beta": "Beta",
     "app.navOverview": "Yleiskatsaus",
     "app.navAll": "Kaikki tilaukset",
     "app.accountLabel": ({ email }) => `Tili — ${email}`,
@@ -152,6 +151,7 @@ export default {
     "app.sessionAfter": "jatkaaksesi muokkaamista. Palvelin vastasi 401.",
     "app.github": "Näytä GitHubissa",
     "app.buyMeACoffee": "Tarjoa minulle kahvi",
+    "app.dataInEu": "Tietosi tallennetaan EU:n alueelle (Helsinki)",
 
     "login.eyebrowExpired": "Istunto vanheni",
     "login.eyebrowRegister": "Luo tili",

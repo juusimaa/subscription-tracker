@@ -19,8 +19,8 @@ strangers arriving with no context.
 
 ## Product Purpose
 
-Subscription Tracker (live at subscriptionstrack.com, currently labelled Beta)
-lets a person record their subscriptions and see three things clearly:
+Subscription Tracker (live at subscriptionstrack.com) lets a person record
+their subscriptions and see three things clearly:
 
 1. **What they spend**: the monthly or annual total, split by category, with a
    trend over time.

@@ -363,8 +363,8 @@ names the view the page is showing.
 ### Tags
 Square, 12px text, 2px by 8px padding. **Trial** is Signal Red Wash with Signal
 Red Ink text. **Active** is neutral wash with neutral ink. **Outline** has a
-1px Stroke border with Ink text and is used for "Beta", "Paused", "Cancelled"
-and "Archived".
+1px Stroke border with Ink text and is used for "Paused", "Cancelled" and
+"Archived".
 
 ### Inputs / Fields
 - **Style:** Paper Raised fill, 1px Rule stroke, square, 36px minimum height
@@ -380,7 +380,7 @@ and "Archived".
 
 ### Navigation
 A sticky header on Paper with a 2px bottom rule. On the left is the brand
-("Subscriptions", Archivo 800) with an outline "Beta" tag. On the right are the
+("Subscriptions", Archivo 800). On the right are the
 text nav links (Ink, with the current page underlined at 2px), the account email (tabular,
 Ink at 68%) and a secondary "Log out" button. On mobile the email becomes a
 32px square avatar showing the initial.
