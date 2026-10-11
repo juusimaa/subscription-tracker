@@ -286,12 +286,16 @@ loss of the UpCloud account, is not recoverable (plan.md § Spec changes).
 
    ```sh
    docker run --rm -e DATABASE_URL='<restored URL>' \
+     -v /etc/subscription-tracker/upcloud-ca.pem:/etc/subscription-tracker/upcloud-ca.pem:ro \
      ghcr.io/juusimaa/subscription-tracker-backend:$(sed -n 's/^IMAGE_TAG=//p' /var/lib/subscription-tracker/image-tag.env) \
      python -c "print('connects')"
    ```
 
-   The entrypoint runs `alembic upgrade head` first, so this also proves
-   the restored schema is current. Then compare it with production:
+   The CA is mounted where the URL's `sslrootcert` expects it, as
+   compose does for the real backend; without it a `verify-full` URL
+   can't connect. The entrypoint runs `alembic upgrade head` first, so
+   this also proves the restored schema is current. Then compare it with
+   production:
 
    ```sh
    export OLD_DATABASE_URL='<production URL>' NEW_DATABASE_URL='<restored URL>'
@@ -305,6 +309,9 @@ loss of the UpCloud account, is not recoverable (plan.md § Spec changes).
    Check the site.
 4. Delete the old database service once the restored one has run cleanly
    for a day.
+
+Drilled on staging on 2026-10-11 (T038): about 17 minutes from starting the
+restore to `verify-copy.sh` exiting 0.
 
 ## Cutover
 
