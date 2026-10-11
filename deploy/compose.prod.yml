@@ -63,6 +63,21 @@ services:
       # directory, not the single file, so creating and deleting the file
       # works without restarting the container.
       - /var/lib/subscription-tracker/flags:/srv/flags:ro
+      # Site files of the other apps on this server, read by the Caddyfile's
+      # `import /etc/caddy/sites/*.caddy`. Outside this stack's directory on
+      # purpose: each file belongs to its app's repository (Gym Notebook's
+      # deploy/gymnotebook.caddy), so a deploy of this stack never overwrites
+      # it. Read-only: Caddy only reads its config.
+      - /opt/edge/sites:/etc/caddy/sites:ro
+    # `default` is this stack's own network, where backend and frontend live.
+    # `edge` is shared with the other apps' containers (Gym Notebook's
+    # gym-api and gym-web), so their site files can proxy to them by name.
+    # Only Caddy joins it: Docker registers every service name as an alias
+    # on each network it joins, so a backend on `edge` could answer for, or
+    # be answered by, another app's container of the same name.
+    networks:
+      - default
+      - edge
 
   backend:
     # The exact commit CI built, from image-tag.env. `:?` makes a missing tag
@@ -127,3 +142,12 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+
+# `default` needs no entry: Compose creates it per project as before.
+networks:
+  # Created once by hand (`docker network create edge`, deploy/README.md
+  # § Provision), not by this file: it outlives this stack and is shared
+  # with Gym Notebook's, so neither project's `down` may remove it. `up`
+  # fails if it is missing.
+  edge:
+    external: true

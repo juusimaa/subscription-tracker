@@ -26,6 +26,14 @@ DEPLOY = Path(__file__).resolve().parents[2]
 APP_HOST = "app.localhost"
 API_HOST = "api.localhost"
 MAINTENANCE_TEXT = "We'll be right back"
+# A site from another app's site file (as Gym Notebook's will be), proxied to
+# the edge-stub service in compose.edge.yml over the external `edge` network.
+SITE_HOST = "other-app.localhost"
+SITE_FILE = f"""{SITE_HOST} {{
+\treverse_proxy edge-stub:80
+}}
+"""
+EDGE_STUB_TEXT = "from the edge network"
 
 
 def free_port():
@@ -35,7 +43,7 @@ def free_port():
 
 
 class Stack:
-    def __init__(self, flags_dir):
+    def __init__(self, flags_dir, sites_dir):
         self.flags_dir = flags_dir
         self.port = free_port()
         self.project = f"edge-{uuid.uuid4().hex[:8]}"
@@ -46,6 +54,7 @@ class Stack:
             "CADDY_TEST_GLOBALS": "local_certs",
             "EDGE_HTTPS_PORT": str(self.port),
             "EDGE_FLAGS_DIR": str(flags_dir),
+            "EDGE_SITES_DIR": str(sites_dir),
         }
         self.context = None
 
@@ -126,9 +135,30 @@ class Stack:
 
 
 @pytest.fixture(scope="module")
-def stack(tmp_path_factory):
+def edge_network():
+    """compose.prod.yml declares `edge` external, as on the server, so `up`
+    needs it to exist. Created here if missing and removed again only if
+    this test created it: a laptop running Gym Notebook may already have
+    one in use."""
+    exists = subprocess.run(
+        ["docker", "network", "inspect", "edge"], capture_output=True
+    ).returncode == 0
+    if not exists:
+        subprocess.run(["docker", "network", "create", "edge"], capture_output=True, check=True)
+    try:
+        yield
+    finally:
+        if not exists:
+            subprocess.run(["docker", "network", "rm", "edge"], capture_output=True)
+
+
+@pytest.fixture(scope="module")
+def stack(tmp_path_factory, edge_network):
     flags = tmp_path_factory.mktemp("flags")
-    stack = Stack(flags)
+    sites = tmp_path_factory.mktemp("sites")
+    # Written before `up`: Caddy reads site files at start (and on reload).
+    (sites / "other-app.caddy").write_text(SITE_FILE)
+    stack = Stack(flags, sites)
     try:
         up = stack.compose("up", "-d", "--build", "--wait", "--wait-timeout", "300", check=False)
         if up.returncode != 0:
@@ -222,3 +252,21 @@ def test_caddy_https_port_is_published(stack):
     port, so an empty answer there means "not published"."""
     bindings = stack.published_ports("caddy")
     assert [b["HostPort"] for b in bindings["443/tcp"]] == [str(stack.port)]
+
+
+def test_site_file_is_served_and_proxies_over_the_edge_network(stack):
+    """The shared edge (gymNotebook spec 005): a site file in the mounted
+    sites directory is imported, and its upstream, reachable only on the
+    external `edge` network, answers through Caddy. Covers both the
+    /etc/caddy/sites mount and Caddy's membership of `edge`."""
+    status, _, body = stack.request(SITE_HOST, "GET", "/")
+    assert status == 200
+    assert EDGE_STUB_TEXT in body
+
+
+@pytest.mark.parametrize("service", ["backend", "frontend"])
+def test_backend_and_frontend_are_not_on_the_edge_network(stack, service):
+    """Only Caddy joins `edge`: another app's container there must not reach
+    this stack's backend without Caddy, nor share its service names."""
+    networks = json.loads(stack.inspect(service, "{{json .NetworkSettings.Networks}}"))
+    assert "edge" not in networks

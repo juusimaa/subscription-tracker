@@ -9,7 +9,7 @@ the reasons behind it are in
 | Path | What it is |
 |---|---|
 | `compose.prod.yml` | The stack: Caddy, backend, frontend. No database (managed) and no Redis (FR-014). |
-| `Caddyfile` | TLS, reverse proxy, maintenance switch ([contract](../specs/001-upcloud-migration/contracts/edge-http.md)). |
+| `Caddyfile` | TLS, reverse proxy, maintenance switch, other apps' site files ([contract](../specs/001-upcloud-migration/contracts/edge-http.md)). |
 | `maintenance/index.html` | The EN/FI page served with `503` during maintenance. |
 | `cloud-init.yaml` | First-boot setup: Docker, users, SSH hardening, log caps, automatic updates. |
 | `bin/deploy.sh` | The deploy key's forced command ([contract](../specs/001-upcloud-migration/contracts/deploy-interface.md)). |
@@ -49,7 +49,7 @@ environment table):
 
 | Variable | Production value |
 |---|---|
-| `DATABASE_URL` | `postgresql+psycopg://<user>:<pw>@<private host>:<port>/<db>?sslmode=verify-full&sslrootcert=/etc/subscription-tracker/upcloud-ca.pem`, or `sslmode=require` if UpCloud offers no CA certificate (research R4) |
+| `DATABASE_URL` | `postgresql+psycopg://tracker:<pw>@<private host>:<port>/defaultdb?sslmode=verify-full&sslrootcert=/etc/subscription-tracker/upcloud-ca.pem`, or `sslmode=require` if UpCloud offers no CA certificate (research R4). The `tracker` role, never `upadmin` (§ Database role). `ops-check.py` connects with it too |
 | `SECRET_KEY` | **copied unchanged from Azure**, so existing sessions and emailed links keep working |
 | `CORS_ORIGINS` | `https://subscriptionstrack.com` (plus the staging origin while it exists) |
 | `TURNSTILE_SECRET_KEY`, `TURNSTILE_SITE_KEY` | unchanged from Azure |
@@ -76,6 +76,7 @@ from `API_HOST` there too.
 |---|---|
 | `ALERT_EMAIL` | where alerts go (the maintainer) |
 | `DB_STORAGE_GIB` | the database plan's storage in GiB (`10`); update it whenever the storage is grown |
+| `EXTRA_CERT_HOSTS` | other apps' hostnames served by this Caddy, comma-separated, for the certificate alert: `gymnotebook.fit,api.gymnotebook.fit` once Gym Notebook is provisioned; empty or unset otherwise |
 | `UPTIMEROBOT_HEARTBEAT_URL` | empty: heartbeat monitors are not on UptimeRobot's free plan (research R8). Set it only on a paid plan |
 
 ## Provision
@@ -101,12 +102,15 @@ zone.
    - public access **off**;
    - backup hour `02:00 UTC`.
 
-   Note the hostname, port, user, password and database name from the
-   **Connection → Private** tab. The hostname is the same one the public tab
+   Note the hostname, port, admin user (`upadmin`), password and database
+   name (`defaultdb`) from the **Connection → Private** tab. The hostname is the same one the public tab
    shows, and it works from the server even with public access off. The port is **not** 5432 (it was 11569). Download
    the CA certificate: UpCloud signs the database certificate with a
    per-project CA and enforces TLS, so production uses `verify-full`
    (research R4).
+
+   The app does not use `upadmin`: before the first start (step 7), create
+   the `tracker` role as in § Database role and put it in `DATABASE_URL`.
 3. **Server.** Create a Starter `1xCPU-2GB` server, Ubuntu 24.04,
    `fi-hel1`:
    - storage: the plan's own **20 GB** disk, €6.00 in total. The console
@@ -163,6 +167,23 @@ zone.
    The timers are enabled here rather than in `cloud-init.yaml` because
    these files don't exist on the server until this step.
 
+   Then the two things the shared edge needs before the first `up`
+   (`compose.prod.yml` and the Caddyfile's `import`): the directory other
+   apps' site files are copied into, and the Docker network Caddy shares
+   with their containers. Both are created by hand, not by Compose, because
+   they belong to neither stack: a `docker compose down` of either must not
+   remove them. Without the network, `up` stops with "network edge declared
+   as external, but could not be found"; an empty directory is fine (Caddy
+   logs one warning).
+
+   ```sh
+   sudo install -d -o root -g root -m 0755 /opt/edge/sites
+   docker network create edge
+   ```
+
+   On a server that predates them, run the same two commands before the
+   first `docker compose up -d` with this version of `compose.prod.yml`.
+
    Then write the secrets file, with values from the Azure Container Apps
    secrets and the database from step 2 (§ Environment):
 
@@ -194,6 +215,183 @@ zone.
    The backend's entrypoint runs `alembic upgrade head` against the empty
    database. Check `https://staging.subscriptionstrack.com` and
    `https://api-staging.subscriptionstrack.com/health`.
+
+## Database role
+
+The tracker connects as its own login role, `tracker`, which owns
+`defaultdb` and nothing else. Not as `upadmin`, the service's admin user:
+`upadmin` can open every database in the service, and Gym Notebook's
+database lives in the same service, so neither app's role may connect to
+the other's database (gymNotebook spec 005, FR-004). `upadmin` stays the
+admin login for these runbooks.
+
+On UpCloud `upadmin` is **not** a superuser. It can create roles and
+databases (it has `CREATEROLE` and `CREATEDB`), and since PostgreSQL 16 it
+holds `ADMIN OPTION` on every role it creates. That is enough here:
+handing an object to `tracker` with `ALTER … OWNER TO` needs the current
+owner's rights (`upadmin` created all the tables) plus membership of
+`tracker`, which `upadmin` grants itself in step 1; `ALTER DATABASE … OWNER`
+additionally needs `CREATEDB`.
+
+Ownership moves object by object, not with `REASSIGN OWNED BY upadmin TO
+tracker`: that would also hand over everything else `upadmin` owns in the
+service, shared objects included, such as any other database it owns, to an
+app role. The loops below touch only schema `public` of `defaultdb`, and the
+final query proves nothing there was missed.
+
+Done once on the live server in October 2026, before Gym Notebook was
+provisioned; on a new server, after § Provision step 5 has put the CA
+certificate in place and before step 7's first start (the database is
+still empty, so step 2 below moves nothing, and step 6 is just writing
+`DATABASE_URL`). Run it as
+`upadmin` from the server, in the `postgres:18` image, so the host needs
+no client:
+
+```sh
+ssh admin@<server-ip>
+# upadmin's URL from the console (Connection → Private), in postgresql://
+# form, ending /defaultdb?sslmode=verify-full&sslrootcert=/etc/subscription-tracker/upcloud-ca.pem.
+# `read -s` keeps it out of the shell history and off the screen.
+read -rs ADMIN_URL && export ADMIN_URL
+docker run --rm -it -e ADMIN_URL \
+  -v /etc/subscription-tracker:/etc/subscription-tracker:ro postgres:18 \
+  sh -c 'exec psql "$ADMIN_URL" -v ON_ERROR_STOP=1'
+```
+
+1. **Create the role.** Choose a password with URL-safe characters only
+   (`openssl rand -hex 24`), since it goes into `DATABASE_URL`. `\password`
+   prompts for it and sends only its hash, so it never appears in a shell
+   history or the server log.
+
+   ```sql
+   -- NOSUPERUSER, NOCREATEDB and NOCREATEROLE are the defaults.
+   CREATE ROLE tracker LOGIN;
+   \password tracker
+   -- Lets upadmin hand objects to tracker (above), and keeps it able to
+   -- connect to defaultdb once PUBLIC can't (step 3).
+   GRANT tracker TO upadmin;
+   SELECT datdba::regrole FROM pg_database WHERE datname = 'defaultdb';
+   ```
+
+   The last query must print `upadmin`. If the database belongs to another
+   role, `upadmin` cannot hand it over: stop here, and leave the app on
+   its current login until that is solved.
+
+2. **Hand over the database and everything in it**, in one transaction so
+   a failure changes nothing:
+
+   ```sql
+   BEGIN;
+   ALTER DATABASE defaultdb OWNER TO tracker;
+   DO $$
+   DECLARE obj record;
+   BEGIN
+     -- Tables and views first. ALTER TABLE also moves the table's indexes,
+     -- its row type and the sequences behind its serial/identity columns.
+     FOR obj IN
+       SELECT c.oid::regclass AS name,
+              CASE c.relkind WHEN 'v' THEN 'VIEW' WHEN 'm' THEN 'MATERIALIZED VIEW'
+                             ELSE 'TABLE' END AS kind
+       FROM pg_class c
+       WHERE c.relnamespace = 'public'::regnamespace
+         AND c.relowner = 'upadmin'::regrole
+         AND c.relkind IN ('r', 'p', 'v', 'm')
+     LOOP
+       EXECUTE format('ALTER %s %s OWNER TO tracker', obj.kind, obj.name);
+     END LOOP;
+     -- Queried again after the loop above, so only sequences no table
+     -- owns are left (changing an owned one on its own is an error).
+     FOR obj IN
+       SELECT c.oid::regclass AS name FROM pg_class c
+       WHERE c.relnamespace = 'public'::regnamespace
+         AND c.relowner = 'upadmin'::regrole AND c.relkind = 'S'
+     LOOP
+       EXECUTE format('ALTER SEQUENCE %s OWNER TO tracker', obj.name);
+     END LOOP;
+     -- The enum types Alembic created (billingcycle, subscriptionstatus).
+     FOR obj IN
+       SELECT t.oid::regtype AS name FROM pg_type t
+       WHERE t.typnamespace = 'public'::regnamespace
+         AND t.typowner = 'upadmin'::regrole AND t.typtype = 'e'
+     LOOP
+       EXECUTE format('ALTER TYPE %s OWNER TO tracker', obj.name);
+     END LOOP;
+   END $$;
+   -- Must print no rows: nothing in public is left with upadmin.
+   SELECT 'relation', c.oid::regclass::text FROM pg_class c
+     WHERE c.relnamespace = 'public'::regnamespace AND c.relowner = 'upadmin'::regrole
+   UNION ALL
+   SELECT 'type', t.oid::regtype::text FROM pg_type t
+     WHERE t.typnamespace = 'public'::regnamespace AND t.typowner = 'upadmin'::regrole
+   UNION ALL
+   SELECT 'function', p.oid::regprocedure::text FROM pg_proc p
+     WHERE p.pronamespace = 'public'::regnamespace AND p.proowner = 'upadmin'::regrole;
+   ```
+
+   If it printed rows, `ROLLBACK;` and find out what they are. Otherwise
+   continue in the same transaction.
+
+3. **Close the database to everyone else.** PostgreSQL grants `CONNECT`
+   to `PUBLIC` by default, so any role in the service could otherwise
+   connect, Gym Notebook's included. The owner keeps it implicitly; the
+   grant spells it out. `upadmin` still connects, through its membership
+   of `tracker`.
+
+   ```sql
+   REVOKE CONNECT ON DATABASE defaultdb FROM PUBLIC;
+   GRANT CONNECT ON DATABASE defaultdb TO tracker;
+   COMMIT;
+   ```
+
+4. **Let the database-size alert see the other databases.** `ops-check.py`
+   sums the size of every database in the service (§ Alerts, `db_size`),
+   and sizing one the role cannot connect to needs `pg_read_all_stats`:
+
+   ```sql
+   GRANT pg_read_all_stats TO tracker;
+   ```
+
+   This is read access to statistics only (sizes, and `pg_stat_activity`
+   rows of other roles, query text included), no access to any data. If
+   UpCloud refuses it ("Only roles with the ADMIN option on role
+   "pg_read_all_stats" may grant this role"), the role works anyway, but
+   `db_size` fails ("permission denied for database gymnotebook") from
+   the moment Gym Notebook's database exists and fires `check_error` three
+   hours later; the database-size alert then needs a second, read-only
+   connection URL (gymNotebook spec 005 plan, § Tracker repository changes).
+
+5. **Check the role before the app uses it**, with `TRACKER_URL` the same
+   URL as `upadmin`'s but `tracker:<password>`:
+
+   ```sh
+   read -rs TRACKER_URL && export TRACKER_URL
+   docker run --rm -e TRACKER_URL \
+     -v /etc/subscription-tracker:/etc/subscription-tracker:ro postgres:18 \
+     sh -c 'psql "$TRACKER_URL" -XAt -c "SELECT current_user, count(*) FROM subscriptions" \
+       -c "SELECT sum(pg_database_size(datname)) FROM pg_database"'
+   ```
+
+   It prints `tracker|<rows>` and a byte count.
+
+6. **Switch the app.** In `sudo -e /etc/subscription-tracker/.env`, change
+   only the user and password in `DATABASE_URL` to `tracker` and its
+   password, then recreate the backend alone; Caddy and the frontend keep
+   running:
+
+   ```sh
+   docker compose up -d --wait backend
+   curl -fsS https://api.subscriptionstrack.com/health
+   sudo systemctl start ops-check-hourly.service
+   journalctl -u ops-check-hourly -n 5 --no-pager   # no "could not run"
+   ```
+
+   As `upadmin`, `SELECT usename, count(*) FROM pg_stat_activity WHERE
+   datname = 'defaultdb' GROUP BY 1` now shows `tracker`, and no idle
+   `upadmin` pool.
+
+**Undo**: put `upadmin`'s user and password back in `DATABASE_URL` and run
+`docker compose up -d --wait backend` again. `upadmin` can still connect
+and use the tables through its membership of `tracker`.
 
 ## Deploys
 
@@ -265,8 +463,8 @@ and once (`RECOVERED`) when it clears. Subject:
 | UptimeRobot, API | `https://api.subscriptionstrack.com/health` lacks `"status":"ok"` or is not 2xx (still checked during maintenance, which passes `/health` through) | 5 min | as above; `/health` failing with the containers up means the database is unreachable: check it in the UpCloud console |
 | `memory` | over 80% of memory in use | 5 min | `docker stats --no-stream`; restart the heavy container; if it recurs, consider a larger plan |
 | `disk` | over 80% of `/` in use | 5 min | `docker system df`; `docker image prune -a --filter until=168h`; check `/var/lib/docker/containers` log sizes |
-| `db_size` | database over 80% of `DB_STORAGE_GIB` | hourly | grow storage by 10 GiB in the UpCloud console (online), then update `DB_STORAGE_GIB` |
-| `cert:<host>` | under 14 days to expiry, or the certificate is invalid | daily | `docker compose logs caddy \| grep -i acme`; check DNS still points here and ports 80/443 are open |
+| `db_size` | all databases in the service together (the tracker's, Gym Notebook's, UpCloud's own) over 80% of `DB_STORAGE_GIB` | hourly | find the big one: `SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database ORDER BY 2 DESC`; grow storage by 10 GiB in the UpCloud console (online), then update `DB_STORAGE_GIB` |
+| `cert:<host>` | under 14 days to expiry, or the certificate is invalid; for `APP_HOST`, `API_HOST` and each of `EXTRA_CERT_HOSTS` | daily | `docker compose logs caddy \| grep -i acme`; check DNS still points here and ports 80/443 are open |
 | `check_error` | a check could not run 3 times in a row | per run | `journalctl -u ops-check-<kind>` for the error |
 
 Also in place without anything here: UpCloud's low-balance email, and
