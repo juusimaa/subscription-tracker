@@ -686,9 +686,10 @@ size or certificate expiry crosses its threshold, and once when it recovers.
 **Cost.** €15.40/month excluding VAT (server €6.00, database €9.40), under
 the €25 ceiling including VAT.
 
-**Cutover.** Neon was copied into the new database behind the maintenance
-page and checked with `verify-copy.sh`. Azure and Neon stay as the rollback
-target until they are shut down (User Story 4).
+**Cutover: 2026-10-11**, about 10 minutes behind the maintenance page.
+Neon was copied into the new database and checked with `verify-copy.sh`.
+The 7-day soak runs to 2026-10-18; Azure and Neon stay as the rollback
+target until they are shut down (User Story 4), at the latest 2026-10-25.
 
 ## Notes / rationale
 

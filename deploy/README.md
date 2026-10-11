@@ -385,9 +385,9 @@ OLD_DATABASE_URL="$NEON_URL" NEW_DATABASE_URL="$UPCLOUD_URL" /opt/subscription-t
 
 - `curl --resolve api.subscriptionstrack.com:443:<server-ip> https://api.subscriptionstrack.com/health`
   → 200.
-- With a hosts-file entry for both names: the test account signs in and its
-  totals match the T−0 record; a reset link requested before T−0 still
-  works; signup → verify → sign in → reset works with a fresh address.
+
+Only `/health` passes through the maintenance page, so signing in can't be
+tried yet. That comes straight after the flag is removed, below.
 
 **T+15: open**
 
@@ -395,6 +395,10 @@ OLD_DATABASE_URL="$NEON_URL" NEW_DATABASE_URL="$UPCLOUD_URL" /opt/subscription-t
 sudo rm /var/lib/subscription-tracker/flags/maintenance
 ```
 
+- At once: the test account signs in and its totals match the T−0 record;
+  a reset link requested before T−0 still works; signup → verify → sign in
+  → reset works with a fresh address. If any of these fail, put the flag
+  back and use § Rollback's second case.
 - Resume UptimeRobot (switch the monitors to the production hostnames).
 - Merge PR 3.
 
