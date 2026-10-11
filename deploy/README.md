@@ -449,8 +449,8 @@ production back without first being repaired.
    `pg_dump -Fc --no-owner --no-privileges` over the unpooled endpoint into
    `neon-final-2026-10-11.dump`, restored into a throwaway local `postgres:18`
    container and checked with `verify-copy.sql` against live Neon: identical
-   (5 users, 33 subscriptions, migration `0008`). An `age`-encrypted copy goes
-   to personal storage outside both providers.
+   (5 users, 33 subscriptions, migration `0008`). No off-provider copy was
+   kept: UpCloud already holds the same data plus everything written since.
 2. The `deploy` job to Azure was removed from `build-and-push.yml`.
 3. Repository secrets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
    `AZURE_SUBSCRIPTION_ID` and variable `AZURE_DEPLOY_ENABLED` deleted.
