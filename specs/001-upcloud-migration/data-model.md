@@ -63,21 +63,22 @@ retries.
                                          ▼  │
                                      maintenance
                                          │  ▲
-            pause runbook                │  │  resume runbook
-            (archive → delete → Pages)   ▼  │  (provision → restore → DNS back)
-                                       paused
+            take-down runbook            │  │  § Provision + restore
+            (backup → check → delete)    ▼  │  (from the take-down backup)
+                                        down
 ```
 
 | State | DNS | Server | Database | Visitors see | Cost |
 |---|---|---|---|---|---|
 | live | A → server | running | running | the app | €15.40 + VAT |
 | maintenance | A → server | running, Caddy serves 503 | running | EN/FI maintenance page, `503` + `Retry-After` | same |
-| paused | Cloudflare Pages custom domain | **deleted** | **deleted** | EN/FI "paused" page | €0 |
+| down | A records removed | **deleted** | **deleted** | nothing: the hostnames don't resolve | €0 |
 
-Rule: going from **maintenance** to **paused** requires a checked archive on
-the maintainer's machine *and* an `age`-encrypted copy in personal storage
-outside UpCloud (FR-027) before any resource is deleted. UpCloud's backups
-are deleted along with the database.
+Rule: going from **maintenance** to **down** requires a checked database
+export and the server's `.env` on the maintainer's machine *and* an
+`age`-encrypted copy of both in personal storage outside UpCloud (FR-026,
+FR-027) before any resource is deleted. UpCloud's backups are deleted along
+with the database.
 
 ## Deploy record
 

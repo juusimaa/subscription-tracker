@@ -27,8 +27,8 @@ checks each one.
   - Premium 1xCPU-2GB at €12: faster disk and a free 24-hour server backup.
     Not needed, because the server holds no data.
   - Cloud Native at €12+ for 4 GB: its smallest size is 4 GB. It is the only
-    family not billed while stopped, but pausing deletes the server anyway
-    (R9).
+    family not billed while stopped, but taking the site down deletes the
+    server anyway (R9).
 - **Billing note**: "Starter and Premium plan Cloud Servers are billed per hour
   regardless of whether the server is powered on or shut down."
 - Sources: https://upcloud.com/pricing/,
@@ -283,40 +283,29 @@ checks each one.
   https://upcloud.com/docs/getting-started/accounts/account-balance/,
   https://upcloud.com/docs/products/managed-postgresql/monitoring/
 
-## R9. Pausing and resuming
+## R9. Taking the site down
 
-- **Decision**:
-  - **Pause:**
-    1. Turn on maintenance mode.
-    2. Take a final `pg_dump -Fc` and download it to the maintainer's
-       machine. A second copy, encrypted with `age`, goes to personal storage
-       outside UpCloud (FR-027), e.g. a cloud drive.
-    3. Verify the archive's row counts by restoring it into a throwaway local
-       Postgres 18.
-    4. Delete the database, the server, its storage and the SDN
-       network/router.
-    5. Point both hostnames at a **Cloudflare Pages** project serving
-       `deploy/maintenance/index.html` in its "paused" variant.
-  - **Resume:** the provisioning runbook again, then `pg_restore` from the
-    archive, a row-count check, and the DNS switch back.
-  - Resume is rehearsed once, on staging, before the first real pause.
+- **Decision** (narrowed 2026-10-11 from a pause/resume design):
+  1. Turn on maintenance mode, so nothing is written after the export.
+  2. Take a final `pg_dump -Fc` and download it, with a copy of
+     `/etc/subscription-tracker/.env`, to the maintainer's machine.
+  3. Check the export's row counts by restoring it into a throwaway local
+     Postgres 18 and diffing `verify-copy.sql` against the live database.
+  4. Encrypt both files with `age` and store that copy in personal storage
+     outside UpCloud, e.g. a cloud drive (FR-027).
+  5. Delete the database, the server, its storage and the SDN
+     network/router. Remove both A records.
+  - Bringing the site back is § Provision, then `pg_restore` of the export
+    and the saved `.env` in place of a hand-written one.
 - **Rationale**:
   - Every UpCloud resource bills while stopped (R1, R2), so deleting them is
-    the only way to reach €0 (SC-009).
-  - Pages is free, serves both the apex and the `api` subdomain over HTTPS,
-    and needs no code.
-  - API calls receiving an HTML 200 doesn't matter while the frontend is
-    paused too.
-  - A 2-hour resume target is realistic: provisioning takes about 15 minutes,
-    cloud-init about 5, the restore a few seconds, then DNS and TLS.
-- **Caveat**: adding a Pages custom domain needs the grey-cloud A records
-  removed first. Cloudflare then creates a proxied record. On resume, the
-  custom domains are removed from Pages before the A records are re-created.
-- **Alternatives considered**:
-  - Stopping the resources: they keep billing.
-  - A Cloudflare Worker returning a JSON 503: more code for no user-visible
-    gain.
-- Sources: https://developers.cloudflare.com/pages/configuration/custom-domains/
+    the only way to reach €0.
+  - The database and `.env` are the only state not in the repository or
+    GHCR. The CA certificate, deploy key and known-hosts entry are recreated
+    by § Provision.
+- **Dropped 2026-10-11** (maintainer's call): a Cloudflare Pages "paused"
+  page, a rehearsed resume runbook and a 2-hour resume target. The site
+  simply stops resolving while it is down.
 
 ## R10. Cost
 
@@ -327,7 +316,7 @@ checks each one.
 | Database storage 10 GiB × €0.04 | 0.40 |
 | SDN network + router, firewall | 0.00 |
 | Egress beyond the allowance (throttled, never billed) | 0.00 |
-| Cloudflare Pages, UptimeRobot Free, Resend Free | 0.00 |
+| UptimeRobot Free, Resend Free | 0.00 |
 | **Total** | **15.40** |
 | **Total with 25.5% Finnish VAT** | **19.33** |
 

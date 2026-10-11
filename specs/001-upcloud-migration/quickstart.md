@@ -8,8 +8,8 @@ runbooks); this file says **what to run and what you should see**.
 
 - An UpCloud account, provisioned per `deploy/README.md` § Provision: SDN
   network and router, the database, the server, and the firewall.
-- Cloudflare access for DNS and Pages.
-- An `age` key pair on your machine, used only for the pause archive.
+- Cloudflare access for DNS.
+- An `age` key pair on your machine, used only for the take-down backup.
 - An SSH admin key, plus a separately generated deploy key.
 - `docker` locally, for the throwaway Postgres 18 used to check archives.
 
@@ -65,12 +65,11 @@ Expected: all pass. The edge test shows `429` on the 6th spoofed-XFF request,
    **Expected:** one ALERT email for each (the disk one from `ops-check`, the
    backend one from UptimeRobot), one RECOVERED email after each is undone,
    and no repeats. **Proves:** FR-019, FR-028.
-10. Pause/resume drill, on staging hostnames only. Follow § Pause, then
-    § Resume.
-    **Expected:** the paused page shows on both staging hosts. The UpCloud
-    resource list is empty; billing stopping is checked on the next hourly
-    invoice line. After resume, the archive's row counts match.
-    **Proves:** FR-024–FR-027, SC-009.
+10. Take-down backup drill, on staging only. Follow § Take down up to, but
+    not including, deleting anything.
+    **Expected:** `check-archive.sh` exits 0 against the live database, and
+    the export and `.env` exist both locally and `age`-encrypted outside
+    UpCloud. **Proves:** FR-024, FR-026, FR-027, SC-009.
 
 ## 3. Cutover (production, within 30 minutes)
 

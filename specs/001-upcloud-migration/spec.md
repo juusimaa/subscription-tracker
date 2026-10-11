@@ -139,36 +139,36 @@ provider-specific deploy steps finds only historical notes.
 
 ---
 
-### User Story 5 - Pause the site to stop paying for it (Priority: P3)
+### User Story 5 - Take the site down and keep what is needed to bring it back (Priority: P3)
 
-The maintainer decides to halt the site for a while, for example while there
-are no active users, and stops paying for hosting. While it is paused,
-visitors to `subscriptionstrack.com` see a short notice that the service is
-paused, not an error. Later the maintainer resumes the site and every account
-comes back exactly as it was.
+The maintainer decides to take the site down, for example while there are no
+active users, and deletes the UpCloud resources to stop the bill. Before
+anything is deleted, everything needed to bring the site back is backed up
+somewhere safe: the database and the server's configuration. If the
+maintainer later wants the site back, it can be rebuilt from those backups
+and the repository.
 
-**Why this priority**: the move takes the bill from about €1 to up to €25 a
-month. A clean way to stop that bill without losing user data keeps hosting
-cost from being a reason to shut the project down for good. The site must run
-before it can be paused, so this comes after the move itself.
+**Why this priority**: UpCloud bills for stopped resources, so deleting them
+is the only way to stop paying. Its own backups are deleted with the
+database. Without a backup taken first, taking the site down would lose every
+account for good. The site must run before it can be taken down, so this
+comes after the move itself.
 
-**Independent Test**: on a staging copy, or in production during a quiet
-period, follow the pause runbook. Check that the hosting cost stops, the
-notice is shown and the archive is stored outside UpCloud. Then follow the
-resume runbook and compare row counts and a test account's data with the
-archive.
+**Independent Test**: on staging, follow the take-down runbook up to, but not
+including, deleting anything. Check that both backups exist in two places
+outside UpCloud and that the database backup restores into a throwaway
+Postgres with the same row counts as the live database.
 
 **Acceptance Scenarios**:
 
-1. **Given** the site is live, **When** the maintainer follows the pause
-   runbook, **Then** writes are frozen first, a full export of the database is
-   archived outside UpCloud and checked, and only then are the server and
-   database removed.
-2. **Given** the site is paused, **When** anyone visits either public URL,
-   **Then** they see a "paused" notice over HTTPS, at no ongoing hosting cost.
-3. **Given** the site is paused, **When** the maintainer follows the resume
-   runbook, **Then** the server and database are recreated from the archive,
-   every account can sign in, and the data matches the archive.
+1. **Given** the site is live, **When** the maintainer follows the take-down
+   runbook, **Then** writes are frozen first, the database export and the
+   server's configuration are stored in two places outside UpCloud, the
+   export's row counts are checked, and only then are the UpCloud resources
+   deleted.
+2. **Given** the site is down, **When** the maintainer wants it back,
+   **Then** following § Provision and restoring the database export brings
+   back every account with the data it had at take-down.
 
 ---
 
@@ -197,15 +197,9 @@ archive.
   images are cleaned up automatically.
 - **Certificate renewal**: HTTPS certificates renew before they expire with no
   manual step, and a failed renewal raises an alert before users see warnings.
-- **Stopping instead of deleting**: stopping the server or the managed
-  database does not stop UpCloud from billing for it. A pause that only stops
-  the machines saves almost nothing, so the runbook must remove them.
-- **Lost archive**: the provider's daily backups go away with a deleted
-  database. The pause archive is then the only copy of user data, so it must
-  be checked before anything is deleted and kept in two places.
-- **Pending links during a pause**: verification and reset links sent before a
-  pause may expire while the site is down. Users request a new one after it
-  resumes.
+- **Lost backup**: the provider's daily backups go away with a deleted
+  database. The take-down backup is then the only copy of user data, so it
+  must be checked before anything is deleted and kept in two places.
 - **Bot scanners**: probe traffic (WordPress or `.git` paths) is answered
   cheaply. It must not drive up cost or slow down real users.
 
@@ -302,20 +296,21 @@ archive.
 - **FR-023**: Required CI checks (`sqlite`, `postgres`, `visual`) MUST keep
   reporting on every PR throughout the move.
 
-**Pause and resume**
+**Taking the site down**
 
-- **FR-024**: The maintainer MUST be able to pause the site with a committed
-  runbook. Pausing freezes writes, archives a full database export outside
-  UpCloud, checks the archive's row counts, and then removes the billed
-  UpCloud resources.
-- **FR-025**: While paused, both public URLs MUST show a "paused" notice over
-  HTTPS, in English and Finnish, at no ongoing hosting cost.
-- **FR-026**: The maintainer MUST be able to resume the site with a committed
-  runbook that recreates the hosting and restores the archive with nothing
-  lost. Resume MUST be rehearsed once before the first real pause.
-- **FR-027**: The pause archive MUST be stored in at least two places outside
-  UpCloud, and access to it MUST be restricted to the maintainer, because it
-  contains password hashes and email addresses.
+- **FR-024**: The maintainer MUST be able to take the site down with a
+  committed runbook. It freezes writes, takes a full database export, checks
+  the export's row counts against the live database, and only then deletes
+  the billed UpCloud resources.
+- **FR-025**: *Removed 2026-10-11.* No "paused" notice is served while the
+  site is down; the hostnames simply stop resolving.
+- **FR-026**: The take-down backup MUST include everything not in the
+  repository that is needed to bring the site back: the database export and
+  the server's `/etc/subscription-tracker/.env`. Bringing the site back is
+  § Provision plus a restore of the export; no separate rehearsal is required.
+- **FR-027**: The take-down backup MUST be stored in at least two places
+  outside UpCloud, and access to it MUST be restricted to the maintainer,
+  because it contains password hashes, email addresses and secrets.
 
 ### Key Entities
 
@@ -330,8 +325,9 @@ archive.
   database.
 - **Cutover runbook**: the ordered, committed checklist for the move: freeze,
   copy, check, switch, smoke test, rollback.
-- **Pause archive**: the full, checked database export taken when the site is
-  paused. While paused, it is the only copy of user data.
+- **Take-down backup**: the checked database export and the server's
+  configuration, taken before the site is taken down. Once the resources are
+  deleted, it is the only copy of user data.
 - **Deploy credential**: the narrowly scoped secret that lets CI roll a new
   version onto the production server.
 
@@ -358,9 +354,9 @@ archive.
   the first full billing month.
 - **SC-008**: Within 14 days of cutover, no Azure or Neon resource tied to this
   app is still running or billing.
-- **SC-009**: Pausing the site brings the hosting cost to €0 from the next
-  billing hour. Resuming brings back every account and its data, matching the
-  archived row counts exactly, within 2 hours of starting the runbook.
+- **SC-009**: After a take-down, no UpCloud resource tied to this app is
+  billing, and the backup's row counts match the live database's at the
+  moment writes were frozen.
 
 ## Assumptions
 
@@ -387,8 +383,9 @@ archive.
 - **Billing while stopped**: according to UpCloud's pricing docs, a managed
   database bills hourly until it is deleted, even while stopped. Third-party
   listings say the same for the Developer and General Purpose server
-  families. So pausing means deleting the resources, not stopping them. The
-  plan should confirm both points with UpCloud before relying on them.
+  families. So taking the site down means deleting the resources, not
+  stopping them. The plan should confirm both points with UpCloud before
+  relying on them.
 - **Backup retention trade-off**: 3 days of backups means a mistake noticed
   later than that, such as data deleted by accident, cannot be undone from a
   backup. Each user can still keep their own JSON export. The maintainer
@@ -398,9 +395,6 @@ archive.
   €30 a month, so the plan has to pick the smallest database tier that is
   actually needed (around 1 GB). If that does not fit, the plan must say so
   before any resource is bought.
-- **Pause notice**: the plan decides where the notice is served from, for
-  example a free static page at the existing DNS provider. It must cost
-  nothing while the site is paused.
 - **Soak and decommissioning**: the 7-day soak and 14-day decommission deadline
   are defaults the maintainer can change.
 - **Out of scope**: high availability or multi-node setups, a CDN in front of

@@ -37,7 +37,7 @@ in front.
 3. The 6th must be `429`. If the spoofed value were honored, all 6 would get
    through.
 
-## Maintenance mode (FR-005, cutover, pause)
+## Maintenance mode (FR-005, cutover, take-down)
 
 While `/srv/flags/maintenance` exists in the Caddy container (bind-mounted
 from `/var/lib/subscription-tracker/flags/`), both hosts answer as follows.
@@ -57,12 +57,3 @@ from `/var/lib/subscription-tracker/flags/`), both hosts answer as follows.
 **Test**: the same edge setup, with the flag file present. `GET /` on both
 hosts must be `503` with the maintenance text, and `GET /health` on the API
 host must be `200`. With the flag removed, both hosts serve normally.
-
-## Paused (FR-025)
-
-- Both hostnames are custom domains of a Cloudflare Pages project that serves
-  the "paused" variant of the same EN/FI page over HTTPS at €0.
-- API requests receive that HTML page with status 200. Nothing calls the API
-  while the frontend is paused too.
-- This state is verified manually in the pause/resume rehearsal (quickstart
-  §6). It has no CI test, because it exists only on Cloudflare.
