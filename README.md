@@ -30,8 +30,12 @@ at all.
 - **Cache:** Redis 7, optional — the backend fails open without it
 - Four containers locally (`db`, `redis`, `backend`, `frontend`), orchestrated
   with Docker Compose; images published to GHCR by GitHub Actions and deployed
-  to Azure Container Apps, with [Neon](https://neon.tech) Postgres and no Redis
-  in production (see [PLAN.md](PLAN.md), milestone 8).
+  over SSH to one [UpCloud](https://upcloud.com) server in Helsinki
+  (`fi-hel1`): Caddy, backend and frontend under Docker Compose, an
+  UpCloud-managed PostgreSQL 18 on a private network, and no Redis (see
+  [deploy/README.md](deploy/README.md) and [PLAN.md](PLAN.md), milestone 12).
+  Azure Container Apps and Neon, the previous hosting, stay only as the
+  rollback target until they are shut down.
 - **Languages:** English and Finnish, picked on the sign-in screen or in the
   Account dialog
 
@@ -89,7 +93,7 @@ that need them ([.env.example](.env.example) documents the same list):
 | `TURNSTILE_SECRET_KEY` | `backend` | Optional. Turns on the [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/) bot check on `/register` and `/password-reset` — see [Accounts](#accounts). Set it together with the frontend's site key. |
 | `TURNSTILE_HOSTNAMES` | `backend` | Required with `TURNSTILE_SECRET_KEY`. Comma-separated hostnames a token may be solved on (production: `subscriptionstrack.com`; Cloudflare's test secret: `example.com`). Left empty, the check refuses every token. |
 | `EMAIL_DAILY_CAP` | `backend` | Most emails sent in any 24 hours, all addresses together (default 90; Resend's free tier stops at 100). |
-| `TRUST_FORWARDED_FOR` | `backend` | Production only. Key rate limits on the last `X-Forwarded-For` entry, which is the real client behind Azure's ingress. Leave `false` without a proxy. |
+| `TRUST_FORWARDED_FOR` | `backend` | Production only. Key rate limits on the last `X-Forwarded-For` entry, which is the real client behind Caddy. Leave `false` without a proxy. |
 | `EMAIL_BACKEND` | `backend` | `console` (default) logs verification and reset emails instead of sending them; `resend` sends through [Resend](https://resend.com). See [Email](#email). |
 | `RESEND_API_KEY` | `backend` | Required when `EMAIL_BACKEND=resend`. |
 | `EMAIL_FROM` | `backend` | Sender, on a domain verified in Resend. |
@@ -505,15 +509,23 @@ development:
   override does *not* reach: `CMD` is replaced, `ENTRYPOINT` is not, so local
   dev still gets its migrations applied.
 
+**Production** runs a different Compose file,
+[deploy/compose.prod.yml](deploy/compose.prod.yml): the same two published
+images, pinned to a `sha-` tag, behind a Caddy reverse proxy that terminates
+TLS and serves a maintenance page while a flag file exists. It has no `db`
+service, because the database is UpCloud's managed PostgreSQL, and no Redis.
+How the server is set up, deployed to and recovered is in
+[deploy/README.md](deploy/README.md).
+
 ### 10. CI — [.github/workflows/](.github/workflows/)
 
 Four workflows:
 
 | Workflow | Runs on | Does |
 | --- | --- | --- |
-| [`test.yml`](.github/workflows/test.yml) | pushes to `main` and **pull requests** | The backend test suite, twice — against SQLite and against Postgres 18. Skips the work when `backend/` didn't change. |
+| [`test.yml`](.github/workflows/test.yml) | pushes to `main` and **pull requests** | The backend test suite, twice — against SQLite and against Postgres 18. Skips the work when `backend/` didn't change. Its `deploy-config` job checks the production files under `deploy/`: `docker compose config`, the Caddyfile, `shellcheck`, and the `deploy/tests` suite, including the edge tests. |
 | [`frontend-visual.yml`](.github/workflows/frontend-visual.yml) | pushes to `main` and **pull requests** | Playwright screenshots of the frontend against fixture data, compared with the committed baselines. Skips the work when `frontend/` didn't change. |
-| [`build-and-push.yml`](.github/workflows/build-and-push.yml) | pushes to `main` | Builds both images, publishes them to GHCR, and deploys them to Azure |
+| [`build-and-push.yml`](.github/workflows/build-and-push.yml) | pushes to `main` | Builds both images, publishes them to GHCR, and deploys them to the UpCloud server over SSH (`deploy-upcloud`) |
 | [`docs.yml`](.github/workflows/docs.yml) | pushes to `main` touching `backend/**` or `docs/**` | Generates `openapi.json` from the app and publishes the [API reference](https://juusimaa.github.io/subscription-tracker) |
 
 The two test workflows also run on pull requests, because a suite that only
@@ -548,8 +560,12 @@ can do neither.
 
 The packages inherit this repository's public visibility, so anyone can pull
 them without logging in. Every push to `main` also rolls the new images out to
-the live deployment above (milestone 8), via `build-and-push.yml`'s `deploy`
-job, pinned to the `sha-` tag.
+the live deployment above (milestone 12), via `build-and-push.yml`'s
+`deploy-upcloud` job, pinned to the `sha-` tag. The job connects with a key
+that can only run [deploy/bin/deploy.sh](deploy/bin/deploy.sh) with a tag;
+the script waits for the health checks and rolls back by itself if the new
+version fails them. The older `deploy` job to Azure stays until Azure is
+shut down.
 
 ---
 
@@ -783,12 +799,12 @@ have is:
   reads that inbox ends up holding it, not whoever signed up first.
 - **Caps on outgoing email** (`email_sends`, keyed by a hash of the
   address): 5 a day per address, `EMAIL_DAILY_CAP` in all.
-- **Rate limits per client**, keyed on the real address behind Azure's proxy
+- **Rate limits per client**, keyed on the real address behind Caddy
   (`TRUST_FORWARDED_FOR`).
 - **A bot check** on signup and reset, when `TURNSTILE_SECRET_KEY` and the
   frontend's site key are set.
 - **A ceiling on what one account stores**, because the whole app shares
-  Neon's 0.5 GB free tier: 500 subscriptions and 100 categories
+  one database with 10 GiB of storage: 500 subscriptions and 100 categories
   (`crud.MAX_SUBSCRIPTIONS` / `MAX_CATEGORIES`). A create, restore or import
   that would go over answers 409 and writes nothing. An import is counted
   after a `replace` has emptied the account and after a merge has matched
@@ -811,8 +827,8 @@ Locally nothing is sent: `EMAIL_BACKEND=console` logs each message, link
 included, so `docker compose logs backend` is the inbox. Production uses
 [Resend](https://resend.com)'s free tier (3,000 emails/month), which needs a
 sending domain verified in Resend (SPF/DKIM records, plus a DMARC record),
-`EMAIL_BACKEND=resend`, `RESEND_API_KEY` as a Container Apps secret, and
-`EMAIL_FROM`/`APP_URL` on the backend app. Leave Resend's open and click
+`EMAIL_BACKEND=resend`, and `RESEND_API_KEY`, `EMAIL_FROM` and `APP_URL` in
+the server's env file ([deploy/README.md](deploy/README.md) § Environment). Leave Resend's open and click
 tracking off for that domain: the app promises no tracking.
 
 ## Backup and restore
@@ -872,6 +888,15 @@ meant would empty an account on a coin flip.
 
 The file carries a `version` field. A file whose version this build doesn't
 read is refused with a 400 rather than imported on a guess.
+
+**The whole database** is backed up by UpCloud, which can restore it to any
+point in the last 3 days. A restore goes into a new
+database service, is checked against production with
+[deploy/bin/verify-copy.sh](deploy/bin/verify-copy.sh), and only then takes
+over; the drill took about 17 minutes. The steps are in
+[deploy/README.md](deploy/README.md) § Restore. There is no copy outside
+UpCloud, so a deletion noticed after 3 days can't be undone that way, which
+is what the per-account JSON export is for.
 
 ## Tests
 
@@ -978,7 +1003,7 @@ docs/
 .github/workflows/
   test.yml            # pytest on SQLite and Postgres, on push and PR
   frontend-visual.yml # Playwright visual regression, on push and PR
-  build-and-push.yml  # builds and publishes both images to GHCR, deploys to Azure
+  build-and-push.yml  # builds and publishes both images to GHCR, deploys to UpCloud
   docs.yml            # publishes the API reference to GitHub Pages
 frontend/
   ui.html             # entry page for the clickable current UI mock
@@ -1004,6 +1029,14 @@ frontend/
     dashboard/        # Hero, TrendStrip, KpiBand, CategoryBars, ComingUp,
                       # NextCharge, TrialBanner, SubscriptionTable, AddForm,
                       # ImportExport, dialogs
+deploy/
+  compose.prod.yml    # production: Caddy + backend + frontend, no db, no redis
+  Caddyfile           # TLS, reverse proxy, maintenance switch
+  cloud-init.yaml     # the server's first-boot setup
+  bin/                # deploy.sh, ops-check.py, verify-copy.sh
+  systemd/            # timers for the alerts and the weekly image prune
+  tests/              # the deploy-config job's tests
+  README.md           # runbooks: provision, deploy, restore, cutover, take down
 docker-compose.yml    # db + redis + backend + frontend for local dev
 .env.example          # every variable the stack reads
 PLAN.md               # project plan and milestones

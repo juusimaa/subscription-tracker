@@ -38,8 +38,8 @@ DATABASE_URL = os.getenv(
 
 # The engine manages the pool of actual connections to Postgres.
 #
-# pool_pre_ping is important in production: the deployed DB is Neon, which
-# scales to zero and drops idle connections on suspend, so a pooled
+# pool_pre_ping is important in production: the managed database restarts
+# for maintenance and the pool must drop dead connections, so a pooled
 # connection can go stale between requests. Without pre_ping, SQLAlchemy
 # would hand out that dead connection and the query would fail with
 # "server closed the connection unexpectedly". pool_recycle backs this up

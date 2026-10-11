@@ -190,15 +190,17 @@ app.add_middleware(
 # the one place this comes back on.
 RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() != "false"
 
-# Behind Azure Container Apps, every request reaches uvicorn from the
-# ingress proxy (Envoy, addresses like 100.100.0.x), so the socket's remote
-# address is the same for everyone. Keyed on it, each limit above was one
-# bucket shared by every user: one script hammering /token locked the whole
-# site out of signing in, and was itself throttled no harder than anyone else.
+# In production every request reaches uvicorn from the Caddy reverse proxy
+# (deploy/Caddyfile), so the socket's remote address is the same for everyone.
+# Keyed on it, each limit above would be one bucket shared by every user: one
+# script hammering /token would lock the whole site out of signing in, and be
+# throttled no harder than anyone else. (Azure's ingress did exactly that
+# before this existed.)
 #
-# Envoy appends the address it received the connection from to
-# X-Forwarded-For, so the *last* entry is the real client. Earlier entries are
-# whatever the client chose to send and are never trusted. Not trusted at all
+# Caddy *replaces* X-Forwarded-For with the address it received the
+# connection from, so the last entry, and the only one, is the real client.
+# Taking the last entry also stays safe behind a proxy that appends instead:
+# earlier entries are whatever the client chose to send and are never trusted. Not trusted at all
 # unless TRUST_FORWARDED_FOR is set: without a proxy in front (local Compose,
 # the test suite) the header is entirely client-controlled, and honouring it
 # would let anyone pick a fresh key per request.
