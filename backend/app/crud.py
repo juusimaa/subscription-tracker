@@ -51,8 +51,9 @@ class CurrentRunExistsError(Exception):
 
 # --- Per-account limits ---
 #
-# Signup is open (PLAN.md milestone 11) and the database is Neon's free tier:
-# 0.5 GB for the whole app. Text fields are already length-capped, so what was
+# Signup is open (PLAN.md milestone 11) and the database has a fixed size
+# shared by the whole app (10 GiB on UpCloud; Neon's free tier, when this was
+# written, was 0.5 GB). Text fields are already length-capped, so what was
 # left unbounded was the number of rows -- one scripted account could fill the
 # database and stop writes for everyone (issue #105). Both numbers are far
 # above any real use.

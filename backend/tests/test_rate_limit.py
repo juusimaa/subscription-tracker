@@ -100,9 +100,9 @@ def _wrong_login(client, email: str, forwarded_for: str):
 
 
 class TestClientAddress:
-    """Behind Azure's ingress every request comes from the proxy's address,
-    so the limits have to key on the client Envoy appends to
-    X-Forwarded-For -- otherwise every user shares one budget."""
+    """Behind Caddy every request comes from the proxy's address, so the
+    limits have to key on the client named in X-Forwarded-For -- otherwise
+    every user shares one budget."""
 
     def test_clients_behind_the_proxy_get_separate_budgets(self, client):
         with forwarded_for_trusted(), rate_limiting_enabled():

@@ -32,5 +32,5 @@ ENTRYPOINT ["./entrypoint.sh"]
 
 # The default command when the container starts. docker-compose.yml
 # overrides this for local dev to add --reload for hot-reloading; this
-# plain version (no --reload) is what would run in production/Azure.
+# plain version (no --reload) is what runs in production.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

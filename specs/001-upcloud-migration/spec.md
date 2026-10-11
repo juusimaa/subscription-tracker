@@ -288,7 +288,9 @@ Postgres with the same row counts as the live database.
 - **FR-021**: After a 7-day soak with no data-affecting incident, the Azure
   resources, the Azure deploy credentials and repository variables, and the
   Neon project MUST be removed. Before that, a final Neon export MUST be
-  archived.
+  archived. *Amended 2026-10-11*: the soak was waived and both were removed
+  on the cutover day, because neither was a working rollback target (Azure
+  down since 2026-10-10, Neon read-only since the cutover).
 - **FR-022**: The README, deploy workflow and environment-variable docs MUST
   describe the new hosting as production in the same PR that makes it
   production (constitution Principle I). Every non-default setting in the new

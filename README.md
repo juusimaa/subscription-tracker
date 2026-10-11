@@ -9,7 +9,7 @@
 [![Publish API docs](https://github.com/juusimaa/subscription-tracker/actions/workflows/docs.yml/badge.svg?branch=main)](https://github.com/juusimaa/subscription-tracker/actions/workflows/docs.yml)
 
 A small app for tracking recurring subscriptions (Netflix, HBO, etc.), built as
-a learning project for Docker, PostgreSQL, and CI/CD to Azure. See
+a learning project for Docker, PostgreSQL, and CI/CD to a cloud host. See
 [PLAN.md](PLAN.md) for the full project plan and milestones.
 
 **Live:** https://subscriptionstrack.com (API at https://api.subscriptionstrack.com/docs)
@@ -34,8 +34,8 @@ at all.
   (`fi-hel1`): Caddy, backend and frontend under Docker Compose, an
   UpCloud-managed PostgreSQL 18 on a private network, and no Redis (see
   [deploy/README.md](deploy/README.md) and [PLAN.md](PLAN.md), milestone 12).
-  Azure Container Apps and Neon, the previous hosting, stay only as the
-  rollback target until they are shut down.
+  Until 2026-10-11 it ran on Azure Container Apps and Neon; both have been
+  shut down.
 - **Languages:** English and Finnish, picked on the sign-in screen or in the
   Account dialog
 
@@ -564,8 +564,7 @@ the live deployment above (milestone 12), via `build-and-push.yml`'s
 `deploy-upcloud` job, pinned to the `sha-` tag. The job connects with a key
 that can only run [deploy/bin/deploy.sh](deploy/bin/deploy.sh) with a tag;
 the script waits for the health checks and rolls back by itself if the new
-version fails them. The older `deploy` job to Azure stays until Azure is
-shut down.
+version fails them.
 
 ---
 

@@ -4,12 +4,12 @@
 # needed.
 #
 # This workflow builds and publishes images, then rolls them out to the
-# Azure Container Apps serving https://subscriptionstrack.com. Rollout is
-# gated behind the AZURE_DEPLOY_ENABLED repo variable (Settings > Secrets and
-# variables > Actions > Variables), currently set to true -- so every push to
-# main is a real, live deploy. It also rolls them out to the UpCloud server
-# (deploy-upcloud job), gated behind UPCLOUD_DEPLOY_ENABLED; that server
-# replaces Azure at the cutover (specs/001-upcloud-migration).
+# UpCloud server serving https://subscriptionstrack.com (deploy-upcloud job).
+# Rollout is gated behind the UPCLOUD_DEPLOY_ENABLED repo variable (Settings
+# > Secrets and variables > Actions > Variables), currently set to true -- so
+# every push to main is a real, live deploy. Until the 2026-10-11 cutover
+# (specs/001-upcloud-migration) a second job deployed to Azure Container
+# Apps; it was removed when Azure was shut down.
 
 name: Build and push images
 
@@ -98,7 +98,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}-${{ matrix.name }}
           # Two tags per build:
           #   latest         -- always the newest main build, convenient for
-          #                     `docker pull` and for a first Azure deploy.
+          #                     `docker pull` and for a first deploy.
           #   sha-<7 chars>  -- immutable, points at exactly one commit. This
           #                     is what a real deploy should pin to, since
           #                     "latest" silently changes underneath you and
@@ -126,69 +126,13 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
-  # Rolls the just-published images out to Azure Container Apps, live at
+  # Rolls the just-published images out to the UpCloud server, live at
   # https://subscriptionstrack.com (and https://api.subscriptionstrack.com
-  # for the backend). Gated behind AZURE_DEPLOY_ENABLED so a fork or a repo
-  # without the Azure infra and federated credential below set up can still
-  # run this workflow -- the job is just skipped rather than failing.
-  deploy:
-    needs: build
-    if: github.ref == 'refs/heads/main' && vars.AZURE_DEPLOY_ENABLED == 'true'
-    runs-on: ubuntu-latest
-
-    # Deploys, unlike registry pushes, are worth doing one at a time -- if a
-    # push landed while the previous deploy was still rolling out, finish
-    # that one before starting the next rather than racing two `az`
-    # invocations against the same Container Apps.
-    concurrency:
-      group: azure-deploy
-      cancel-in-progress: false
-
-    # No long-lived Azure credential stored as a secret. This exchanges the
-    # run's short-lived OIDC token for an Azure login, via a federated
-    # credential on an App Registration scoped to just this resource group --
-    # set up once, in the Azure Portal, as part of milestone 8's infra work.
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
-      - name: Log in to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      # docker/metadata-action's short-sha format is the first 7 characters
-      # of the commit SHA -- computed the same way here so this points at
-      # exactly the tag the build job above just pushed, not `latest`
-      # (which, per the comment above, a real deploy shouldn't float on).
-      - name: Compute image tag
-        id: tag
-        run: echo "sha=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-
-      # `az containerapp update --image` points the app at a new image and
-      # creates a new revision; Container Apps handles the traffic cutover.
-      - name: Update backend container app
-        run: |
-          az containerapp update \
-            --name subscription-tracker-backend \
-            --resource-group subscription-tracker-rg \
-            --image ghcr.io/${{ github.repository }}-backend:${{ steps.tag.outputs.sha }}
-
-      - name: Update frontend container app
-        run: |
-          az containerapp update \
-            --name subscription-tracker-frontend \
-            --resource-group subscription-tracker-rg \
-            --image ghcr.io/${{ github.repository }}-frontend:${{ steps.tag.outputs.sha }}
-
-  # Rolls the same images out to the UpCloud server (staging hostnames until
-  # the cutover, then production). Gated behind UPCLOUD_DEPLOY_ENABLED for
-  # the same reason as the Azure job above. CI can't log in to that server:
-  # the deploy key's authorized_keys line forces bin/deploy.sh, so all this
-  # job can do is hand it a tag. deploy.sh pulls, restarts, checks /health
+  # for the backend). Gated behind UPCLOUD_DEPLOY_ENABLED so a fork or a
+  # repo without the server and its deploy key can still run this workflow
+  # -- the job is just skipped rather than failing. CI can't log in to that
+  # server: the deploy key's authorized_keys line forces bin/deploy.sh, so
+  # all this job can do is hand it a tag. deploy.sh pulls, restarts, checks /health
   # and rolls back on its own (specs/001-upcloud-migration/contracts/
   # deploy-interface.md); its exit code is this job's result.
   deploy-upcloud:
@@ -209,7 +153,7 @@ jobs:
       contents: read
 
     steps:
-      # Same tag the build job pushed and the Azure job deploys.
+      # Same tag the build job just pushed, not `latest`.
       - name: Compute image tag
         id: tag
         run: echo "sha=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"

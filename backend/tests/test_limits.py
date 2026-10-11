@@ -1,5 +1,5 @@
 # How much one account may store (issue #105). Signup is open and the whole
-# app shares Neon's 0.5 GB free tier, so every route that adds rows -- and
+# app shares one fixed-size database, so every route that adds rows -- and
 # the request body itself -- has a ceiling.
 #
 # The limits are lowered to 3 for these tests. The real numbers (500 and 100)
