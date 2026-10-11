@@ -79,7 +79,7 @@ from `API_HOST` there too.
 |---|---|
 | `ALERT_EMAIL` | where alerts go (the maintainer) |
 | `DB_STORAGE_GIB` | the database plan's storage in GiB (`10`); update it whenever the storage is grown |
-| `UPTIMEROBOT_HEARTBEAT_URL` | optional heartbeat URL (research R8); leave empty if the free plan has none |
+| `UPTIMEROBOT_HEARTBEAT_URL` | empty: heartbeat monitors are not on UptimeRobot's free plan (research R8). Set it only on a paid plan |
 
 ## Provision
 
@@ -258,14 +258,13 @@ and once (`RECOVERED`) when it clears. Subject:
 
 | Check | Fires when | Cadence | What to do |
 |---|---|---|---|
-| UptimeRobot, app | `https://subscriptionstrack.com` lacks the app's keyword (also during maintenance) | 5 min | `docker compose ps`; if a container is down, `docker compose logs <service>`; § Manual rollback if the last deploy is the cause |
-| UptimeRobot, API | `https://api.subscriptionstrack.com/health` is not 200 | 5 min | as above; `/health` failing with the containers up means the database is unreachable: check it in the UpCloud console |
+| UptimeRobot, app | `https://subscriptionstrack.com` lacks the app's keyword `id="root"` (also during maintenance) | 5 min | `docker compose ps`; if a container is down, `docker compose logs <service>`; § Manual rollback if the last deploy is the cause |
+| UptimeRobot, API | `https://api.subscriptionstrack.com/health` lacks `"status":"ok"` or is not 2xx (still checked during maintenance, which passes `/health` through) | 5 min | as above; `/health` failing with the containers up means the database is unreachable: check it in the UpCloud console |
 | `memory` | over 80% of memory in use | 5 min | `docker stats --no-stream`; restart the heavy container; if it recurs, consider a larger plan |
 | `disk` | over 80% of `/` in use | 5 min | `docker system df`; `docker image prune -a --filter until=168h`; check `/var/lib/docker/containers` log sizes |
 | `db_size` | database over 80% of `DB_STORAGE_GIB` | hourly | grow storage by 10 GiB in the UpCloud console (online), then update `DB_STORAGE_GIB` |
 | `cert:<host>` | under 14 days to expiry, or the certificate is invalid | daily | `docker compose logs caddy \| grep -i acme`; check DNS still points here and ports 80/443 are open |
 | `check_error` | a check could not run 3 times in a row | per run | `journalctl -u ops-check-<kind>` for the error |
-| heartbeat (optional) | `ops-check` stopped pinging | per UptimeRobot | the server is down or the timers stopped: `systemctl list-timers` |
 
 Also in place without anything here: UpCloud's low-balance email, and
 GitHub's failed-workflow email for deploys.

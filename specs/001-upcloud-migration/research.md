@@ -240,6 +240,11 @@ checks each one.
     a 5-minute interval, email alerts. One watches `https://subscriptionstrack.com`
     and the other `https://api.subscriptionstrack.com/health`. Commercial use
     is allowed on the free plan.
+    - The app monitor's keyword is `id="root"`, the SPA's mount point, which
+      the maintenance page lacks. The API monitor's is `"status":"ok"`.
+    - Both must be keyword monitors: a plain HTTP monitor sends `HEAD`,
+      which `/health` (a FastAPI `GET` route) answers with 405. A keyword
+      monitor sends `GET`, because it reads the body.
   - **Everything else**: `ops-check.py`, stdlib Python run by systemd timers.
     It alerts by email to `ALERT_EMAIL` through Resend's HTTP API.
 
@@ -253,10 +258,11 @@ checks each one.
     An alert is sent once per crossing: a state file records which alerts are
     active, and an alert is re-armed when its condition clears. A
     "recovered" email is sent when that happens.
-  - **Heartbeat**: `ops-check` also pings an UptimeRobot heartbeat monitor, if
-    the free plan includes one. That catches the case where the server is
-    dead and can't send its own alerts. **(verify)** — otherwise the two HTTP
-    monitors already cover a dead server.
+  - **Heartbeat**: none. `ops-check` can ping an UptimeRobot heartbeat
+    monitor, which would catch a server that is dead and can't send its own
+    alerts, but heartbeat monitors are not on the free plan (checked
+    2026-10-11, T039). `UPTIMEROBOT_HEARTBEAT_URL` stays empty; the two
+    keyword monitors already cover a dead server.
 - **Rationale**:
   - UpCloud has no documented server metrics alerts. Database alerts exist
     only through the API.
