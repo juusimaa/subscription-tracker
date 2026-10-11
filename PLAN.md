@@ -71,6 +71,7 @@ docker-subscription-tracker/
 10. ~~**Multi-currency support**~~ ✅ — closes TODO.md's D7, which was recorded as a decision to revisit rather than a task, on the grounds that every subscription today is silently assumed to be EUR. Currency lives on the **subscription**, not the user — `cost` gains a `currency` column, since two subscriptions on one account can legitimately be billed in different currencies (D4's own reasoning: don't force a schema constraint that isn't true about the user's money). Users additionally get a **default currency** setting, pre-filling new subscriptions rather than acting as a source of truth — the first of what will likely be several user-specific settings, so it gets its own typed column(s) rather than a JSONB blob, following the `token_version` precedent (milestone 6) instead of inventing a schemaless settings store. How totals show a mix of currencies is settled: every total is **converted into the user's currency at ECB reference rates** and marked ≈, with a per-currency statement under the headline when the period holds more than one currency.
     Decided 2026-10-06. Details and a refreshed mock are below.
 11. **Open signup** — retire step 7's invite code. Signing in now needs a confirmed address, and four protections take the code's place: rate limits keyed on the real client behind Azure's proxy, no answer that says an address is taken, caps on outgoing email, and a Cloudflare Turnstile bot check. Decided 2026-10-06. Details below.
+12. **UpCloud hosting** — production moves off Azure Container Apps and Neon, which both scale to zero and make the first request after a quiet spell slow, to one always-on UpCloud server and a managed PostgreSQL 18 in Helsinki, for under €25/month. Specified and planned in [specs/001-upcloud-migration/](specs/001-upcloud-migration/). Details below.
 
 ## Milestone 5 — GitHub Actions to GHCR (done)
 
@@ -649,6 +650,45 @@ the logs, then create the Turnstile widget (hostname
 `0x4AAAAAAFPKdaenIDafZU0R`) and set both keys plus
 `TURNSTILE_HOSTNAMES=subscriptionstrack.com`. Afterwards, remove `INVITE_CODE`
 from the backend app.
+
+## Milestone 12 — UpCloud hosting
+
+Spec, plan, research and tasks: [specs/001-upcloud-migration/](specs/001-upcloud-migration/).
+Runbooks: [deploy/README.md](deploy/README.md).
+
+**Why.** Azure Container Apps and Neon both scale to zero, so the first
+request after a quiet spell waited for the app and then the database to wake
+up, and sign-in, signup and the dashboard were slow on it. Bot traffic kept
+waking the frontend, so the bill was never quite zero either. One always-on
+server answers quickly at any hour for a fixed price.
+
+**What runs where.** All in UpCloud's `fi-hel1`:
+- a **Starter 1xCPU-2GB** server running the same two GHCR images under
+  Docker Compose ([deploy/compose.prod.yml](deploy/compose.prod.yml)), behind
+  **Caddy**, which terminates TLS, renews certificates, replaces any
+  client-sent `X-Forwarded-For`, and serves a maintenance page while a flag
+  file exists;
+- a managed **PostgreSQL 18** (Developer 1 CPU / 1 GB, 10 GiB) reachable only
+  over a private SDN network, with `sslmode=verify-full`;
+- no Redis, as on Azure: `app/cache.py` fails open.
+
+**Deploys.** Every `main` build's `deploy-upcloud` job connects over SSH with
+a key whose only power is running `deploy.sh <tag>`. The script waits for the
+health checks and rolls back by itself. A rollback never downgrades the
+schema, so migrations stay additive (expand, then contract).
+
+**Backups and alerts.** UpCloud's backups give point-in-time recovery over
+3 days; the restore drill took about 17 minutes. There is no copy outside
+UpCloud, an accepted risk. UptimeRobot (free) watches both hosts, and a small
+stdlib `ops-check` on the server emails once when memory, disk, database
+size or certificate expiry crosses its threshold, and once when it recovers.
+
+**Cost.** €15.40/month excluding VAT (server €6.00, database €9.40), under
+the €25 ceiling including VAT.
+
+**Cutover.** Neon was copied into the new database behind the maintenance
+page and checked with `verify-copy.sh`. Azure and Neon stay as the rollback
+target until they are shut down (User Story 4).
 
 ## Notes / rationale
 

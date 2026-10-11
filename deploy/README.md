@@ -6,9 +6,6 @@ alert scripts, and the runbooks for every manual operation. The design and
 the reasons behind it are in
 [specs/001-upcloud-migration/](../specs/001-upcloud-migration/).
 
-**Not yet live.** Production still runs on Azure Container Apps and Neon
-until the cutover below; these files describe the server that replaces them.
-
 | Path | What it is |
 |---|---|
 | `compose.prod.yml` | The stack: Caddy, backend, frontend. No database (managed) and no Redis (FR-014). |
