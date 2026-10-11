@@ -212,6 +212,12 @@ Merges to `main` deploy themselves: CI's `deploy-upcloud` job runs
 | 64 | invalid tag | unchanged, nothing ran | check the workflow |
 | 75 | image pull failed | unchanged | re-run the job |
 
+A deploy changes only the image tag. Files under `/opt/subscription-tracker/`
+(`compose.prod.yml`, `Caddyfile`, `maintenance/`, `bin/`, `systemd/`) are not
+deployed by CI: when a PR changes one, copy it to the server by hand as in
+§ Provision step 5 (then `docker compose up -d` for compose or Caddy changes,
+`sudo systemctl daemon-reload` for unit changes).
+
 A deploy checks the new version twice: `docker compose up --wait` (the
 backend's healthcheck reaches the database) and `https://$API_HOST/health`
 through Caddy.
