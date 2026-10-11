@@ -9,7 +9,7 @@ the repository or an image (FR-013). Compose reads it through `env_file` and
 
 | Variable | Production value / rule | Change from Azure |
 |---|---|---|
-| `DATABASE_URL` | `postgresql+psycopg://<user>:<pw>@<private-host>:<port>/<db>?sslmode=verify-full&sslrootcert=/etc/subscription-tracker/upcloud-ca.pem` (or `sslmode=require`, see research R4) | Neon → UpCloud private host |
+| `DATABASE_URL` | `postgresql+psycopg://tracker:<pw>@<private-host>:<port>/<db>?sslmode=verify-full&sslrootcert=/etc/subscription-tracker/upcloud-ca.pem` (or `sslmode=require`, see research R4) | Neon → UpCloud private host |
 | `SECRET_KEY` | **carried over unchanged**, so existing sign-in tokens and emailed links keep working (spec US1 scenario 3) | moved |
 | `CORS_ORIGINS` | `https://subscriptionstrack.com`; the staging origin is added during rehearsal and removed at decommission | the old `.azurecontainerapps.io` origin is dropped |
 | `TRUST_FORWARDED_FOR` | `true`, set by `deploy/compose.prod.yml` rather than this file, because it is only safe with Caddy in front (Caddy overwrites XFF, see [edge-http.md](edge-http.md)). | comment now names Caddy, not Azure |
@@ -34,6 +34,7 @@ the repository or an image (FR-013). Compose reads it through `env_file` and
 | `ALERT_EMAIL` | where alerts go (the maintainer) |
 | `DB_STORAGE_GIB` | the database plan's storage, the denominator of the database-size alert (10) |
 | `UPTIMEROBOT_HEARTBEAT_URL` | optional dead-server heartbeat (research R8) |
+| `EXTRA_CERT_HOSTS` | optional, comma-separated: other apps' hostnames this Caddy serves (Gym Notebook's), added to the certificate alert |
 
 ## Deploy record (not in this file)
 

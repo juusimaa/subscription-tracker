@@ -12,8 +12,8 @@ backup alert (FR-017 and FR-019 as amended on 2026-10-09).
 | `uptime:app`, `uptime:api` | UptimeRobot Free (external) | `https://subscriptionstrack.com` lacks its app keyword, or `https://api.subscriptionstrack.com/health` is not 200, for one 5-minute interval | 5 min | FR-019 |
 | `memory` | `/proc/meminfo` | `1 − MemAvailable/MemTotal > 0.80` | 5 min | FR-028 |
 | `disk` | `statvfs("/")` | used > 80% | 5 min | FR-028, edge case "disk full" |
-| `db_size` | `SELECT pg_database_size(current_database())` through `postgres:18` `psql` | size > 80% of `DB_STORAGE_GIB` | hourly | FR-028 |
-| `cert:<host>` | TLS handshake to each host, read `notAfter` | under 14 days to expiry | daily | edge case "certificate renewal" |
+| `db_size` | `SELECT sum(pg_database_size(datname)) FROM pg_database` through `postgres:18` `psql`: the whole service, shared with Gym Notebook (needs `pg_read_all_stats`) | total > 80% of `DB_STORAGE_GIB` | hourly | FR-028 |
+| `cert:<host>` | TLS handshake to `APP_HOST`, `API_HOST` and each of `EXTRA_CERT_HOSTS`, read `notAfter` | under 14 days to expiry | daily | edge case "certificate renewal" |
 | `check_error` | `ops-check` itself | a check could not run (psql or TLS error) on 3 consecutive runs | per run | keeps silent failures visible |
 
 **Also in place, outside `ops-check`:**

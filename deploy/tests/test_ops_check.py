@@ -34,8 +34,10 @@ class Fakes:
         self.disk = os.statvfs_result((4096, 4096, 1000, 500, 500, 0, 0, 0, 0, 255))
         self.db_bytes = 1 * GIB
         self.psql_error = None
+        self.psql_sql = []
         self.cert_expiry = {"app.test": NOW + timedelta(days=60), "api.test": NOW + timedelta(days=60)}
         self.cert_error = {}
+        self.cert_probed = []
         self.send_ok = True
         self.sent = []
         self.gets = []
@@ -59,11 +61,13 @@ class Fakes:
         )
 
     def psql(self, url, sql):
+        self.psql_sql.append(sql)
         if self.psql_error:
             raise self.psql_error
         return str(self.db_bytes)
 
     def cert_not_after(self, host):
+        self.cert_probed.append(host)
         if host in self.cert_error:
             raise self.cert_error[host]
         return self.cert_expiry[host]
@@ -146,6 +150,17 @@ def test_database_just_over_80_percent_of_plan_storage_fires(fakes):
     assert fakes.subjects() == ["[subscriptionstrack] ALERT db_size: 8.0 GiB of 10 GiB (80.0%)"]
 
 
+def test_database_size_counts_every_database_in_the_service(fakes):
+    """FR-019 (gymNotebook spec 005): DB_STORAGE_GIB is the plan's disk,
+    shared with Gym Notebook's database, so the tracker's own database alone
+    would let the disk fill unnoticed."""
+    fakes.run("hourly")
+    sql = " ".join(fakes.psql_sql[0].split())
+    assert "sum(pg_database_size(datname))" in sql
+    assert "FROM pg_database" in sql
+    assert "current_database()" not in sql
+
+
 # --- certificates: under 14 days fires ----------------------------------------
 
 
@@ -161,6 +176,34 @@ def test_certificate_with_13_days_23_hours_left_fires(fakes):
     fakes.cert_expiry["api.test"] = NOW + timedelta(days=13, hours=23)
     fakes.run("daily")
     assert fakes.subjects() == ["[subscriptionstrack] ALERT cert:api.test: expires in 13 days"]
+
+
+def test_without_extra_hosts_only_this_apps_two_hosts_are_probed(fakes):
+    fakes.run("daily")
+    assert fakes.cert_probed == ["app.test", "api.test"]
+
+
+def test_extra_cert_hosts_are_probed_too(fakes):
+    """Gym Notebook's hostnames are served by this Caddy, so their renewal
+    is this server's job (gymNotebook spec 005, D9). Spaces and empty
+    entries in the list are ignored."""
+    fakes.config["EXTRA_CERT_HOSTS"] = " gym.test , api.gym.test,"
+    fakes.cert_expiry["gym.test"] = NOW + timedelta(days=60)
+    fakes.cert_expiry["api.gym.test"] = NOW + timedelta(days=13)
+    fakes.run("daily")
+    assert fakes.cert_probed == ["app.test", "api.test", "gym.test", "api.gym.test"]
+    assert fakes.subjects() == ["[subscriptionstrack] ALERT cert:api.gym.test: expires in 13 days"]
+
+
+def test_an_unreachable_extra_host_counts_toward_check_error_not_an_alert(fakes):
+    """A probe that cannot connect is a blind check, as for this app's own
+    hosts; the hosts that did answer still report."""
+    fakes.config["EXTRA_CERT_HOSTS"] = "gym.test"
+    fakes.cert_error["gym.test"] = ConnectionRefusedError()
+    fakes.cert_expiry["app.test"] = NOW + timedelta(days=1)
+    fakes.run("daily")
+    assert fakes.subjects() == ["[subscriptionstrack] ALERT cert:app.test: expires in 1 days"]
+    assert fakes.state()["errors:cert"]["consecutive"] == 1
 
 
 def test_an_invalid_certificate_fires_the_cert_alert_at_once(fakes):

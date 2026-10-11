@@ -15,6 +15,10 @@ in front.
 - DNS: grey-cloud A records at Cloudflare pointing at the server's public
   IPv4.
 - Any CAA records must allow `letsencrypt.org` and `sectigo.com`.
+- Other apps on the server (Gym Notebook) add their own hosts through site
+  files in `/opt/edge/sites`, imported by the Caddyfile, with upstreams on
+  the external Docker network `edge`. Only Caddy joins `edge`; the backend
+  and frontend stay on this stack's own network.
 
 ## Client address (FR-009) — the rule the rate limits depend on
 

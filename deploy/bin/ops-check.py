@@ -4,8 +4,8 @@
 Run by the ops-check-*.timer units as the deploy user:
 
     ops-check.py frequent   memory and root disk, every 5 minutes
-    ops-check.py hourly     database size against the plan's storage
-    ops-check.py daily      TLS certificate expiry on both hosts
+    ops-check.py hourly     all databases' size against the plan's storage
+    ops-check.py daily      TLS certificate expiry on every served host
 
 Each check is either firing or not. An email goes to ALERT_EMAIL when a check
 starts firing and again when it recovers; nothing is sent while it stays the
@@ -118,15 +118,18 @@ def check_disk(deps):
     ]
 
 
+# The whole managed service, not just this app's database: DB_STORAGE_GIB is
+# the plan's disk, shared with Gym Notebook's database and the service's own
+# (gymNotebook spec 005, FR-019). Sizing a database the role cannot CONNECT
+# to needs pg_read_all_stats (deploy/README.md § Database role); without it
+# psql fails, which counts toward check_error rather than undercounting.
+DB_SIZE_SQL = "SELECT sum(pg_database_size(datname)) FROM pg_database"
+
+
 def check_db_size(deps):
     storage_gib = int(deps.config["DB_STORAGE_GIB"])
     try:
-        size = int(
-            deps.run_psql(
-                libpq_url(deps.config["DATABASE_URL"]),
-                "SELECT pg_database_size(current_database())",
-            ).strip()
-        )
+        size = int(deps.run_psql(libpq_url(deps.config["DATABASE_URL"]), DB_SIZE_SQL).strip())
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         raise CheckFailed(f"psql: {type(exc).__name__}") from exc
     limit = storage_gib * GIB
@@ -140,10 +143,20 @@ def check_db_size(deps):
     ]
 
 
+def cert_hosts(config):
+    """This app's two hosts, then EXTRA_CERT_HOSTS: the other apps' hostnames
+    this Caddy serves through /etc/caddy/sites (Gym Notebook's
+    gymnotebook.fit and api.gymnotebook.fit), comma-separated. A variable
+    rather than a list in this file, so adding or removing an app on the
+    server is an env-file edit, not a PR here."""
+    extra = [h.strip() for h in config.get("EXTRA_CERT_HOSTS", "").split(",")]
+    return [config["APP_HOST"], config["API_HOST"], *(h for h in extra if h)]
+
+
 def check_certs(deps):
     results = []
     failed = []
-    for host in (deps.config["APP_HOST"], deps.config["API_HOST"]):
+    for host in cert_hosts(deps.config):
         check = f"cert:{host}"
         threshold = f"under {CERT_MIN_LEFT.days} days left"
         try:

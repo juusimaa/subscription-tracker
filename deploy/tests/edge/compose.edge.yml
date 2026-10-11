@@ -7,7 +7,9 @@
 #   - the backend runs on SQLite, so no database server is needed;
 #   - Caddy gets certificates from its internal CA (CADDY_TEST_GLOBALS=
 #     local_certs, set by the test), never from Let's Encrypt;
-#   - only Caddy's 443 is published, on a free loopback port the test picks.
+#   - only Caddy's 443 is published, on a free loopback port the test picks;
+#   - a stub container on the external `edge` network stands in for another
+#     app's upstream, and a temp dir for /opt/edge/sites.
 #
 # Relative paths resolve against deploy/, the first file's directory.
 
@@ -22,6 +24,9 @@ services:
       # Same container path as production's flags mount, so this replaces
       # it: a temp dir the test can touch and rm the flag in.
       - ${EDGE_FLAGS_DIR:?set by test_edge.py}:/srv/flags:ro
+      # Same for the other apps' site files: a temp dir holding the site
+      # file the test writes, instead of the server's /opt/edge/sites.
+      - ${EDGE_SITES_DIR:?set by test_edge.py}:/etc/caddy/sites:ro
 
   backend:
     build: ../backend
@@ -44,3 +49,13 @@ services:
   frontend:
     build: ../frontend
     image: subscription-tracker-frontend:edge
+
+  # Stands in for another app's container (Gym Notebook's gym-web) on the
+  # external `edge` network, and on nothing else: the test's site file
+  # proxies to it by name, which works only if Caddy has joined `edge`. The
+  # pinned caddy image again, so the test pulls nothing new.
+  edge-stub:
+    image: caddy:2.11.7
+    command: ["caddy", "respond", "--listen", ":80", "--body", "from the edge network"]
+    networks:
+      - edge

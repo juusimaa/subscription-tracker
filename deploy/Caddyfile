@@ -89,3 +89,20 @@
 		reverse_proxy backend:8000
 	}
 }
+
+# Other apps on this server bring their own site blocks: Gym Notebook's
+# hostnames come from deploy/gymnotebook.caddy in its own repository. The
+# provisioning runbook copies such files into /opt/edge/sites on the host,
+# which compose.prod.yml mounts here read-only. This Caddy stays the only
+# process on ports 80/443, and each app keeps its hostnames and routes in its
+# own repository. Their upstreams (gym-api, gym-web) are reached over the
+# external Docker network `edge`.
+#
+# A glob that matches nothing is not an error: Caddy logs the warning "No
+# files matching import glob pattern" and carries on (checked with
+# caddy:2.11.7), so this line is harmless on a server with no other app. A
+# broken site file does fail validation, which `caddy reload` runs before
+# swapping configs, so the running config is kept. Site files are their app's
+# own config: they must not rely on this file's snippets or reuse its
+# hostnames.
+import /etc/caddy/sites/*.caddy
