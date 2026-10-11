@@ -425,7 +425,7 @@ function App() {
     <>
       <nav className="nav app-nav">
         <span className="nav-brand">
-          {t("app.brand")} <span className="tag tag-outline nav-beta-tag">{t("app.beta")}</span>
+          {t("app.brand")}
         </span>
         <a className="nav-link" href="#overview" aria-current="location">{t("app.navOverview")}</a>
         <a className="nav-link" href="#all">{t("app.navAll")}</a>
@@ -540,6 +540,7 @@ function App() {
       )}
 
       <footer className="app-footer">
+        <span className="app-footer-note">{t("app.dataInEu")}</span>
         <a
           className="app-footer-link"
           href="https://github.com/juusimaa/subscription-tracker"
