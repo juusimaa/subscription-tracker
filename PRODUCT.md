@@ -58,9 +58,11 @@ never surprised by a charge.
 ## Capabilities and Constraints
 
 - **Stack (existing):** React 19 (Vite) frontend, FastAPI and PostgreSQL
-  backend, JWT auth. Deployed on Azure Container Apps with Neon Postgres.
-- **€0 hosting.** Both apps scale to zero and the database is on Neon's free
-  tier. Avoid features that need always-on infrastructure or paid APIs.
+  backend, JWT auth. Deployed on one UpCloud server with a managed
+  PostgreSQL 18 (PLAN.md milestone 12).
+- **Fixed, small hosting budget.** About €15/month for the server and the
+  database, under a €25 ceiling. Avoid features that need more infrastructure
+  or paid APIs.
 - **Multi-currency (PLAN.md milestone 10).** Each subscription keeps the
   currency it is billed in, and each user has one currency that totals are
   shown in and new subscriptions start in. Totals are converted at European

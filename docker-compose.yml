@@ -85,8 +85,8 @@ services:
       # its own .env to something other than localhost:5173.
       CORS_ORIGINS: ${CORS_ORIGINS}
       # Read from .env, which is gitignored -- the signing key is never
-      # written into this file, into the image, or into git. In Azure this
-      # same variable comes from a Container Apps secret instead.
+      # written into this file, into the image, or into git. In production
+      # it comes from the server's /etc/subscription-tracker/.env instead.
       SECRET_KEY: ${SECRET_KEY}
       # The bot check on signup and reset (app/turnstile.py). Unset, the
       # default, switches it off -- see .env.example for Cloudflare's

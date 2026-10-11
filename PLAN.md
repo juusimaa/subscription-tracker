@@ -1,6 +1,6 @@
 # Subscription Tracker — Project Plan
 
-A learning project to get hands-on with **Docker**, **PostgreSQL**, and a **CI/CD pipeline to Azure**, by building a simple app that tracks recurring subscriptions (Netflix, HBO, etc.).
+A learning project to get hands-on with **Docker**, **PostgreSQL**, and a **CI/CD pipeline to the cloud** (Azure Container Apps at first, UpCloud since milestone 12), by building a simple app that tracks recurring subscriptions (Netflix, HBO, etc.).
 
 ## Stack
 
@@ -186,6 +186,9 @@ two browsers gives two independent valid tokens — nothing invalidates the olde
 one, which is why the expiry is kept short.
 
 ## Milestone 8 — Azure Container Apps deploy (done)
+
+*Superseded by [Milestone 12](#milestone-12--upcloud-hosting): Azure and Neon
+were shut down on 2026-10-11. Kept as history.*
 
 **Infra** (Germany West Central, near Neon's `eu-central-1`, all in the
 existing `subscription-tracker-rg` resource group): one Container Apps
@@ -688,8 +691,10 @@ the €25 ceiling including VAT.
 
 **Cutover: 2026-10-11**, about 10 minutes behind the maintenance page.
 Neon was copied into the new database and checked with `verify-copy.sh`.
-The 7-day soak runs to 2026-10-18; Azure and Neon stay as the rollback
-target until they are shut down (User Story 4), at the latest 2026-10-25.
+**Azure and Neon shut down the same day** (User Story 4), without the
+planned 7-day soak: Azure had been down since 2026-10-10 and Neon read-only
+since the cutover, so neither was a working rollback target. A final Neon
+export, checked against the live database, is kept outside both providers.
 
 ## Notes / rationale
 

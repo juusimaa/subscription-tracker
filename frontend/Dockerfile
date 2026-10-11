@@ -17,7 +17,7 @@ RUN npm run build
 # --- production stage: serve the built static files with Nginx ---
 # Nginx is a lightweight web server -- far smaller and simpler than shipping
 # Node just to serve static files. This is the stage actually deployed to
-# Azure; local dev instead targets the "build" stage above and runs Vite's
+# production; local dev instead targets the "build" stage above and runs Vite's
 # dev server for hot-reloading (see docker-compose.yml).
 FROM nginx:alpine AS production
 COPY --from=build /app/dist /usr/share/nginx/html

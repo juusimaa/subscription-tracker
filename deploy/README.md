@@ -317,6 +317,9 @@ restore to `verify-copy.sh` exiting 0.
 
 ## Cutover
 
+*Historical: completed 2026-10-11. Azure and Neon no longer exist, so none
+of this can be run again; kept as the record of how the move was done.*
+
 The one-time move from Azure + Neon. Total maintenance target **≤ 30
 minutes** (FR-005, SC-003); the plan takes about 15. Preconditions: the
 staging rehearsal and restore drill are done (tasks T021–T024, T034–T040),
@@ -407,6 +410,9 @@ flag is removed, users write to UpCloud, and the second case applies.
 
 ## Rollback
 
+*Historical: Azure and Neon were shut down on 2026-10-11, so there is no
+rollback target any more. Recovery is now § Restore.*
+
 **Before the maintenance flag is removed.** Nothing was written to UpCloud
 that matters, and Neon holds everything:
 
@@ -434,4 +440,22 @@ To be written with the take-down work (tasks T050–T053).
 
 ## Decommission
 
-To be written after the cutover and the 7-day soak (tasks T054–T059).
+Done 2026-10-11, the day of the cutover, without the planned 7-day soak:
+Azure had been crash-looping since 2026-10-10 (an out-of-date Neon password)
+and Neon was read-only from the cutover on, so neither could have taken
+production back without first being repaired.
+
+1. Final Neon export, on the maintainer's machine:
+   `pg_dump -Fc --no-owner --no-privileges` over the unpooled endpoint into
+   `neon-final-2026-10-11.dump`, restored into a throwaway local `postgres:18`
+   container and checked with `verify-copy.sql` against live Neon: identical
+   (5 users, 33 subscriptions, migration `0008`). No off-provider copy was
+   kept: UpCloud already holds the same data plus everything written since.
+2. The `deploy` job to Azure was removed from `build-and-push.yml`.
+3. Repository secrets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
+   `AZURE_SUBSCRIPTION_ID` and variable `AZURE_DEPLOY_ENABLED` deleted.
+4. App registration `subscription-tracker-gha-deploy` (with its federated
+   credential) deleted.
+5. Resource group `subscription-tracker-rg` deleted: both container apps,
+   their environment, managed certificates and the Log Analytics workspace.
+6. Neon project `Subscription Tracker` deleted.
