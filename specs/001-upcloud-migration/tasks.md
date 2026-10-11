@@ -332,12 +332,14 @@ exist; the Azure secrets and variable are gone from the repository settings;
 **Precondition**: 7 days of production on UpCloud with no data-affecting
 incident (FR-021), and T053 done if the drill relies on the staging
 hostnames. *Waived 2026-10-11* (see FR-021): T054–T056 and T058 were done on
-the cutover day; T057 still waits for the T053 drill.
+the cutover day, and T057 too: the staging hostnames no longer reached a
+stack (the server serves only production), so the T053 drill needs its own
+throwaway one either way.
 
 - [x] T054 [US4] (manual) Archive a final Neon export: `pg_dump -Fc` over the unpooled endpoint, check it with `deploy/bin/check-archive.sh`, keep it on the maintainer's machine and an `age`-encrypted copy in personal storage outside both providers (FR-021, US4 scenario 1). **Done 2026-10-11:** `check-archive.sh` (T050) did not exist yet, so the same check was done by hand: the dump restored into a throwaway `postgres:18` container, and `verify-copy.sql` output identical to live Neon's (5 users, 33 subscriptions, migration 0008). No `age`-encrypted off-provider copy: UpCloud holds the same data plus everything written since, so it would protect nothing
 - [x] T055 [US4] Remove the Azure `deploy` job and its comments from `.github/workflows/build-and-push.yml`, and update the workflow's header comment so the `deploy-upcloud` job is the only deploy path
 - [x] T056 [P] [US4] Rewrite any remaining live-tense Azure/Neon references: `README.md` (intro "CI/CD to Azure", rollback-target mentions added in T041), `PLAN.md` Milestone 8 marked as superseded by Milestone 12 (keep it as history), and `deploy/README.md` § Cutover and § Rollback marked as historical (completed on the cutover date). Then run `git grep -i -E 'azurecontainerapps|azure|neon'` and confirm every hit is a historical note (SC-008, FR-022, US4 scenario 2)
-- [ ] T057 [US4] (manual) Remove the staging hostnames: delete their DNS records, remove the staging origin from `CORS_ORIGINS` and the staging hostname from `TURNSTILE_HOSTNAMES` in `/etc/subscription-tracker/.env` (then `docker compose up -d`), and remove it from the Turnstile widget in Cloudflare
+- [x] T057 [US4] (manual) Remove the staging hostnames: delete their DNS records, remove the staging origin from `CORS_ORIGINS` and the staging hostname from `TURNSTILE_HOSTNAMES` in `/etc/subscription-tracker/.env` (then `docker compose up -d`), and remove it from the Turnstile widget in Cloudflare **Done 2026-10-11:** DNS records, `.env` entries and Turnstile hostname removed; production `/health` and CORS checked afterwards
 - [ ] T058 [US4] (manual) Delete the repository secrets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` and variable `AZURE_DEPLOY_ENABLED`; delete the App Registration's federated credential; delete the Azure resource group `subscription-tracker-rg`; delete the Neon project. Confirm in both consoles that nothing tied to this app is running or billing, within 14 days of cutover (FR-021, SC-008)
 - [ ] T059 [US4] Open PR 4 with T055–T056, listing the manual steps T054, T057 and T058 and their dates in the description; squash-merge
 
