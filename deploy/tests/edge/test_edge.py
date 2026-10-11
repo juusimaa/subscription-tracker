@@ -172,7 +172,7 @@ def test_spoofed_forwarded_for_cannot_dodge_the_token_rate_limit(stack):
 
 @pytest.mark.parametrize("host", [APP_HOST, API_HOST])
 def test_maintenance_flag_answers_503_on_both_hosts(stack, maintenance, host):
-    """FR-005: during the cutover or a pause, no request reaches the app.
+    """FR-005: during the cutover or a take-down, no request reaches the app.
     503 with Retry-After says "temporary" to browsers and crawlers, and
     no-store keeps the page from outliving the window in a cache."""
     status, headers, body = stack.request(host, "GET", "/")

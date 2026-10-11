@@ -31,10 +31,10 @@ as amended 2026-10-09). No off-site copy is made.
   Resend.
 - There is no cost alert (FR-019, as amended).
 
-**Cutover, rollback, pause and resume** are committed runbooks. Pausing
-archives the database and **deletes** the UpCloud resources, because UpCloud
-bills both servers and databases while they are stopped. A static Cloudflare
-Pages notice then stands in at no cost.
+**Cutover, rollback and take-down** are committed runbooks. Taking the site
+down backs up the database and the server's `.env`, then **deletes** the
+UpCloud resources, because UpCloud bills both servers and databases while
+they are stopped. Bringing it back is § Provision plus a restore.
 
 **Cost:** €15.40/month excluding VAT, or €19.33 including 25.5% Finnish VAT,
 under the €25 ceiling (FR-020). Every other service is on a free tier.
@@ -49,11 +49,11 @@ frontend unchanged.
 **Primary Dependencies**:
 - Docker Engine + Compose v2 on Ubuntu 24.04 LTS.
 - Caddy `2.11.7`, a new runtime component that replaces Azure's ingress.
-- `age`, on the maintainer's machine only, to encrypt the pause archive's
-  second copy.
+- `age`, on the maintainer's machine only, to encrypt the take-down
+  backup's second copy.
 - `postgres:18` image for `pg_dump`/`psql`, so the host needs no client
   package and the version always matches.
-- External, all free: UptimeRobot and Cloudflare Pages.
+- External, all free: UptimeRobot.
 - Unchanged: Resend and Turnstile.
 
 **Storage**: UpCloud Managed PostgreSQL 18, `rdb.development.1CPU-1GB`, 10 GiB,
@@ -144,7 +144,7 @@ specs/001-upcloud-migration/
 ├── contracts/
 │   ├── deploy-interface.md   # the SSH forced-command contract CI calls
 │   ├── server-env.md         # /etc/subscription-tracker/.env: every variable
-│   ├── edge-http.md          # what the public hostnames guarantee (TLS, XFF, maintenance, paused)
+│   ├── edge-http.md          # what the public hostnames guarantee (TLS, XFF, maintenance)
 │   └── ops-alerts.md         # every alert: condition, threshold, dedupe, channel
 ├── checklists/
 │   └── requirements.md
@@ -155,11 +155,11 @@ specs/001-upcloud-migration/
 
 ```text
 deploy/                          # NEW — everything production needs that isn't an image
-├── README.md                    # runbooks: provision, cutover, rollback, restore, pause, resume, decommission
+├── README.md                    # runbooks: provision, cutover, rollback, restore, take down, decommission
 ├── compose.prod.yml             # caddy + backend + frontend, images pinned by IMAGE_TAG
 ├── Caddyfile                    # two sites, TLS, maintenance matcher, logging
 ├── cloud-init.yaml              # first boot: docker, deploy user, unattended-upgrades + reboot window, log rotation, timers
-├── maintenance/index.html       # EN + FI notice served by Caddy during maintenance (also published as the paused page)
+├── maintenance/index.html       # EN + FI notice served by Caddy during maintenance
 ├── bin/
 │   ├── deploy.sh                # SSH forced command: validate tag → pull → up --wait → rollback on failure
 │   └── ops-check.py             # stdlib: memory/disk/db-size/cert checks → Resend
@@ -196,7 +196,8 @@ is a separate pytest root. That keeps the backend's bare `pytest` from
      the runbook.
    - Run the full stack on `staging.` and `api-staging.subscriptionstrack.com`
      with a copy of the Neon data.
-   - Rehearse a restore from UpCloud's backups (FR-018) and a pause/resume (FR-026).
+   - Rehearse a restore from UpCloud's backups (FR-018) and the take-down backup steps
+     (FR-024, stopping before anything is deleted).
    - Confirm the database's TLS mode and connection limit.
 3. **PR 2: the UpCloud deploy job.** It sits next to the Azure job and is gated
    on `UPCLOUD_DEPLOY_ENABLED`. Merge it after the rehearsal; until cutover it

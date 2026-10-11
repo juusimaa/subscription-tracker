@@ -40,6 +40,10 @@
 - Pause/resume (User Story 5, FR-024–027, SC-009) was added at the
   maintainer's request. Stopping alone does not stop UpCloud billing, so a
   pause archives the data and deletes the resources.
+- 2026-10-11: User Story 5 was cut down from pause/resume to a take-down
+  backup. The maintainer only wants the database and server configuration
+  kept safe so the site can be rebuilt; the "paused" page (FR-025), the
+  resume rehearsal and the 2-hour resume target were dropped.
 - Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`
 - 2026-10-09, during planning: FR-017 was lowered to 3 days of
   provider-only backups, and the cost alert was removed from FR-019. Both were

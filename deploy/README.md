@@ -83,8 +83,8 @@ from `API_HOST` there too.
 
 ## Provision
 
-Builds the server and database from nothing, for the staging rehearsal, a
-resume after a pause, or a rebuild. The order matters: the database must be
+Builds the server and database from nothing, for the staging rehearsal,
+bringing the site back after § Take down, or a rebuild. The order matters: the database must be
 attached to the private network **when it is created** (research R4).
 
 The account must be out of UpCloud's free trial: the trial only offers
@@ -421,13 +421,9 @@ on UpCloud only; they are **copied back, not lost**:
 4. Azure ingress on (step 2 above), DNS back (step 1 above).
 5. Leave the UpCloud server in maintenance until the cause is understood.
 
-## Pause
+## Take down
 
-To be written with the pause/resume work (tasks T049–T053).
-
-## Resume
-
-To be written with the pause/resume work (tasks T049–T053).
+To be written with the take-down work (tasks T050–T053).
 
 ## Decommission
 

@@ -1,7 +1,7 @@
 -- The fingerprint of the app's data, used to prove two databases hold the
 -- same thing: Neon against UpCloud at cutover (FR-003), a restore against
 -- production (deploy/README.md § Restore), an archive against the live
--- database before a pause. Run by verify-copy.sh, which diffs two outputs.
+-- database before a take-down. Run by verify-copy.sh, which diffs two outputs.
 --
 -- Output is one `kind|name|value...` line per fact, in a fixed order, so two
 -- runs diff cleanly (research R11). Users appear by id only, never by email:

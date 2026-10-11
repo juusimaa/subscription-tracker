@@ -44,7 +44,7 @@ phase, with US3 between them. See "Dependencies & Execution Order".
 | (no PR) provision + rehearse | T013–T014, T021–T024, T033, T035–T040 | none (staging hostnames only) |
 | PR 2: `deploy-upcloud` job | T032, T034 | deploys to staging hostnames |
 | PR 3: production docs, merged in the cutover window | T041–T043 (cutover T044–T045) | UpCloud is production |
-| PR 5 (may fold into PR 1 if ready): paused page + pause/resume runbooks | T049–T052 (rehearsal T053) | none |
+| PR 5: take-down backup script + runbook | T050–T051 (drill T053) | none |
 | PR 4: decommission | T055–T056, T059 (manual T054, T057, T058) | Azure and Neon removed |
 
 Every PR branches from `main` and is squash-merged; nothing is committed
@@ -289,38 +289,35 @@ under 2 s and the first sign-in under 1 s from a European connection.
 
 ---
 
-## Phase 7: User Story 5 - Pause the site to stop paying for it (Priority: P3)
+## Phase 7: User Story 5 - Take the site down and keep what is needed to bring it back (Priority: P3)
 
-**Goal**: A runbook takes hosting cost to €0 and back with nothing lost.
+**Goal**: A runbook backs up the database and the server's `.env` somewhere
+safe, then deletes the UpCloud resources. Narrowed on 2026-10-11 from
+pause/resume: no "paused" page and no rehearsed resume.
 
-**Independent Test**: on a staging copy, follow § Pause: the paused notice
-shows on both hostnames, the UpCloud resource list is empty and the archive is
-stored outside UpCloud in two places. Follow § Resume: row counts and the test
-account match the archive.
+**Independent Test**: on staging, follow § Take down up to, but not
+including, deleting anything: `check-archive.sh` exits 0 against the live
+database, and the export and `.env` exist locally and `age`-encrypted outside
+UpCloud.
 
-**Ordering note**: rehearse this **before** Phase 8 removes the staging
-hostnames. The rehearsal must never run against production: either use a
-second, temporary set of UpCloud resources provisioned per § Provision on the
-staging hostnames (billed hourly, a few cents), or run it during the
-pre-cutover rehearsal window if this phase is ready by then (plan, delivery
-step 2).
+**Ordering note**: the drill never deletes anything and never runs against
+production. Do it while the staging hostnames still exist (before T057).
 
-- [ ] T049 [P] [US5] Create `deploy/maintenance/paused/index.html`: same structure and styling as `deploy/maintenance/index.html`, text saying the service is paused (not under maintenance) in English and Finnish, no JavaScript, and a header comment saying it is published to Cloudflare Pages while paused (FR-025)
+- ~~T049~~ *Removed 2026-10-11*: no "paused" page (FR-025 removed).
 - [ ] T050 [P] [US5] Create `deploy/bin/check-archive.sh` (POSIX `sh`, header comment, passes `shellcheck`): starts a throwaway local `postgres:18` container, `pg_restore`s the given `.dump` into it with `--no-owner --no-privileges --exit-on-error`, runs `deploy/bin/verify-copy.sql`, prints the output, removes the container, and, when `LIVE_DATABASE_URL` is set, diffs against the live database's output and exits non-zero on a mismatch (FR-024). Note in the PR that it is proved by T053 rather than a CI test
-- [ ] T051 [US5] Write `deploy/README.md` § Pause (research R9), with exact commands and the hard rule from data-model.md ("no resource is deleted until a checked archive exists on the maintainer's machine **and** an `age`-encrypted copy is in personal storage outside UpCloud"):
+- [ ] T051 [US5] Write `deploy/README.md` § Take down (research R9), with exact commands and the hard rule from data-model.md ("no resource is deleted until a checked export and the `.env` are on the maintainer's machine **and** an `age`-encrypted copy of both is in personal storage outside UpCloud"):
   1. `touch` the maintenance flag (freezes writes);
-  2. `pg_dump -Fc` on the server, `scp` to the maintainer's machine as `admin`;
+  2. `pg_dump -Fc` on the server; `scp` the dump and `/etc/subscription-tracker/.env` to the maintainer's machine as `admin`;
   3. `check-archive.sh` with `LIVE_DATABASE_URL` reachable through an SSH tunnel; must exit 0;
-  4. `age -r <maintainer pubkey>` the dump and store the encrypted copy in a second place (e.g. a personal cloud drive), access restricted to the maintainer (FR-027);
-  5. delete the database, the server and its storage, the SDN router and network (stopping is not enough: they bill while stopped, R1/R2);
-  6. remove both grey-cloud A records, add both hostnames as custom domains of the Cloudflare Pages project serving `deploy/maintenance/paused/` (the caveat in R9);
-  7. disable `UPCLOUD_DEPLOY_ENABLED` and pause UptimeRobot.
-  State that verification and reset links may expire while paused (edge case) and the SC-009 targets
-- [ ] T052 [US5] Write `deploy/README.md` § Resume: remove the custom domains from the Pages project **first**, then § Provision, `pg_restore` the archive over the private network, `verify-copy.sh`/`check-archive.sh` against the archive, `rm` the maintenance flag, recreate the A records, re-enable `UPCLOUD_DEPLOY_ENABLED` (updating `UPCLOUD_DEPLOY_HOST` and `UPCLOUD_KNOWN_HOSTS` for the new server), unpause UptimeRobot; target ≤ 2 hours (SC-009)
-- [ ] T053 [US5] (manual) Create the Cloudflare Pages project (free) for `deploy/maintenance/paused/` (direct upload is enough; no build). Rehearse § Pause then § Resume on staging hostnames per the ordering note above. Expected: the paused page over HTTPS on both staging hosts, an empty UpCloud resource list for the rehearsal resources, billing stopping on the next hourly line, and after resume the archive's row counts match and the test account signs in (FR-024–FR-027, SC-009; quickstart §2 step 10). Fix the runbooks from what the rehearsal finds
+  4. `age -r <maintainer pubkey>` both files and store the encrypted copy in a second place (e.g. a personal cloud drive), access restricted to the maintainer (FR-027);
+  5. disable `UPCLOUD_DEPLOY_ENABLED` and pause UptimeRobot;
+  6. delete the database, the server and its storage, the SDN router and network (stopping is not enough: they bill while stopped, R1/R2), and remove both A records.
+  End with a two-line "Bringing it back": § Provision with the saved `.env` in place of a hand-written one, then `pg_restore` the dump and run `check-archive.sh` against the new database (FR-026)
+- ~~T052~~ *Removed 2026-10-11*: bringing the site back is the last paragraph of T051's section, not a separate runbook.
+- [ ] T053 [US5] (manual) Drill on staging: follow § Take down steps 1–4 only, then `rm` the maintenance flag. Expected: `check-archive.sh` exits 0, and both files exist locally and `age`-encrypted in the second place (FR-024, FR-026, FR-027, SC-009; quickstart §2 step 10). Fix the runbook from what the drill finds
 
-**Checkpoint**: pause and resume are rehearsed; FR-026's precondition for a
-first real pause is met.
+**Checkpoint**: the take-down backup has been made and checked once on
+staging.
 
 ---
 
@@ -333,7 +330,7 @@ exist; the Azure secrets and variable are gone from the repository settings;
 `git grep -i -E 'azurecontainerapps|neon'` finds only historical notes.
 
 **Precondition**: 7 days of production on UpCloud with no data-affecting
-incident (FR-021), and T053 done if the rehearsal relies on the staging
+incident (FR-021), and T053 done if the drill relies on the staging
 hostnames.
 
 - [ ] T054 [US4] (manual) Archive a final Neon export: `pg_dump -Fc` over the unpooled endpoint, check it with `deploy/bin/check-archive.sh`, keep it on the maintainer's machine and an `age`-encrypted copy in personal storage outside both providers (FR-021, US4 scenario 1)
@@ -369,8 +366,8 @@ hostnames.
 - **US3 (Phase 4)**: code tasks T025–T031 can start after Setup; T032–T040 need T014; T034 needs T033.
 - **US1 cutover (Phase 5)**: needs Phase 3 **and** T034 (deploy job live, plan step 3) **and** T038 (restore drill, FR-018).
 - **US2 (Phase 6)**: needs the cutover (T045).
-- **US5 (Phase 7)**: code and runbook tasks T049–T052 can start any time after Phase 2; the rehearsal T053 must not touch production and should run while staging hostnames exist (before T057).
-- **US4 (Phase 8)**: needs T045 plus the 7-day soak; T057 waits for T053 if that rehearsal uses the staging hostnames.
+- **US5 (Phase 7)**: T050–T051 can start any time after Phase 2; the drill T053 must not touch production and should run while staging hostnames exist (before T057).
+- **US4 (Phase 8)**: needs T045 plus the 7-day soak; T057 waits for T053 if that drill uses the staging hostnames.
 - **Polish (Phase 9)**: T060 after cutover; T061 after 30 days; the rest any time after Phase 8.
 
 ### User Story Dependencies
@@ -378,7 +375,7 @@ hostnames.
 - **US1 (P1)**: the MVP. Its cutover depends on US3's deploy job and restore drill; nothing else.
 - **US2 (P2)**: depends only on US1 being live. No code of its own unless T046/T048 find a gap.
 - **US3 (P2)**: independent of the other stories; testable on staging.
-- **US5 (P3)**: independent of US1–US4 in code; its rehearsal needs a non-production stack.
+- **US5 (P3)**: independent of US1–US4 in code; its drill needs a non-production stack.
 - **US4 (P3)**: depends on US1 (and the soak).
 
 ### Within Each User Story
@@ -393,7 +390,6 @@ hostnames.
 - Phase 2: T006, T007 and T008 (different files) after T004–T005 are sketched; T010 and T011 are both in `deploy/README.md`, so run them one after the other.
 - Phase 3 and Phase 4 code work can be done side by side: T015/T017 [US1] alongside T025/T026/T029 [US3].
 - Phase 5: T041, T042 and T043 touch different files.
-- Phase 7: T049 and T050.
 - Phase 9: T060 and T061.
 
 ---
@@ -438,7 +434,7 @@ Task: "database.py pool comment and PLAN.md Milestone 12"                   # T0
 3. PR 2 → merges deploy themselves (to staging, then production).
 4. Cutover + PR 3 → users on UpCloud (MVP).
 5. US2 measurement → SC-002 recorded.
-6. US5 runbooks + rehearsal → the site can be paused safely.
+6. US5 runbook + drill → the site can be taken down without losing data.
 7. PR 4 after the soak → one production setup.
 
 ---
@@ -446,7 +442,7 @@ Task: "database.py pool comment and PLAN.md Milestone 12"                   # T0
 ## Notes
 
 - [P] tasks touch different files and have no unfinished dependencies.
-- `deploy/README.md` is written by many tasks (T010, T011, T019, T020, T030, T031, T051, T052); never run two of them at once.
+- `deploy/README.md` is written by many tasks (T010, T011, T019, T020, T030, T031, T051); never run two of them at once.
 - `deploy/cloud-init.yaml` is edited by T007, T008 and T029, in that order.
 - Design gap resolved here: contracts/server-env.md lists `IMAGE_TAG` in the `root:deploy 0640` secrets file, but `deploy.sh` (running as `deploy`) must write it. T027 moves it to `/var/lib/subscription-tracker/image-tag.env`; T010 documents it, and T027 updates data-model.md § Deploy record. Update contracts/server-env.md's `IMAGE_TAG` row in the same PR.
 - Secrets never enter the repository; `deploy/tests/sample.env` holds dummy values only.
