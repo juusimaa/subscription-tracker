@@ -239,8 +239,7 @@ service, shared objects included, such as any other database it owns, to an
 app role. The loops below touch only schema `public` of `defaultdb`, and the
 final query proves nothing there was missed.
 
-Done once on the live server in October 2026, before Gym Notebook was
-provisioned; on a new server, after § Provision step 5 has put the CA
+Done once on the live server on 2026-10-12; on a new server, after § Provision step 5 has put the CA
 certificate in place and before step 7's first start (the database is
 still empty, so step 2 below moves nothing, and step 6 is just writing
 `DATABASE_URL`). Run it as
@@ -277,12 +276,30 @@ docker run --rm -it -e ADMIN_URL \
    role, `upadmin` cannot hand it over: stop here, and leave the app on
    its current login until that is solved.
 
+   Before step 2, list what it will move. Every table must be the
+   tracker's: the loops hand over anything `upadmin` owns in `public`.
+   The live service had a stray `__EFMigrationsHistory` there, left by a
+   Gym Notebook migration run against `defaultdb` as `upadmin`. It was
+   dropped (`DROP TABLE "__EFMigrationsHistory";`) inside step 2's
+   transaction.
+
+   ```sql
+   SELECT c.relname, c.relkind, c.relowner::regrole FROM pg_class c
+   WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r','p','v','m')
+   ORDER BY 1;
+   ```
+
 2. **Hand over the database and everything in it**, in one transaction so
    a failure changes nothing:
 
    ```sql
    BEGIN;
    ALTER DATABASE defaultdb OWNER TO tracker;
+   -- UpCloud creates public owned by upadmin, not pg_database_owner, so it
+   -- doesn't follow the database. Without this, ALTER TABLE … OWNER TO
+   -- tracker fails ("permission denied for schema public"), and later
+   -- Alembic migrations couldn't create tables as tracker.
+   ALTER SCHEMA public OWNER TO tracker;
    DO $$
    DECLARE obj record;
    BEGIN
